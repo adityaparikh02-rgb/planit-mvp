@@ -1,7 +1,6 @@
 import os, tempfile, re, subprocess, json, cv2, numpy as np, requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from moviepy.editor import VideoFileClip
 from pytesseract import image_to_string
 from PIL import Image
 from openai import OpenAI
@@ -72,9 +71,23 @@ def download_tiktok(video_url):
 # ─────────────────────────────
 def extract_audio(video_path):
     audio_path = video_path.replace(".mp4", ".wav")
-    clip = VideoFileClip(video_path)
-    clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i", video_path,
+            "-vn",
+            "-acodec", "pcm_s16le",
+            "-ar", "44100",
+            "-ac", "2",
+            audio_path,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
     return audio_path
+
 
 def transcribe_audio(audio_path):
     print("🎧 Transcribing audio with Whisper…")
