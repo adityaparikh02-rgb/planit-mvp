@@ -1,0 +1,13 @@
+# Ignore Python & environment files
+venv/
+__pycache__/
+.env
+backend.log
+
+# Ignore Node modules and build files
+node_modules/
+client/node_modules/
+client/build/
+
+# Ignore system files
+.DS_Store

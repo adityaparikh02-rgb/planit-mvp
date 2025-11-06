@@ -1,0 +1,12 @@
+#!/bin/zsh
+# Start PlanIt backend (Flask)
+
+# 1. Activate virtual environment
+source venv/bin/activate
+
+# 2. Set the backend port
+export PORT=5001
+
+# 3. Run the Flask app
+python3 app.py
+
