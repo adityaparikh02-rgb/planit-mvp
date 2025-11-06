@@ -67,33 +67,16 @@ def download_tiktok(video_url):
 
 
 # ─────────────────────────────
-# Audio + OCR
+# Audio + OCR (simplified)
 # ─────────────────────────────
-def extract_audio(video_path):
-    audio_path = video_path.replace(".mp4", ".wav")
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i", video_path,
-            "-vn",
-            "-acodec", "pcm_s16le",
-            "-ar", "44100",
-            "-ac", "2",
-            audio_path,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return audio_path
-
-
-def transcribe_audio(audio_path):
+def transcribe_audio(media_path):
     print("🎧 Transcribing audio with Whisper…")
     try:
-        with open(audio_path, "rb") as f:
-            text = client.audio.transcriptions.create(model="whisper-1", file=f).text.strip()
+        with open(media_path, "rb") as f:
+            text = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f
+            ).text.strip()
         return text
     except Exception as e:
         print("❌ Whisper failed:", e)
@@ -296,7 +279,7 @@ def extract_api():
         if "comments" in meta and isinstance(meta["comments"], list):
             comments_text = " | ".join(c.get("text", "") for c in meta["comments"][:10])
 
-        transcript = transcribe_audio(extract_audio(video_path))
+        transcript = transcribe_audio(video_path)
         ocr_text = extract_ocr_text(video_path)
 
         venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
