@@ -1,4 +1,13 @@
-import os, tempfile, re, subprocess, json, cv2, numpy as np, requests
+import os
+
+# ─────────────────────────────
+# Fix Render OpenAI "proxies" bug before anything imports httpx
+# ─────────────────────────────
+for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
+    if var in os.environ:
+        del os.environ[var]
+
+import tempfile, re, subprocess, json, cv2, numpy as np, requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pytesseract import image_to_string
@@ -11,15 +20,10 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Temporary fix for Render proxy bug
-for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
-    if var in os.environ:
-        del os.environ[var]
-
-# ✅ Initialize OpenAI client securely
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 
 # ─────────────────────────────
 # Cache Setup
