@@ -1,3 +1,5 @@
+--no-cache-dir
+--force-reinstall
 Flask==3.1.2
 flask-cors==4.0.0
 openai==1.40.3
