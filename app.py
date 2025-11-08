@@ -1,15 +1,17 @@
-import os
+# ─────────────────────────────
+# ✅ Fix Render + OpenAI "proxies" crash before anything else
+# ─────────────────────────────
+import os, sys
 
-# ─────────────────────────────
-# 🧰 Fix for Render + OpenAI "proxies" crash
-# ─────────────────────────────
-# Must happen BEFORE any other imports that might use httpx
-for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
+# Remove all proxy-related environment variables early
+for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
     os.environ.pop(var, None)
 os.environ["NO_PROXY"] = "*"
 
+print("✅ Proxy env cleaned:", {k: v for k, v in os.environ.items() if "PROXY" in k})
+
 # ─────────────────────────────
-# Now import everything else
+# Now safe to import everything else
 # ─────────────────────────────
 import tempfile, re, subprocess, json, cv2, numpy as np, requests
 from flask import Flask, request, jsonify
@@ -17,7 +19,7 @@ from flask_cors import CORS
 from pytesseract import image_to_string
 from PIL import Image
 
-# Import OpenAI **after** proxy cleanup
+# Import OpenAI *after* proxy cleanup
 from openai import OpenAI
 
 # ─────────────────────────────
@@ -29,8 +31,6 @@ CORS(app)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-
-
 
 
 # ─────────────────────────────
