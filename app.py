@@ -11,9 +11,11 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app)
 
+# ✅ Securely use environment variables (Render handles these)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 
 CACHE_PATH = os.path.join(os.getcwd(), "cache.json")
 if not os.path.exists(CACHE_PATH):
