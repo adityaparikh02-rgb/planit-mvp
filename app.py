@@ -315,8 +315,13 @@ def extract_api():
         print("❌ Fatal error:", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/healthz", methods=["GET"])
+def health_check():
+    return jsonify({"status": "ok"}), 200
+
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5001))
+    port = int(os.getenv("PORT", 5000))
     print(f"Running Flask backend on {port}...")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)
+
