@@ -11,12 +11,19 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Securely use environment variables (Render handles these)
+# ✅ Temporary fix for Render proxy bug
+for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
+    if var in os.environ:
+        del os.environ[var]
+
+# ✅ Initialize OpenAI client securely
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-
+# ─────────────────────────────
+# Cache Setup
+# ─────────────────────────────
 CACHE_PATH = os.path.join(os.getcwd(), "cache.json")
 if not os.path.exists(CACHE_PATH):
     with open(CACHE_PATH, "w") as f:
