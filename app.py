@@ -1,20 +1,23 @@
 import os
 
 # ─────────────────────────────
-# 🧰 Permanent fix for Render + OpenAI "proxies" crash
+# 🧰 Fix for Render + OpenAI "proxies" crash
 # ─────────────────────────────
-# Render automatically sets HTTP(S)_PROXY which breaks OpenAI's HTTPX client
+# Must happen BEFORE any other imports that might use httpx
 for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
     os.environ.pop(var, None)
-
-# Force HTTPX/OpenAI to skip all proxy configs
 os.environ["NO_PROXY"] = "*"
 
+# ─────────────────────────────
+# Now import everything else
+# ─────────────────────────────
 import tempfile, re, subprocess, json, cv2, numpy as np, requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pytesseract import image_to_string
 from PIL import Image
+
+# Import OpenAI **after** proxy cleanup
 from openai import OpenAI
 
 # ─────────────────────────────
@@ -23,14 +26,10 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app)
 
-# ✅ Initialize OpenAI client safely (no proxy usage)
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    max_retries=2,
-)
-
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 
 
 
