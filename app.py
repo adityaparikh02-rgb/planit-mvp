@@ -138,15 +138,19 @@ def download_tiktok(video_url):
     # Build yt-dlp command with optional impersonate
     impersonate_flag = f'--impersonate "{YT_IMPERSONATE}"' if YT_IMPERSONATE else ''
     
+    # Add extra options to avoid TikTok blocking (403 errors)
+    # Use better headers and retry logic
+    extra_opts = '--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --referer "https://www.tiktok.com/" --retries 3 --fragment-retries 3'
+    
     result1 = subprocess.run(
-        f'{yt_dlp_cmd} --skip-download --write-info-json {impersonate_flag} '
+        f'{yt_dlp_cmd} --skip-download --write-info-json {impersonate_flag} {extra_opts} '
         f'-o "{tmpdir}/video" "{video_url}"', shell=True, check=False, capture_output=True, text=True, timeout=60)
     if result1.returncode != 0:
         error1 = (result1.stderr or result1.stdout or "Unknown error")[:1000]
         print(f"⚠️ Metadata download warning: {error1}")
     
     result2 = subprocess.run(
-        f'{yt_dlp_cmd} {impersonate_flag} -o "{video_path}" "{video_url}"',
+        f'{yt_dlp_cmd} {impersonate_flag} {extra_opts} -o "{video_path}" "{video_url}"',
         shell=True, check=False, capture_output=True, text=True, timeout=120)
     if result2.returncode != 0:
         error2 = (result2.stderr or result2.stdout or "Unknown error")
