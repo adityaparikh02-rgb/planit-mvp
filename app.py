@@ -3,15 +3,27 @@
 # ─────────────────────────────
 import os, sys, logging
 
-# Remove proxy-related vars that break OpenAI client on Render
-for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
-    os.environ.pop(var, None)
+# Completely nuke proxy variables before importing OpenAI
+for var in [
+    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "all_proxy"
+]:
+    if var in os.environ:
+        print(f"Removing {var}")
+        os.environ.pop(var)
+
 os.environ["NO_PROXY"] = "*"
+os.environ["PYTHONWARNINGS"] = "ignore"
+
+# Prevent Render from re-injecting proxies later
+if hasattr(sys, "__interactivehook__"):
+    del sys.__interactivehook__
 
 logging.getLogger("moviepy").setLevel(logging.ERROR)
 os.environ["YT_DLP_NO_WARNINGS"] = "1"
 
-print("✅ Proxy env cleaned:", {k: v for k, v in os.environ.items() if "PROXY" in k})
+print("✅ Proxy env cleaned. Ready to import dependencies.")
+
 
 # ─────────────────────────────
 # Now safe to import everything else
@@ -30,7 +42,7 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), max_retries=3, http_client=None)
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
