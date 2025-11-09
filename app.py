@@ -443,6 +443,14 @@ Return valid JSON list.
 @app.route("/api/extract", methods=["POST"])
 def extract_api():
     url = request.json.get("video_url")
+    
+    # Check if it's a photo URL (not supported)
+    if "/photo/" in url:
+        return jsonify({
+            "error": "TikTok photos are not supported. Please use a video URL (URLs with /video/ in them).",
+            "message": "Only TikTok videos can be processed, not photos."
+        }), 400
+    
     vid = get_tiktok_id(url)
     print(f"\n🟦 Extracting TikTok: {url}")
 
@@ -494,13 +502,12 @@ def extract_api():
             except:
                 pass
         
-        # Skip OCR on Render to save memory (it's optional anyway)
-        ocr_text = ""
-        if not (os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_HOSTNAME")):
-            ocr_text = extract_ocr_text(video_path)
+        # Try OCR (will fail gracefully if tesseract not available)
+        ocr_text = extract_ocr_text(video_path)
+        if ocr_text:
             print(f"✅ OCR text: {len(ocr_text)} chars")
         else:
-            print("⚠️ Skipping OCR on Render to save memory")
+            print("⚠️ OCR returned no text (tesseract may not be available)")
         
         # Clean up video file immediately after processing
         if os.path.exists(video_path):
