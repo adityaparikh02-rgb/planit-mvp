@@ -68,8 +68,10 @@ function App() {
       let data;
       try {
         data = await res.json();
+        console.log("📦 Response data:", data);
       } catch (parseError) {
         const text = await res.text();
+        console.error("❌ Failed to parse JSON:", text);
         throw new Error(`Backend returned invalid response (${res.status}): ${text.substring(0, 200)}`);
       }
       
@@ -83,6 +85,15 @@ function App() {
       if (data.error) {
         throw new Error(data.error);
       }
+      
+      // Check if we got valid data
+      if (!data.places_extracted) {
+        console.warn("⚠️ No places_extracted in response:", data);
+        // Still show the result, but with empty places
+        data.places_extracted = [];
+      }
+      
+      console.log(`✅ Found ${data.places_extracted?.length || 0} places`);
 
       // attach TikTok URL to every place
       const uniquePlaces = [
