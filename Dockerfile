@@ -1,7 +1,7 @@
 # Use Python 3.11 slim image
 FROM python:3.11-slim
 
-# Install system dependencies including tesseract-ocr
+# Install system dependencies including tesseract-ocr and opencv dependencies
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    libglib2.0-0 \
+    libgl1-mesa-glx \
+    libgthread-2.0-0 \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
