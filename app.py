@@ -178,22 +178,34 @@ You are analyzing a TikTok video about NYC venues.
 1️⃣ Extract every **specific** bar, restaurant, café, or food/drink venue mentioned.
    • Use on-screen text, speech, or captions.
    • Ignore broad neighborhoods like "SoHo" or "Brooklyn."
+   • ONLY list actual venue names that are mentioned. Do NOT use placeholders like "venue 1" or "<venue 1>".
+   • If no venues are found, return an empty list (no venues, just the Summary line).
 
 2️⃣ Write a short, creative title summarizing what this TikTok is about.
-   Examples: “Top 10 Pizzerias in NYC”, “Hidden Cafes in Manhattan”, “NYC Rooftop Bars for Dates”.
+   Examples: "Top 10 Pizzerias in NYC", "Hidden Cafes in Manhattan", "NYC Rooftop Bars for Dates".
 
-Output ONLY in this format:
+Output ONLY in this format (one venue name per line, no numbers, no placeholders):
 
-<one venue per line>
+<actual venue name>
+<another actual venue name>
 Summary: <short creative title — DO NOT include transcript>
+
+If no venues are found, output only:
+Summary: <short creative title>
 """
     try:
+        if not combined_text or not combined_text.strip():
+            print("⚠️ No content to analyze (empty transcript, OCR, caption, comments)")
+            return [], "TikTok Venues"
+        
+        print(f"📝 Analyzing content ({len(combined_text)} chars): {combined_text[:200]}...")
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt + combined_text[:3500]}],
             temperature=0.5,
         )
         raw = response.choices[0].message.content.strip()
+        print(f"🤖 GPT raw response: {raw[:500]}...")
 
         match = re.search(r"Summary\s*:\s*(.+)", raw, re.I)
         summary = match.group(1).strip() if match else "TikTok Venues"
@@ -206,15 +218,27 @@ Summary: <short creative title — DO NOT include transcript>
             if not line or re.search(r"names?:", line, re.I):
                 continue
             line = re.sub(r"^[\d\-\•\.\s]+", "", line)
+            # Filter out placeholder text like "<venue 1>", "venue 1", etc.
+            if re.search(r"<.*venue.*\d+.*>|venue\s*\d+|placeholder", line, re.I):
+                print(f"⚠️ Skipping placeholder: {line}")
+                continue
             if 2 < len(line) < 60:
                 venues.append(line)
 
         unique, seen = [], set()
         for v in venues:
-            if v.lower() not in seen:
-                seen.add(v.lower())
-                unique.append(v)
+            v_lower = v.lower().strip()
+            # Additional filtering for placeholder-like text
+            if v_lower in seen or not v_lower or len(v_lower) < 3:
+                continue
+            # Skip if it looks like a placeholder
+            if re.search(r"^<.*>$|^venue\s*\d+$|^example|^test", v_lower):
+                print(f"⚠️ Skipping placeholder-like venue: {v}")
+                continue
+            seen.add(v_lower)
+            unique.append(v)
 
+        print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
         return unique, summary
     except Exception as e:
@@ -308,8 +332,20 @@ def extract_api():
 
     cache = load_cache()
     if vid and vid in cache:
-        print("⚡ Using cached result.")
-        return jsonify(cache[vid])
+        cached_data = cache[vid]
+        # Check if cached data has placeholder venues and clear it if so
+        places = cached_data.get("places_extracted", [])
+        has_placeholders = any(
+            re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", p.get("name", ""), re.I)
+            for p in places
+        )
+        if has_placeholders:
+            print("⚠️ Cached result contains placeholders, clearing cache and re-extracting")
+            del cache[vid]
+            save_cache(cache)
+        else:
+            print("⚡ Using cached result.")
+            return jsonify(cached_data)
 
     try:
         video_path, meta = download_tiktok(url)
@@ -323,6 +359,19 @@ def extract_api():
         ocr_text = extract_ocr_text(video_path)
 
         venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+
+        # Filter out any remaining placeholder-like venues
+        venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+        
+        if not venues:
+            print("⚠️ No valid venues extracted from video")
+            # Return empty result instead of placeholder data
+            data = {
+                "video_url": url,
+                "context_summary": context_title,
+                "places_extracted": [],
+            }
+            return jsonify(data)
 
         places_extracted = []
         for v in venues:
