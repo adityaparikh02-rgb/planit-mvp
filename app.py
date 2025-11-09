@@ -41,7 +41,8 @@ from httpx import Client as HttpxClient
 # Setup
 # ─────────────────────────────
 app = Flask(__name__)
-CORS(app)
+# Allow all origins for now - can restrict later if needed
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Create a proxy-safe HTTP client
 safe_httpx = HttpxClient(proxies=None, trust_env=False, timeout=30.0)

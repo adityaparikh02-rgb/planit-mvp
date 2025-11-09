@@ -43,17 +43,28 @@ function App() {
     }
 
     try {
+      console.log(`🌐 Calling API: ${API_BASE}/api/extract`);
+      
       const res = await fetch(`${API_BASE}/api/extract`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ video_url: url }),
       });
       
-      const data = await res.json();
+      console.log(`📡 Response status: ${res.status}`);
+      
+      // Try to parse JSON, but handle non-JSON errors
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseError) {
+        const text = await res.text();
+        throw new Error(`Backend returned invalid response (${res.status}): ${text.substring(0, 200)}`);
+      }
       
       if (!res.ok) {
         // Show actual error message from backend
-        const errorMsg = data.error || data.message || "Backend error";
+        const errorMsg = data.error || data.message || `Backend error (${res.status})`;
         throw new Error(errorMsg);
       }
       
@@ -95,7 +106,15 @@ function App() {
       setLoadingStep("");
     } catch (err) {
       console.error("Extraction error:", err);
-      const errorMessage = err.message || "Failed to extract venues. Please try again.";
+      let errorMessage = err.message || "Failed to extract venues. Please try again.";
+      
+      // Better error messages for connection issues
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        errorMessage = `Cannot connect to backend at ${API_BASE}. Check if the backend is running and REACT_APP_API_URL is set correctly.`;
+      } else if (err.message.includes("CORS")) {
+        errorMessage = "CORS error: Backend is not allowing requests from this origin.";
+      }
+      
       setError(errorMessage);
       setLoadingStep("");
       setResult(null);
