@@ -251,28 +251,77 @@ def extract_ocr_text(video_path):
         print("🧩 Extracting on-screen text with OCR…")
         vidcap = cv2.VideoCapture(video_path)
         total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-        # Reduce frames for memory efficiency (5 instead of 10)
-        frames = np.linspace(0, total - 1, min(total, 5), dtype=int)
+        fps = vidcap.get(cv2.CAP_PROP_FPS) or 30
+        duration = total / fps if fps > 0 else 0
+        
+        # For slideshow videos, process more frames to catch all slides
+        # Process 1 frame per second, or at least 10 frames, up to 20 frames
+        num_frames = min(max(int(duration), 10), 20) if duration > 0 else 15
+        frames = np.linspace(0, total - 1, min(total, num_frames), dtype=int)
+        
+        print(f"📹 Processing {len(frames)} frames from {total} total frames (duration: {duration:.1f}s)")
+        
         texts = []
+        seen_texts = set()  # Deduplicate similar text
+        
+        # OCR config for better accuracy on stylized text
+        ocr_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:()[]{}-\'"&@#$% '
+        
         for n in frames:
             vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
             ok, img = vidcap.read()
             if not ok:
                 continue
+            
+            # Convert to grayscale
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            txt = image_to_string(Image.fromarray(gray))
-            if txt.strip():
-                texts.append(txt.strip())
+            
+            # Image preprocessing to improve OCR accuracy
+            # 1. Increase contrast
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+            enhanced = clahe.apply(gray)
+            
+            # 2. Apply thresholding to make text more distinct
+            _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # 3. Try OCR on both original and processed images
+            for processed_img in [gray, enhanced, thresh]:
+                try:
+                    txt = image_to_string(Image.fromarray(processed_img), config=ocr_config)
+                    txt_clean = txt.strip()
+                    if txt_clean and len(txt_clean) > 2:
+                        # Deduplicate - only add if significantly different
+                        txt_lower = txt_clean.lower()
+                        is_duplicate = any(
+                            txt_lower in seen or seen in txt_lower 
+                            for seen in seen_texts 
+                            if len(seen) > 5 and len(txt_lower) > 5
+                        )
+                        if not is_duplicate:
+                            texts.append(txt_clean)
+                            seen_texts.add(txt_lower)
+                            print(f"   Frame {n}: Found text: {txt_clean[:50]}...")
+                            break  # Found text, move to next frame
+                except:
+                    continue
+            
             # Clean up image from memory
-            del img, gray
+            del img, gray, enhanced, thresh
+            gc.collect()
+        
         vidcap.release()
         del vidcap
         gc.collect()  # Force garbage collection
+        
         merged = " | ".join(texts)
-        print(f"✅ OCR extracted {len(merged)} chars")
+        print(f"✅ OCR extracted {len(merged)} chars from {len(texts)} unique text blocks")
+        if merged:
+            print(f"📝 OCR text preview: {merged[:200]}...")
         return merged
     except Exception as e:
         print(f"⚠️ OCR extraction failed: {e}")
+        import traceback
+        print(traceback.format_exc())
         return ""  # Return empty string so extraction can continue
 
 # ─────────────────────────────
