@@ -106,8 +106,13 @@ def save_cache(cache):
         json.dump(cache, f, indent=2)
 
 def get_tiktok_id(url):
+    """Extract TikTok video ID from URL. Returns None for shortened URLs (will extract from metadata later)."""
+    # Try standard /video/ format
     m = re.search(r"/video/(\d+)", url)
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    # Shortened URLs (/t/ format) will be handled by extracting ID from metadata
+    return None
 
 # ─────────────────────────────
 # TikTok Download
@@ -553,6 +558,26 @@ def extract_api():
 
     try:
         video_path, meta = download_tiktok(url)
+        
+        # Extract video ID from metadata if not available from URL (for shortened URLs)
+        if not vid and meta:
+            # Try to get ID from metadata
+            vid = meta.get("id") or meta.get("display_id")
+            if vid:
+                print(f"📹 Extracted video ID from metadata: {vid}")
+                # Check cache again with the extracted ID
+                cache = load_cache()
+                if vid in cache:
+                    cached_data = cache[vid]
+                    places = cached_data.get("places_extracted", [])
+                    has_placeholders = any(
+                        re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", p.get("name", ""), re.I)
+                        for p in places
+                    )
+                    if not has_placeholders:
+                        print("⚡ Using cached result (from metadata ID).")
+                        return jsonify(cached_data)
+        
         # Extract caption from multiple possible fields
         caption = (
             meta.get("description", "") or 
