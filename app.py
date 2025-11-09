@@ -96,14 +96,20 @@ def download_tiktok(video_url):
 
     print("🎞 Downloading TikTok + metadata...")
     
-    # Find yt-dlp executable (works in both local and Render environments)
-    yt_dlp_cmd = "yt-dlp"
-    yt_dlp_path = shutil.which("yt-dlp")
-    if yt_dlp_path:
-        yt_dlp_cmd = yt_dlp_path
-    else:
-        # Fallback: try python -m yt_dlp (works when installed via pip)
+    # Always use python -m yt_dlp on Render (safer, works when installed via pip)
+    # On Render, the yt-dlp binary path can be broken, so use module import
+    is_render = os.getenv("RENDER") is not None or os.getenv("RENDER_EXTERNAL_HOSTNAME") is not None
+    
+    if is_render:
+        # Force python -m yt_dlp on Render
         yt_dlp_cmd = f"{sys.executable} -m yt_dlp"
+    else:
+        # Local development: try binary first, fallback to module
+        yt_dlp_path = shutil.which("yt-dlp")
+        if yt_dlp_path and os.path.exists(yt_dlp_path):
+            yt_dlp_cmd = yt_dlp_path
+        else:
+            yt_dlp_cmd = f"{sys.executable} -m yt_dlp"
     
     print(f"Using yt-dlp command: {yt_dlp_cmd}")
     
