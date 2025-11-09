@@ -8,5 +8,5 @@ opencv-python-headless==4.10.0.84
 moviepy==1.0.3
 numpy==1.26.4
 requests==2.32.3
-yt-dlp==2024.11.23
+yt-dlp==2024.11.18
 gunicorn==21.2.0
