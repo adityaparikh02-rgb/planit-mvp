@@ -37,12 +37,19 @@ from openai import OpenAI
 from httpx import Client as HttpxClient
 
 # Optional OCR - tesseract may not be available on all systems
+OCR_AVAILABLE = False
 try:
     from pytesseract import image_to_string
-    OCR_AVAILABLE = True
+    # Test if tesseract binary is actually available
+    import shutil
+    if shutil.which("tesseract"):
+        OCR_AVAILABLE = True
+    else:
+        print("⚠️ pytesseract installed but tesseract binary not found - OCR will be skipped")
 except ImportError:
-    OCR_AVAILABLE = False
     print("⚠️ pytesseract not available - OCR will be skipped")
+except Exception as e:
+    print(f"⚠️ OCR check failed: {e} - OCR will be skipped")
 
 # ─────────────────────────────
 # Setup
