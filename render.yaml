@@ -24,11 +24,12 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: cd client && npm install && npm run build
-    startCommand: cd client && npx serve -s build -l $PORT
+    rootDir: client
+    buildCommand: npm install && npm run build
+    startCommand: npx serve -s build -l $PORT
     envVars:
       - key: NODE_VERSION
         value: 18.18.0
       - key: REACT_APP_API_URL
-        sync: false  # Set this to your backend URL after deployment (e.g., https://planit-backend.onrender.com)
+        sync: false  # IMPORTANT: Set this in Render dashboard to your backend URL (e.g., https://planit-backend.onrender.com) - no trailing slash!
 
