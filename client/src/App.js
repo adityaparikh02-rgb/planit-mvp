@@ -4,6 +4,10 @@ import PlanItLogo from "./components/PlanItLogo";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://planit-mvp.onrender.com";
 
+// Log the API base URL for debugging
+console.log("🔧 API_BASE:", API_BASE);
+console.log("🔧 REACT_APP_API_URL env:", process.env.REACT_APP_API_URL);
+
 function App() {
   const [savedPlaces, setSavedPlaces] = useState({});
   const [activeMenu, setActiveMenu] = useState(null);
@@ -45,11 +49,18 @@ function App() {
     try {
       console.log(`🌐 Calling API: ${API_BASE}/api/extract`);
       
+      // Add timeout for long-running requests (5 minutes)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000); // 5 minutes
+      
       const res = await fetch(`${API_BASE}/api/extract`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ video_url: url }),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
       
       console.log(`📡 Response status: ${res.status}`);
       
@@ -109,8 +120,10 @@ function App() {
       let errorMessage = err.message || "Failed to extract venues. Please try again.";
       
       // Better error messages for connection issues
-      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
-        errorMessage = `Cannot connect to backend at ${API_BASE}. Check if the backend is running and REACT_APP_API_URL is set correctly.`;
+      if (err.name === "AbortError") {
+        errorMessage = "Request timed out. Video processing is taking too long. The video might be too large or the backend is overloaded.";
+      } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        errorMessage = `Cannot connect to backend at ${API_BASE}. Check if the backend is running and REACT_APP_API_URL is set correctly. Current API URL: ${API_BASE}`;
       } else if (err.message.includes("CORS")) {
         errorMessage = "CORS error: Backend is not allowing requests from this origin.";
       }
