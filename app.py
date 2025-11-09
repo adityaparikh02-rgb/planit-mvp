@@ -46,8 +46,17 @@ CORS(app)
 # Create a proxy-safe HTTP client
 safe_httpx = HttpxClient(proxies=None, trust_env=False, timeout=30.0)
 
+# Initialize OpenAI client lazily to avoid startup issues
+_client_instance = None
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), max_retries=3, http_client=safe_httpx)
+def get_openai_client():
+    global _client_instance
+    if _client_instance is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+        _client_instance = OpenAI(api_key=api_key, max_retries=3, http_client=safe_httpx)
+    return _client_instance
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
@@ -119,6 +128,7 @@ def extract_audio(video_path):
 def transcribe_audio(media_path):
     print("🎧 Transcribing audio with Whisper…")
     try:
+        client = get_openai_client()
         with open(media_path, "rb") as f:
             text = client.audio.transcriptions.create(
                 model="whisper-1",
@@ -199,6 +209,7 @@ Summary: <short creative title>
             return [], "TikTok Venues"
         
         print(f"📝 Analyzing content ({len(combined_text)} chars): {combined_text[:200]}...")
+        client = get_openai_client()
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt + combined_text[:3500]}],
@@ -266,6 +277,7 @@ Context:
 {context[:4000]}
 """
     try:
+        client = get_openai_client()
         r = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -309,6 +321,7 @@ Text: {text}
 Return valid JSON list.
 """
     try:
+        client = get_openai_client()
         r = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
@@ -404,7 +417,11 @@ def extract_api():
 
 @app.route("/healthz", methods=["GET"])
 def health_check():
-    return jsonify({"status": "ok"}), 200
+    try:
+        # Basic health check - just verify app is running
+        return jsonify({"status": "ok", "service": "planit-backend"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # ─────────────────────────────
 # Run Server
