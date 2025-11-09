@@ -524,10 +524,11 @@ def extract_api():
         }), 400
     
     # Check if it's a photo URL (not supported)
-    if "/photo/" in url or "tiktok.com" in url and "/video/" not in url:
+    # Only block actual /photo/ URLs, allow other formats to try (they'll fail gracefully if invalid)
+    if "/photo/" in url:
         return jsonify({
-            "error": "TikTok photos are not supported. Please use a video URL (URLs with /video/ in them).",
-            "message": "Only TikTok videos can be processed, not photos. Make sure your URL contains '/video/' in the path."
+            "error": "TikTok photo posts are not supported. Please use a video URL.",
+            "message": "Only TikTok videos can be processed, not static photo posts. Slideshow videos (multiple images in video format) are supported - make sure your URL is for a video, not a photo post."
         }), 400
     
     vid = get_tiktok_id(url)
