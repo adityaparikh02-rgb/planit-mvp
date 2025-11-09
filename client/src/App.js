@@ -94,6 +94,13 @@ function App() {
       }
       
       console.log(`✅ Found ${data.places_extracted?.length || 0} places`);
+      console.log("📋 Full response structure:", {
+        has_places: !!data.places_extracted,
+        places_count: data.places_extracted?.length || 0,
+        has_summary: !!data.context_summary,
+        summary: data.context_summary,
+        video_url: data.video_url
+      });
 
       // attach TikTok URL to every place
       const uniquePlaces = [
@@ -106,6 +113,7 @@ function App() {
       ];
       const cleanData = { ...data, places_extracted: uniquePlaces };
 
+      console.log("💾 Setting result:", cleanData);
       setCachedResults((prev) => ({ ...prev, [url]: cleanData }));
       setResult(cleanData);
 
@@ -213,9 +221,9 @@ function App() {
 
             {result && (
               <div className="results-container">
-                {result.summary_title && (
+                {(result.summary_title || result.context_summary) && (
                   <h2 className="summary-title">
-                    {result.summary_title.replace(/(^"|"$)/g, "")}
+                    {(result.summary_title || result.context_summary || "TikTok Venues").replace(/(^"|"$)/g, "")}
                   </h2>
                 )}
                 {result.video_url && (
@@ -228,6 +236,15 @@ function App() {
                     >
                       View on TikTok
                     </a>
+                  </div>
+                )}
+
+                {result.places_extracted?.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
+                    <p>No venues found in this video.</p>
+                    <p style={{ fontSize: "0.9rem", marginTop: "10px" }}>
+                      The video might not mention specific venue names, or they couldn't be extracted.
+                    </p>
                   </div>
                 )}
 
@@ -248,12 +265,13 @@ function App() {
                   </div>
                 )}
 
-                <div
-                  className={
-                    viewMode === "grid" ? "results-grid" : "results-list"
-                  }
-                >
-                  {result.places_extracted?.map((p, i) => {
+                {result.places_extracted && result.places_extracted.length > 0 && (
+                  <div
+                    className={
+                      viewMode === "grid" ? "results-grid" : "results-list"
+                    }
+                  >
+                    {result.places_extracted.map((p, i) => {
                     const isExpanded = expandedIndex === i;
                     const shortDesc =
                       p.summary && p.summary.length > 180
@@ -374,7 +392,8 @@ function App() {
                       </div>
                     );
                   })}
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </>
