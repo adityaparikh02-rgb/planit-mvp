@@ -118,9 +118,9 @@ def get_tiktok_id(url):
 # TikTok Download
 # ─────────────────────────────
 def download_tiktok(video_url):
-    # Double-check for photo URLs
-    if "/photo/" in video_url:
-        raise Exception("TikTok photos are not supported. Please use a video URL (URLs with /video/ in them).")
+    # Double-check for photo URLs (case-insensitive)
+    if "/photo/" in video_url.lower():
+        raise Exception("TikTok photo posts are not supported. Please use a video URL (URLs with /video/ in them). Static photo posts cannot be processed - only videos (including slideshow videos) are supported.")
     
     tmpdir = tempfile.mkdtemp()
     video_path = os.path.join(tmpdir, "video.mp4")
@@ -530,10 +530,11 @@ def extract_api():
     
     # Check if it's a photo URL (not supported)
     # Only block actual /photo/ URLs, allow other formats to try (they'll fail gracefully if invalid)
-    if "/photo/" in url:
+    url_lower = url.lower()
+    if "/photo/" in url_lower:
         return jsonify({
             "error": "TikTok photo posts are not supported. Please use a video URL.",
-            "message": "Only TikTok videos can be processed, not static photo posts. Slideshow videos (multiple images in video format) are supported - make sure your URL is for a video, not a photo post."
+            "message": "Only TikTok videos can be processed, not static photo posts. Slideshow videos (multiple images in video format) are supported - make sure your URL is for a video, not a photo post. Your URL contains '/photo/' which indicates a static photo post."
         }), 400
     
     vid = get_tiktok_id(url)
