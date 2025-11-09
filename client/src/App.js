@@ -48,8 +48,19 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ video_url: url }),
       });
-      if (!res.ok) throw new Error("Backend error");
+      
       const data = await res.json();
+      
+      if (!res.ok) {
+        // Show actual error message from backend
+        const errorMsg = data.error || data.message || "Backend error";
+        throw new Error(errorMsg);
+      }
+      
+      // Check if there's an error in the response
+      if (data.error) {
+        throw new Error(data.error);
+      }
 
       // attach TikTok URL to every place
       const uniquePlaces = [
@@ -83,9 +94,11 @@ function App() {
       ]);
       setLoadingStep("");
     } catch (err) {
-      console.error(err);
-      setError("Failed to connect to backend");
+      console.error("Extraction error:", err);
+      const errorMessage = err.message || "Failed to extract venues. Please try again.";
+      setError(errorMessage);
       setLoadingStep("");
+      setResult(null);
     }
   };
 

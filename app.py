@@ -94,12 +94,19 @@ def download_tiktok(video_url):
     video_path = os.path.join(tmpdir, "video.mp4")
 
     print("🎞 Downloading TikTok + metadata...")
-    subprocess.run(
+    result1 = subprocess.run(
         f'yt-dlp --skip-download --write-info-json --impersonate "{YT_IMPERSONATE}" '
-        f'-o "{tmpdir}/video" "{video_url}"', shell=True, check=False)
-    subprocess.run(
+        f'-o "{tmpdir}/video" "{video_url}"', shell=True, check=False, capture_output=True, text=True)
+    if result1.returncode != 0:
+        print(f"⚠️ Metadata download warning: {result1.stderr[:200]}")
+    
+    result2 = subprocess.run(
         f'yt-dlp --impersonate "{YT_IMPERSONATE}" -o "{video_path}" "{video_url}"',
-        shell=True, check=False)
+        shell=True, check=False, capture_output=True, text=True)
+    if result2.returncode != 0:
+        print(f"⚠️ Video download warning: {result2.stderr[:200]}")
+        if not os.path.exists(video_path):
+            raise Exception(f"Failed to download video: {result2.stderr[:500]}")
 
     meta = {}
     try:
@@ -367,9 +374,19 @@ def extract_api():
         if "comments" in meta and isinstance(meta["comments"], list):
             comments_text = " | ".join(c.get("text", "") for c in meta["comments"][:10])
 
+        if not os.path.exists(video_path):
+            raise Exception("Video file was not downloaded successfully")
+        
+        print(f"✅ Video downloaded: {video_path} ({os.path.getsize(video_path)} bytes)")
+        
         audio_path = extract_audio(video_path)
+        print(f"✅ Audio extracted: {audio_path}")
+        
         transcript = transcribe_audio(audio_path)
+        print(f"✅ Transcript: {len(transcript)} chars")
+        
         ocr_text = extract_ocr_text(video_path)
+        print(f"✅ OCR text: {len(ocr_text)} chars")
 
         venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
 
@@ -412,8 +429,16 @@ def extract_api():
         return jsonify(data)
 
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
         print("❌ Fatal error:", e)
-        return jsonify({"error": str(e)}), 500
+        print("Full traceback:")
+        print(error_trace)
+        return jsonify({
+            "error": str(e),
+            "message": "Extraction failed. Check logs for details.",
+            "traceback": error_trace if os.getenv("DEBUG") else None
+        }), 500
 
 @app.route("/healthz", methods=["GET"])
 def health_check():
