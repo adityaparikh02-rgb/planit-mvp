@@ -5,7 +5,7 @@ services:
     env: python
     region: oregon
     plan: starter
-    buildCommand: apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-eng && pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 --access-logfile - --error-logfile -
     envVars:
       - key: PYTHON_VERSION
