@@ -1,0 +1,34 @@
+services:
+  # Backend Flask API
+  - type: web
+    name: planit-backend
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000
+    healthCheckPath: /healthz
+
+  # Frontend React App
+  - type: web
+    name: planit-frontend
+    env: node
+    region: oregon
+    plan: starter
+    buildCommand: cd client && npm install && npm run build
+    startCommand: cd client && npx serve -s build -l $PORT
+    envVars:
+      - key: NODE_VERSION
+        value: 18.18.0
+      - key: REACT_APP_API_URL
+        sync: false  # Set this to your backend URL after deployment (e.g., https://planit-backend.onrender.com)
+

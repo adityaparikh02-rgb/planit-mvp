@@ -35,15 +35,13 @@ from pytesseract import image_to_string
 from PIL import Image
 from moviepy.editor import VideoFileClip
 from openai import OpenAI
+from httpx import Client as HttpxClient
 
 # ─────────────────────────────
 # Setup
 # ─────────────────────────────
 app = Flask(__name__)
 CORS(app)
-
-from httpx import Client as HttpxClient
-from openai import OpenAI
 
 # Create a proxy-safe HTTP client
 safe_httpx = HttpxClient(proxies=None, trust_env=False, timeout=30.0)
