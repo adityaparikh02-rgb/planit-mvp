@@ -31,11 +31,18 @@ print("✅ Proxy env cleaned. Ready to import dependencies.")
 import tempfile, re, subprocess, json, cv2, numpy as np, requests, sys, shutil
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from pytesseract import image_to_string
 from PIL import Image
 from moviepy.editor import VideoFileClip
 from openai import OpenAI
 from httpx import Client as HttpxClient
+
+# Optional OCR - tesseract may not be available on all systems
+try:
+    from pytesseract import image_to_string
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    print("⚠️ pytesseract not available - OCR will be skipped")
 
 # ─────────────────────────────
 # Setup
@@ -187,24 +194,33 @@ def transcribe_audio(media_path):
         return ""
 
 def extract_ocr_text(video_path):
-    print("🧩 Extracting on-screen text with OCR…")
-    vidcap = cv2.VideoCapture(video_path)
-    total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-    frames = np.linspace(0, total - 1, min(total, 10), dtype=int)
-    texts = []
-    for n in frames:
-        vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
-        ok, img = vidcap.read()
-        if not ok:
-            continue
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        txt = image_to_string(Image.fromarray(gray))
-        if txt.strip():
-            texts.append(txt.strip())
-    vidcap.release()
-    merged = " | ".join(texts)
-    print(f"✅ OCR extracted {len(merged)} chars")
-    return merged
+    """Extract on-screen text using OCR. Returns empty string if OCR unavailable."""
+    if not OCR_AVAILABLE:
+        print("⚠️ OCR not available (tesseract not installed) - skipping OCR")
+        return ""
+    
+    try:
+        print("🧩 Extracting on-screen text with OCR…")
+        vidcap = cv2.VideoCapture(video_path)
+        total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        frames = np.linspace(0, total - 1, min(total, 10), dtype=int)
+        texts = []
+        for n in frames:
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
+            ok, img = vidcap.read()
+            if not ok:
+                continue
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            txt = image_to_string(Image.fromarray(gray))
+            if txt.strip():
+                texts.append(txt.strip())
+        vidcap.release()
+        merged = " | ".join(texts)
+        print(f"✅ OCR extracted {len(merged)} chars")
+        return merged
+    except Exception as e:
+        print(f"⚠️ OCR extraction failed: {e}")
+        return ""  # Return empty string so extraction can continue
 
 # ─────────────────────────────
 # Google Places Photo
