@@ -288,13 +288,22 @@ def get_photo_url(name):
 # GPT: Extract Venues + Summary
 # ─────────────────────────────
 def extract_places_and_context(transcript, ocr_text, caption, comments):
+    # Log what we have for debugging
+    print(f"📋 Content sources:")
+    print(f"   - Caption: {len(caption)} chars - {caption[:100] if caption else 'None'}...")
+    print(f"   - Transcript: {len(transcript)} chars - {transcript[:100] if transcript else 'None'}...")
+    print(f"   - OCR: {len(ocr_text)} chars - {ocr_text[:100] if ocr_text else 'None'}...")
+    print(f"   - Comments: {len(comments)} chars - {comments[:100] if comments else 'None'}...")
+    
     combined_text = "\n".join(x for x in [ocr_text, transcript, caption, comments] if x)
     prompt = f"""
-You are analyzing a TikTok video about NYC venues.
+You are analyzing a TikTok video about NYC venues. Extract venue names from ANY available source.
 
 1️⃣ Extract every **specific** bar, restaurant, café, or food/drink venue mentioned.
-   • Use on-screen text, speech, or captions.
-   • Ignore broad neighborhoods like "SoHo" or "Brooklyn."
+   • IMPORTANT: Check the CAPTION/DESCRIPTION carefully - venue names are often listed there
+   • Also check on-screen text (OCR), speech (transcript), and comments
+   • Look for venue names even if they appear in lists, hashtags, or casual mentions
+   • Ignore broad neighborhoods like "SoHo" or "Brooklyn" unless they're part of a venue name
    • ONLY list actual venue names that are mentioned. Do NOT use placeholders like "venue 1" or "<venue 1>".
    • If no venues are found, return an empty list (no venues, just the Summary line).
 
@@ -315,11 +324,13 @@ Summary: <short creative title>
             print("⚠️ No content to analyze (empty transcript, OCR, caption, comments)")
             return [], "TikTok Venues"
         
-        print(f"📝 Analyzing content ({len(combined_text)} chars): {combined_text[:200]}...")
+        # Increase context window to 6000 chars to capture more content
+        content_to_analyze = combined_text[:6000]
+        print(f"📝 Analyzing content ({len(content_to_analyze)} chars): {content_to_analyze[:300]}...")
         client = get_openai_client()
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt + combined_text[:3500]}],
+            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
             temperature=0.5,
         )
         raw = response.choices[0].message.content.strip()
@@ -477,7 +488,20 @@ def extract_api():
 
     try:
         video_path, meta = download_tiktok(url)
-        caption = meta.get("description", "") or meta.get("title", "")
+        # Extract caption from multiple possible fields
+        caption = (
+            meta.get("description", "") or 
+            meta.get("fulltitle", "") or 
+            meta.get("title", "") or
+            meta.get("alt_title", "") or
+            ""
+        )
+        # Also check for additional text fields
+        if not caption:
+            caption = meta.get("uploader", "") or ""
+        
+        print(f"📝 Extracted caption: {caption[:200] if caption else 'None'}...")
+        
         comments_text = ""
         if "comments" in meta and isinstance(meta["comments"], list):
             comments_text = " | ".join(c.get("text", "") for c in meta["comments"][:10])
