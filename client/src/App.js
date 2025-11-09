@@ -243,8 +243,13 @@ function App() {
                   <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
                     <p>No venues found in this video.</p>
                     <p style={{ fontSize: "0.9rem", marginTop: "10px" }}>
-                      The video might not mention specific venue names, or they couldn't be extracted.
+                      {result.warning || "The video might not mention specific venue names, or they couldn't be extracted."}
                     </p>
+                    {result.warning && (
+                      <p style={{ fontSize: "0.85rem", marginTop: "10px", color: "#aaa", fontStyle: "italic" }}>
+                        Tip: Try a video with spoken audio or visible text on screen for better results.
+                      </p>
+                    )}
                   </div>
                 )}
 

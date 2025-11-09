@@ -506,12 +506,17 @@ def extract_api():
             except:
                 pass
         
-        # Try OCR (will fail gracefully if tesseract not available)
+        # Try OCR (especially important for slideshow videos without audio)
+        # OCR will try to run even on Render (will fail gracefully if tesseract not available)
         ocr_text = extract_ocr_text(video_path)
         if ocr_text:
             print(f"✅ OCR text: {len(ocr_text)} chars")
         else:
             print("⚠️ OCR returned no text (tesseract may not be available)")
+        
+        # Warn if we have no transcript and no OCR (slideshow/image-only videos)
+        if not transcript and not ocr_text:
+            print("⚠️ No audio transcript and no OCR text - extraction will rely on captions/description only")
         
         # Clean up video file immediately after processing
         if os.path.exists(video_path):
@@ -529,11 +534,18 @@ def extract_api():
         
         if not venues:
             print("⚠️ No valid venues extracted from video")
-            # Return empty result instead of placeholder data
+            # Check if we had any content to analyze
+            has_content = bool(transcript or ocr_text or caption or comments_text)
+            warning_msg = ""
+            if not transcript and not ocr_text:
+                warning_msg = " This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images, but tesseract is not available on Render."
+            
+            # Return empty result with helpful message
             data = {
                 "video_url": url,
-                "context_summary": context_title,
+                "context_summary": context_title or "No venues found",
                 "places_extracted": [],
+                "warning": warning_msg if warning_msg else None,
             }
             return jsonify(data)
 
