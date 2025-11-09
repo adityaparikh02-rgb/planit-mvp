@@ -42,7 +42,14 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), max_retries=3, http_client=None)
+from httpx import Client as HttpxClient
+from openai import OpenAI
+
+# Create a proxy-safe HTTP client
+safe_httpx = HttpxClient(proxies=None, trust_env=False, timeout=30.0)
+
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), max_retries=3, http_client=safe_httpx)
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
