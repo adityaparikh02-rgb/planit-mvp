@@ -64,7 +64,9 @@ def get_openai_client():
             raise ValueError("OPENAI_API_KEY environment variable is not set")
         _client_instance = OpenAI(api_key=api_key, max_retries=3, http_client=safe_httpx)
     return _client_instance
-YT_IMPERSONATE = "chrome-131:macos-14"
+# Impersonate only works on systems with curl_cffi installed
+# On Render (Linux), we skip impersonate to avoid dependency issues
+YT_IMPERSONATE = None if (os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_HOSTNAME")) else "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # ─────────────────────────────
