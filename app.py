@@ -41,8 +41,14 @@ from httpx import Client as HttpxClient
 # Setup
 # ─────────────────────────────
 app = Flask(__name__)
-# Allow all origins for now - can restrict later if needed
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+# Allow all origins for CORS - needed for frontend to connect
+CORS(app, resources={
+    r"/api/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
 
 # Create a proxy-safe HTTP client
 safe_httpx = HttpxClient(proxies=None, trust_env=False, timeout=30.0)
@@ -115,18 +121,27 @@ def download_tiktok(video_url):
     
     result1 = subprocess.run(
         f'{yt_dlp_cmd} --skip-download --write-info-json --impersonate "{YT_IMPERSONATE}" '
-        f'-o "{tmpdir}/video" "{video_url}"', shell=True, check=False, capture_output=True, text=True)
+        f'-o "{tmpdir}/video" "{video_url}"', shell=True, check=False, capture_output=True, text=True, timeout=60)
     if result1.returncode != 0:
-        print(f"⚠️ Metadata download warning: {result1.stderr[:500]}")
+        error1 = (result1.stderr or result1.stdout or "Unknown error")[:1000]
+        print(f"⚠️ Metadata download warning: {error1}")
     
     result2 = subprocess.run(
         f'{yt_dlp_cmd} --impersonate "{YT_IMPERSONATE}" -o "{video_path}" "{video_url}"',
-        shell=True, check=False, capture_output=True, text=True)
+        shell=True, check=False, capture_output=True, text=True, timeout=120)
     if result2.returncode != 0:
-        error_msg = result2.stderr or result2.stdout or "Unknown error"
-        print(f"⚠️ Video download error: {error_msg[:500]}")
+        error2 = (result2.stderr or result2.stdout or "Unknown error")
+        print(f"⚠️ Video download error (full): {error2}")
         if not os.path.exists(video_path):
-            raise Exception(f"Failed to download video. yt-dlp error: {error_msg[:500]}")
+            # Extract the actual error message from the traceback
+            error_lines = error2.split('\n')
+            # Find the last meaningful error line
+            actual_error = "Unknown yt-dlp error"
+            for line in reversed(error_lines):
+                if line.strip() and not line.startswith('File "') and not line.startswith('  File '):
+                    actual_error = line.strip()
+                    break
+            raise Exception(f"Failed to download video. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
 
     meta = {}
     try:
