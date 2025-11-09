@@ -113,6 +113,10 @@ def get_tiktok_id(url):
 # TikTok Download
 # ─────────────────────────────
 def download_tiktok(video_url):
+    # Double-check for photo URLs
+    if "/photo/" in video_url:
+        raise Exception("TikTok photos are not supported. Please use a video URL (URLs with /video/ in them).")
+    
     tmpdir = tempfile.mkdtemp()
     video_path = os.path.join(tmpdir, "video.mp4")
 
@@ -155,6 +159,11 @@ def download_tiktok(video_url):
     if result2.returncode != 0:
         error2 = (result2.stderr or result2.stdout or "Unknown error")
         print(f"⚠️ Video download error (full): {error2}")
+        
+        # Check for photo URL error specifically
+        if "Unsupported URL" in error2 and "/photo/" in video_url:
+            raise Exception("TikTok photos are not supported. Please use a video URL (URLs with /video/ in them).")
+        
         if not os.path.exists(video_path):
             # Extract the actual error message from the traceback
             error_lines = error2.split('\n')
@@ -459,11 +468,17 @@ Return valid JSON list.
 def extract_api():
     url = request.json.get("video_url")
     
+    if not url:
+        return jsonify({
+            "error": "No video URL provided",
+            "message": "Please provide a valid TikTok video URL."
+        }), 400
+    
     # Check if it's a photo URL (not supported)
-    if "/photo/" in url:
+    if "/photo/" in url or "tiktok.com" in url and "/video/" not in url:
         return jsonify({
             "error": "TikTok photos are not supported. Please use a video URL (URLs with /video/ in them).",
-            "message": "Only TikTok videos can be processed, not photos."
+            "message": "Only TikTok videos can be processed, not photos. Make sure your URL contains '/video/' in the path."
         }), 400
     
     vid = get_tiktok_id(url)
