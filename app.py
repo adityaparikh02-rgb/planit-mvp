@@ -1,12 +1,15 @@
 # ─────────────────────────────
 # ✅ Fix Render + OpenAI "proxies" crash before anything else
 # ─────────────────────────────
-import os, sys
+import os, sys, logging
 
-# Remove all proxy-related environment variables early
+# Remove proxy-related vars that break OpenAI client on Render
 for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
     os.environ.pop(var, None)
 os.environ["NO_PROXY"] = "*"
+
+logging.getLogger("moviepy").setLevel(logging.ERROR)
+os.environ["YT_DLP_NO_WARNINGS"] = "1"
 
 print("✅ Proxy env cleaned:", {k: v for k, v in os.environ.items() if "PROXY" in k})
 
@@ -18,8 +21,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pytesseract import image_to_string
 from PIL import Image
-
-# Import OpenAI *after* proxy cleanup
+from moviepy.editor import VideoFileClip
 from openai import OpenAI
 
 # ─────────────────────────────
@@ -32,7 +34,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 YT_IMPERSONATE = "chrome-131:macos-14"
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-
 # ─────────────────────────────
 # Cache Setup
 # ─────────────────────────────
@@ -40,7 +41,6 @@ CACHE_PATH = os.path.join(os.getcwd(), "cache.json")
 if not os.path.exists(CACHE_PATH):
     with open(CACHE_PATH, "w") as f:
         json.dump({}, f)
-
 
 # ─────────────────────────────
 # Cache Utilities
@@ -59,7 +59,6 @@ def save_cache(cache):
 def get_tiktok_id(url):
     m = re.search(r"/video/(\d+)", url)
     return m.group(1) if m else None
-
 
 # ─────────────────────────────
 # TikTok Download
@@ -86,10 +85,20 @@ def download_tiktok(video_url):
         print("⚠️ Metadata load fail:", e)
     return video_path, meta
 
+# ─────────────────────────────
+# Audio + OCR
+# ─────────────────────────────
+def extract_audio(video_path):
+    """Extract audio from video as WAV for Whisper."""
+    try:
+        audio_path = video_path.replace(".mp4", ".wav")
+        clip = VideoFileClip(video_path)
+        clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+        return audio_path
+    except Exception as e:
+        print("⚠️ Audio extraction failed:", e)
+        return video_path  # fallback to mp4
 
-# ─────────────────────────────
-# Audio + OCR (simplified)
-# ─────────────────────────────
 def transcribe_audio(media_path):
     print("🎧 Transcribing audio with Whisper…")
     try:
@@ -123,7 +132,6 @@ def extract_ocr_text(video_path):
     print(f"✅ OCR extracted {len(merged)} chars")
     return merged
 
-
 # ─────────────────────────────
 # Google Places Photo
 # ─────────────────────────────
@@ -142,13 +150,11 @@ def get_photo_url(name):
         print("⚠️ Google photo fail:", e)
     return None
 
-
 # ─────────────────────────────
 # GPT: Extract Venues + Summary
 # ─────────────────────────────
 def extract_places_and_context(transcript, ocr_text, caption, comments):
     combined_text = "\n".join(x for x in [ocr_text, transcript, caption, comments] if x)
-
     prompt = f"""
 You are analyzing a TikTok video about NYC venues.
 
@@ -198,7 +204,6 @@ Summary: <short creative title — DO NOT include transcript>
         print("❌ GPT extraction failed:", e)
         return [], "TikTok Venues"
 
-
 # ─────────────────────────────
 # GPT: Enrichment + Vibe Tags
 # ─────────────────────────────
@@ -211,7 +216,7 @@ Analyze the TikTok context for "{name}" and return JSON with:
   "summary": "2–3 sentence vivid description (realistic, not fabricated)",
   "when_to_go": "Mention best time/day if clearly stated, else blank",
   "vibe": "Mood or crowd if present",
-  "must_try": "If TikTok mentions or implies a must-try item (e.g. 'try the iced lyria', 'get the martini')",
+  "must_try": "If TikTok mentions or implies a must-try item",
   "specials": "Real deals or special events if mentioned",
   "comments_summary": "Short insight from comments if available"
 }}
@@ -236,8 +241,6 @@ Context:
             "specials": j.get("specials", "").strip(),
             "comments_summary": j.get("comments_summary", "").strip(),
         }
-
-        # 🔹 Generate Vibe Tags
         vibe_text = " ".join(v for v in data.values())
         data["vibe_tags"] = extract_vibe_tags(vibe_text)
         return data
@@ -253,13 +256,12 @@ Context:
             "vibe_tags": [],
         }
 
-
 def extract_vibe_tags(text):
     if not text.strip():
         return []
     prompt = f"""
 Extract up to 6 concise vibe tags from this text for a restaurant, bar, or café.
-Use only relevant single or short phrases like:
+Use short single words/phrases like:
 ["Cozy","Date Night","Lively","Romantic","Happy Hour","Brunch","Authentic","Trendy"]
 
 Text: {text}
@@ -277,7 +279,6 @@ Return valid JSON list.
     except Exception as e:
         print("⚠️ vibe_tags generation failed:", e)
         return []
-
 
 # ─────────────────────────────
 # API Endpoint
@@ -300,7 +301,8 @@ def extract_api():
         if "comments" in meta and isinstance(meta["comments"], list):
             comments_text = " | ".join(c.get("text", "") for c in meta["comments"][:10])
 
-        transcript = transcribe_audio(video_path)
+        audio_path = extract_audio(video_path)
+        transcript = transcribe_audio(audio_path)
         ocr_text = extract_ocr_text(video_path)
 
         venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
@@ -338,9 +340,10 @@ def extract_api():
 def health_check():
     return jsonify({"status": "ok"}), 200
 
-
+# ─────────────────────────────
+# Run Server
+# ─────────────────────────────
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
+    port = int(os.getenv("PORT", 5001))
     print(f"Running Flask backend on {port}...")
     app.run(host="0.0.0.0", port=port)
-
