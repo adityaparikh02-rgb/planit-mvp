@@ -28,7 +28,7 @@ print("✅ Proxy env cleaned. Ready to import dependencies.")
 # ─────────────────────────────
 # Now safe to import everything else
 # ─────────────────────────────
-import tempfile, re, subprocess, json, cv2, numpy as np, requests
+import tempfile, re, subprocess, json, cv2, numpy as np, requests, sys, shutil
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from pytesseract import image_to_string
@@ -95,19 +95,32 @@ def download_tiktok(video_url):
     video_path = os.path.join(tmpdir, "video.mp4")
 
     print("🎞 Downloading TikTok + metadata...")
+    
+    # Find yt-dlp executable (works in both local and Render environments)
+    yt_dlp_cmd = "yt-dlp"
+    yt_dlp_path = shutil.which("yt-dlp")
+    if yt_dlp_path:
+        yt_dlp_cmd = yt_dlp_path
+    else:
+        # Fallback: try python -m yt_dlp (works when installed via pip)
+        yt_dlp_cmd = f"{sys.executable} -m yt_dlp"
+    
+    print(f"Using yt-dlp command: {yt_dlp_cmd}")
+    
     result1 = subprocess.run(
-        f'yt-dlp --skip-download --write-info-json --impersonate "{YT_IMPERSONATE}" '
+        f'{yt_dlp_cmd} --skip-download --write-info-json --impersonate "{YT_IMPERSONATE}" '
         f'-o "{tmpdir}/video" "{video_url}"', shell=True, check=False, capture_output=True, text=True)
     if result1.returncode != 0:
-        print(f"⚠️ Metadata download warning: {result1.stderr[:200]}")
+        print(f"⚠️ Metadata download warning: {result1.stderr[:500]}")
     
     result2 = subprocess.run(
-        f'yt-dlp --impersonate "{YT_IMPERSONATE}" -o "{video_path}" "{video_url}"',
+        f'{yt_dlp_cmd} --impersonate "{YT_IMPERSONATE}" -o "{video_path}" "{video_url}"',
         shell=True, check=False, capture_output=True, text=True)
     if result2.returncode != 0:
-        print(f"⚠️ Video download warning: {result2.stderr[:200]}")
+        error_msg = result2.stderr or result2.stdout or "Unknown error"
+        print(f"⚠️ Video download error: {error_msg[:500]}")
         if not os.path.exists(video_path):
-            raise Exception(f"Failed to download video: {result2.stderr[:500]}")
+            raise Exception(f"Failed to download video. yt-dlp error: {error_msg[:500]}")
 
     meta = {}
     try:
