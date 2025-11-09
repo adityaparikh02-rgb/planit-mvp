@@ -176,17 +176,42 @@ def download_tiktok(video_url):
 # Audio + OCR
 # ─────────────────────────────
 def extract_audio(video_path):
-    """Extract audio from video as WAV for Whisper."""
+    """Extract audio from video as WAV for Whisper. Uses ffmpeg directly for memory efficiency."""
     try:
         audio_path = video_path.replace(".mp4", ".wav")
-        clip = VideoFileClip(video_path)
-        clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
-        clip.close()  # Release video file handle
-        del clip
-        gc.collect()  # Force garbage collection
+        # Use ffmpeg directly instead of MoviePy to save memory
+        # MoviePy loads entire video into memory, ffmpeg streams it
+        result = subprocess.run(
+            ['ffmpeg', '-i', video_path, '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', '-y', audio_path],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode != 0:
+            print(f"⚠️ ffmpeg failed, trying MoviePy fallback: {result.stderr[:200]}")
+            # Fallback to MoviePy if ffmpeg not available
+            clip = VideoFileClip(video_path)
+            clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+            clip.close()
+            del clip
+        gc.collect()
         return audio_path
+    except FileNotFoundError:
+        # ffmpeg not found, use MoviePy
+        print("⚠️ ffmpeg not found, using MoviePy (may use more memory)")
+        try:
+            audio_path = video_path.replace(".mp4", ".wav")
+            clip = VideoFileClip(video_path)
+            clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+            clip.close()
+            del clip
+            gc.collect()
+            return audio_path
+        except Exception as e:
+            print(f"⚠️ Audio extraction failed: {e}")
+            return video_path  # fallback to mp4
     except Exception as e:
-        print("⚠️ Audio extraction failed:", e)
+        print(f"⚠️ Audio extraction failed: {e}")
         return video_path  # fallback to mp4
 
 def transcribe_audio(media_path):
@@ -448,7 +473,12 @@ def extract_api():
         if not os.path.exists(video_path):
             raise Exception("Video file was not downloaded successfully")
         
-        print(f"✅ Video downloaded: {video_path} ({os.path.getsize(video_path)} bytes)")
+        video_size = os.path.getsize(video_path)
+        print(f"✅ Video downloaded: {video_path} ({video_size} bytes)")
+        
+        # Check video size - warn if very large
+        if video_size > 50 * 1024 * 1024:  # 50MB
+            print(f"⚠️ Large video file ({video_size / 1024 / 1024:.1f}MB) - may cause memory issues")
         
         audio_path = extract_audio(video_path)
         print(f"✅ Audio extracted: {audio_path}")
@@ -464,8 +494,13 @@ def extract_api():
             except:
                 pass
         
-        ocr_text = extract_ocr_text(video_path)
-        print(f"✅ OCR text: {len(ocr_text)} chars")
+        # Skip OCR on Render to save memory (it's optional anyway)
+        ocr_text = ""
+        if not (os.getenv("RENDER") or os.getenv("RENDER_EXTERNAL_HOSTNAME")):
+            ocr_text = extract_ocr_text(video_path)
+            print(f"✅ OCR text: {len(ocr_text)} chars")
+        else:
+            print("⚠️ Skipping OCR on Render to save memory")
         
         # Clean up video file immediately after processing
         if os.path.exists(video_path):
