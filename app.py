@@ -28,7 +28,7 @@ print("✅ Proxy env cleaned. Ready to import dependencies.")
 # ─────────────────────────────
 # Now safe to import everything else
 # ─────────────────────────────
-import tempfile, re, subprocess, json, cv2, numpy as np, requests, sys, shutil
+import tempfile, re, subprocess, json, cv2, numpy as np, requests, sys, shutil, gc
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from PIL import Image
@@ -181,6 +181,9 @@ def extract_audio(video_path):
         audio_path = video_path.replace(".mp4", ".wav")
         clip = VideoFileClip(video_path)
         clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+        clip.close()  # Release video file handle
+        del clip
+        gc.collect()  # Force garbage collection
         return audio_path
     except Exception as e:
         print("⚠️ Audio extraction failed:", e)
@@ -210,7 +213,8 @@ def extract_ocr_text(video_path):
         print("🧩 Extracting on-screen text with OCR…")
         vidcap = cv2.VideoCapture(video_path)
         total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
-        frames = np.linspace(0, total - 1, min(total, 10), dtype=int)
+        # Reduce frames for memory efficiency (5 instead of 10)
+        frames = np.linspace(0, total - 1, min(total, 5), dtype=int)
         texts = []
         for n in frames:
             vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
@@ -221,7 +225,11 @@ def extract_ocr_text(video_path):
             txt = image_to_string(Image.fromarray(gray))
             if txt.strip():
                 texts.append(txt.strip())
+            # Clean up image from memory
+            del img, gray
         vidcap.release()
+        del vidcap
+        gc.collect()  # Force garbage collection
         merged = " | ".join(texts)
         print(f"✅ OCR extracted {len(merged)} chars")
         return merged
@@ -448,8 +456,25 @@ def extract_api():
         transcript = transcribe_audio(audio_path)
         print(f"✅ Transcript: {len(transcript)} chars")
         
+        # Clean up audio file immediately after transcription
+        if audio_path != video_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                print("🗑️ Cleaned up audio file")
+            except:
+                pass
+        
         ocr_text = extract_ocr_text(video_path)
         print(f"✅ OCR text: {len(ocr_text)} chars")
+        
+        # Clean up video file immediately after processing
+        if os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+                print("🗑️ Cleaned up video file")
+                gc.collect()
+            except:
+                pass
 
         venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
 
