@@ -997,8 +997,8 @@ def extract_api():
                 os.remove(video_path)
                 print("🗑️ Cleaned up video file")
                 gc.collect()
-                except:
-                    pass
+            except:
+                pass
 
         venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
 
