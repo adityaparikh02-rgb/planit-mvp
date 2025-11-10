@@ -136,36 +136,77 @@ def fetch_tiktok_photo_post(url):
         caption = ""
         photo_urls = []
         
-        # Look for JSON data in script tags
-        scripts = soup.find_all('script')
+        # Look for JSON data in script tags - TikTok uses various formats
+        scripts = soup.find_all('script', type='application/json')
         for script in scripts:
             if script.string:
-                # Try to find JSON data containing post information
-                # TikTok often embeds data in window.__UNIVERSAL_DATA_FOR_REHYDRATION__ or similar
-                if '__UNIVERSAL_DATA_FOR_REHYDRATION__' in script.string or 'SIGI_STATE' in script.string:
-                    try:
-                        # Extract JSON from script
-                        json_match = re.search(r'({.+})', script.string, re.DOTALL)
-                        if json_match:
-                            data = json.loads(json_match.group(1))
-                            # Navigate through the JSON structure to find caption
-                            # This structure varies, so we'll try multiple paths
-                            if isinstance(data, dict):
-                                # Try common paths
-                                for key in ['ItemModule', 'ItemList', 'props', 'pageProps']:
-                                    if key in data:
-                                        item_data = data[key]
-                                        if isinstance(item_data, dict):
-                                            for item_key, item_value in item_data.items():
-                                                if isinstance(item_value, dict):
-                                                    if 'desc' in item_value:
-                                                        caption = item_value['desc']
-                                                    elif 'description' in item_value:
-                                                        caption = item_value['description']
-                                                    elif 'text' in item_value:
-                                                        caption = item_value['text']
-                    except:
-                        pass
+                try:
+                    data = json.loads(script.string)
+                    # Recursively search for caption/description fields
+                    def find_caption(obj, depth=0):
+                        if depth > 5:  # Limit recursion depth
+                            return None
+                        if isinstance(obj, dict):
+                            for key in ['desc', 'description', 'text', 'caption', 'content']:
+                                if key in obj and obj[key]:
+                                    return str(obj[key])
+                            for value in obj.values():
+                                result = find_caption(value, depth + 1)
+                                if result:
+                                    return result
+                        elif isinstance(obj, list):
+                            for item in obj:
+                                result = find_caption(item, depth + 1)
+                                if result:
+                                    return result
+                        return None
+                    
+                    found_caption = find_caption(data)
+                    if found_caption:
+                        caption = found_caption
+                except:
+                    pass
+        
+        # Also check script tags with text content (not JSON)
+        if not caption:
+            scripts = soup.find_all('script')
+            for script in scripts:
+                if script.string:
+                    # Try to find JSON data containing post information
+                    # TikTok often embeds data in window.__UNIVERSAL_DATA_FOR_REHYDRATION__ or similar
+                    if '__UNIVERSAL_DATA_FOR_REHYDRATION__' in script.string or 'SIGI_STATE' in script.string:
+                        try:
+                            # Extract JSON from script - look for window.__UNIVERSAL_DATA_FOR_REHYDRATION__ = {...}
+                            json_match = re.search(r'window\.__UNIVERSAL_DATA_FOR_REHYDRATION__\s*=\s*({.+?});', script.string, re.DOTALL)
+                            if not json_match:
+                                json_match = re.search(r'({.+})', script.string, re.DOTALL)
+                            if json_match:
+                                data = json.loads(json_match.group(1))
+                                # Navigate through the JSON structure to find caption
+                                def find_caption(obj, depth=0):
+                                    if depth > 5:
+                                        return None
+                                    if isinstance(obj, dict):
+                                        for key in ['desc', 'description', 'text', 'caption', 'content']:
+                                            if key in obj and obj[key]:
+                                                return str(obj[key])
+                                        for value in obj.values():
+                                            result = find_caption(value, depth + 1)
+                                            if result:
+                                                return result
+                                    elif isinstance(obj, list):
+                                        for item in obj:
+                                            result = find_caption(item, depth + 1)
+                                            if result:
+                                                return result
+                                    return None
+                                
+                                found_caption = find_caption(data)
+                                if found_caption:
+                                    caption = found_caption
+                        except Exception as e:
+                            print(f"⚠️ JSON parsing error: {e}")
+                            pass
         
         # Fallback: Try to find caption in meta tags
         if not caption:
@@ -182,22 +223,26 @@ def fetch_tiktok_photo_post(url):
         # Extract photo URLs from img tags or JSON
         images = soup.find_all('img')
         for img in images:
-            src = img.get('src') or img.get('data-src')
-            if src and ('tiktok' in src.lower() or 'cdn' in src.lower()):
-                if src.startswith('http'):
+            src = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
+            if src:
+                # Clean up the URL
+                if src.startswith('//'):
+                    src = 'https:' + src
+                elif src.startswith('/'):
+                    src = 'https://www.tiktok.com' + src
+                
+                if src.startswith('http') and ('tiktok' in src.lower() or 'cdn' in src.lower() or 'image' in src.lower()):
                     photo_urls.append(src)
-                elif src.startswith('//'):
-                    photo_urls.append('https:' + src)
         
-        # Also try to extract from JSON data
+        # Also try to extract from JSON data in scripts
         for script in scripts:
-            if script.string and ('image' in script.string.lower() or 'photo' in script.string.lower()):
+            if script.string:
                 # Try to find image URLs in the script
-                url_matches = re.findall(r'https?://[^\s"\'<>]+\.(?:jpg|jpeg|png|webp)', script.string, re.I)
+                url_matches = re.findall(r'https?://[^\s"\'<>\)]+\.(?:jpg|jpeg|png|webp)', script.string, re.I)
                 photo_urls.extend(url_matches)
         
-        # Remove duplicates
-        photo_urls = list(set(photo_urls))
+        # Remove duplicates and filter
+        photo_urls = list(set([url for url in photo_urls if url.startswith('http')]))
         
         meta['description'] = caption
         meta['title'] = caption
@@ -221,40 +266,49 @@ def download_tiktok(video_url):
     """Download TikTok content (video or photo). Returns file path and metadata."""
     is_photo_url = "/photo/" in video_url.lower()
     
+    print(f"🔍 Checking URL type: {'Photo URL' if is_photo_url else 'Video URL'}")
+    
     # For photo URLs, use HTML parsing instead of yt-dlp
     if is_photo_url:
-        print("🖼️ Photo URL detected - using HTML parsing method")
-        meta, photo_urls = fetch_tiktok_photo_post(video_url)
-        
-        # Optionally download the first photo for OCR
-        file_path = None
-        if photo_urls and OCR_AVAILABLE:
-            try:
-                print(f"📥 Downloading photo for OCR: {photo_urls[0][:100]}...")
-                tmpdir = tempfile.mkdtemp()
-                response = requests.get(photo_urls[0], headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                }, timeout=30)
-                response.raise_for_status()
-                
-                # Determine file extension from URL or content type
-                ext = '.jpg'
-                if '.png' in photo_urls[0].lower():
-                    ext = '.png'
-                elif '.webp' in photo_urls[0].lower():
-                    ext = '.webp'
-                elif 'image/png' in response.headers.get('content-type', ''):
-                    ext = '.png'
-                
-                file_path = os.path.join(tmpdir, f"photo{ext}")
-                with open(file_path, 'wb') as f:
-                    f.write(response.content)
-                print(f"✅ Photo downloaded: {file_path}")
-            except Exception as e:
-                print(f"⚠️ Failed to download photo for OCR: {e}")
-                file_path = None
-        
-        return file_path, meta
+        print("🖼️ Photo URL detected - using HTML parsing method (skipping yt-dlp)")
+        try:
+            meta, photo_urls = fetch_tiktok_photo_post(video_url)
+            
+            # Optionally download the first photo for OCR
+            file_path = None
+            if photo_urls and OCR_AVAILABLE:
+                try:
+                    print(f"📥 Downloading photo for OCR: {photo_urls[0][:100]}...")
+                    tmpdir = tempfile.mkdtemp()
+                    response = requests.get(photo_urls[0], headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    }, timeout=30)
+                    response.raise_for_status()
+                    
+                    # Determine file extension from URL or content type
+                    ext = '.jpg'
+                    if '.png' in photo_urls[0].lower():
+                        ext = '.png'
+                    elif '.webp' in photo_urls[0].lower():
+                        ext = '.webp'
+                    elif 'image/png' in response.headers.get('content-type', ''):
+                        ext = '.png'
+                    
+                    file_path = os.path.join(tmpdir, f"photo{ext}")
+                    with open(file_path, 'wb') as f:
+                        f.write(response.content)
+                    print(f"✅ Photo downloaded: {file_path}")
+                except Exception as e:
+                    print(f"⚠️ Failed to download photo for OCR: {e}")
+                    file_path = None
+            
+            return file_path, meta
+        except Exception as e:
+            print(f"❌ HTML parsing failed for photo URL: {e}")
+            import traceback
+            print(traceback.format_exc())
+            # Return empty metadata but don't raise - let the extraction flow handle it
+            return None, {}
     
     # For video URLs, use yt-dlp as before
     tmpdir = tempfile.mkdtemp()
