@@ -552,7 +552,7 @@ def extract_ocr_text(video_path):
         
         print(f"📹 Processing {len(frames)} frames from {total} total frames (duration: {duration:.1f}s)")
         
-    texts = []
+        texts = []
         seen_texts = set()  # Deduplicate similar text
         
         # OCR config for better accuracy on stylized text
