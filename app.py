@@ -261,11 +261,6 @@ def download_tiktok(video_url):
     # Use generic filename - will be image or video depending on content
     file_path = os.path.join(tmpdir, "content")
 
-    # For video URLs, use yt-dlp as before
-    tmpdir = tempfile.mkdtemp()
-    # Use generic filename - will be image or video depending on content
-    file_path = os.path.join(tmpdir, "content")
-
     print("🎞 Downloading TikTok + metadata...")
     
     # Always use python -m yt_dlp on Render (safer, works when installed via pip)
