@@ -678,15 +678,15 @@ def extract_ocr_text(video_path):
             del img, gray, enhanced, thresh
             gc.collect()
         
-    vidcap.release()
+        vidcap.release()
         del vidcap
         gc.collect()  # Force garbage collection
         
-    merged = " | ".join(texts)
+        merged = " | ".join(texts)
         print(f"✅ OCR extracted {len(merged)} chars from {len(texts)} unique text blocks")
         if merged:
             print(f"📝 OCR text preview: {merged[:200]}...")
-    return merged
+        return merged
     except Exception as e:
         print(f"⚠️ OCR extraction failed: {e}")
         import traceback
