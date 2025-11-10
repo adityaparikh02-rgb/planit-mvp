@@ -618,8 +618,8 @@ def extract_ocr_text(video_path):
     
     try:
         print("🧩 Extracting on-screen text with OCR…")
-    vidcap = cv2.VideoCapture(video_path)
-    total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        vidcap = cv2.VideoCapture(video_path)
+        total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = vidcap.get(cv2.CAP_PROP_FPS) or 30
         duration = total / fps if fps > 0 else 0
         
