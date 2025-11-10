@@ -485,8 +485,8 @@ def extract_audio(video_path):
         if result.returncode != 0:
             print(f"⚠️ ffmpeg failed, trying MoviePy fallback: {result.stderr[:200]}")
             # Fallback to MoviePy if ffmpeg not available
-        clip = VideoFileClip(video_path)
-        clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+            clip = VideoFileClip(video_path)
+            clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
             clip.close()
             del clip
         gc.collect()
