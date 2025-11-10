@@ -968,22 +968,22 @@ def extract_api():
         print(f"✅ Audio extracted: {audio_path}")
             
         transcript = transcribe_audio(audio_path)
-            print(f"✅ Transcript: {len(transcript)} chars")
+        transcript = transcribe_audio(audio_path)
+        print(f"✅ Transcript: {len(transcript)} chars")
             
-            # Clean up audio file immediately after transcription
-            if audio_path != video_path and os.path.exists(audio_path):
-                try:
-                    os.remove(audio_path)
-                    print("🗑️ Cleaned up audio file")
-                except:
-                    pass
+        # Clean up audio file immediately after transcription
+        if audio_path != video_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+                print("🗑️ Cleaned up audio file")
+            except:
+                pass
             
-            # Try OCR (especially important for slideshow videos without audio)
-            # OCR will try to run even on Render (will fail gracefully if tesseract not available)
+        # Try OCR (especially important for slideshow videos without audio)
+        # OCR will try to run even on Render (will fail gracefully if tesseract not available)
         ocr_text = extract_ocr_text(video_path)
-            if ocr_text:
-                print(f"✅ OCR text: {len(ocr_text)} chars")
-            else:
+        if ocr_text:
+            print(f"✅ OCR text: {len(ocr_text)} chars")
                 print("⚠️ OCR returned no text (tesseract may not be available)")
             
             # Warn if we have no transcript and no OCR (slideshow/image-only videos)
