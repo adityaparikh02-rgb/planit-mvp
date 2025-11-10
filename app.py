@@ -171,7 +171,8 @@ def download_tiktok(video_url):
         print(f"⚠️ Content download error (full): {error2}")
         
         # For photo URLs, yt-dlp will fail - that's expected, continue with metadata only
-        if is_photo_url and ("Unsupported URL" in error2 or "ERROR" in error2):
+        if is_photo_url:
+            # Photo URLs always fail with yt-dlp - this is expected, not an error
             print("⚠️ Photo URL detected - yt-dlp cannot download photos, will use metadata (caption) only")
         elif not is_photo_url:
             # For non-photo URLs, check if file was actually downloaded
