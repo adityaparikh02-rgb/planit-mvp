@@ -322,6 +322,7 @@ def download_tiktok(video_url):
     print(f"🔍 Checking URL type: {'Photo URL' if is_photo_url else 'Video URL'}")
     
     # For photo URLs, use HTML parsing instead of yt-dlp
+    # CRITICAL: Photo URLs MUST NEVER reach yt-dlp - they are not supported
     if is_photo_url:
         print("🖼️ Photo URL detected - using HTML parsing method (skipping yt-dlp)")
         try:
@@ -355,17 +356,25 @@ def download_tiktok(video_url):
                     print(f"⚠️ Failed to download photo for OCR: {e}")
                     file_path = None
             
+            # Always return something for photo URLs - even if parsing failed
+            # This ensures we never fall through to yt-dlp
+            if not meta:
+                meta = {"description": "", "title": "", "photo_urls": photo_urls or []}
+            
+            print(f"✅ Photo URL processed successfully. Caption: {meta.get('description', '')[:100] if meta.get('description') else 'None'}...")
             return file_path, meta
         except Exception as e:
             print(f"❌ HTML parsing failed for photo URL: {e}")
             import traceback
             print(traceback.format_exc())
-            # Return empty metadata but don't raise - let the extraction flow handle it
-            return None, {}
+            # Return empty metadata but mark it as a photo URL so extraction can handle it
+            # CRITICAL: Return something so we never reach yt-dlp
+            return None, {"description": "", "title": "", "photo_urls": [], "_is_photo": True}
     
     # For video URLs, use yt-dlp as before
     # IMPORTANT: Double-check this is NOT a photo URL (should never reach here for photo URLs)
-    assert not is_photo_url, "Photo URLs should be handled above - this should never execute for photo URLs"
+    if is_photo_url:
+        raise Exception("CRITICAL ERROR: Photo URL reached yt-dlp code path! This should never happen.")
     
     tmpdir = tempfile.mkdtemp()
     # Use generic filename - will be image or video depending on content
@@ -414,6 +423,10 @@ def download_tiktok(video_url):
     if download_failed:
         error2 = (result2.stderr or result2.stdout or "Unknown error")
         print(f"⚠️ Content download error (full): {error2}")
+        
+        # CRITICAL: Check if this is actually a photo URL that somehow reached yt-dlp
+        if "/photo/" in video_url.lower():
+            raise Exception(f"CRITICAL: Photo URL reached yt-dlp! URL: {video_url}. This should never happen - photo URLs must be handled by HTML parsing.")
         
         # For non-photo URLs, check if file was actually downloaded
         downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
