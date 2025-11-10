@@ -992,11 +992,11 @@ def extract_api():
             print("⚠️ No audio transcript and no OCR text - extraction will rely on captions/description only")
             
         # Clean up video file immediately after processing
-            if os.path.exists(video_path):
-                try:
-                    os.remove(video_path)
-                    print("🗑️ Cleaned up video file")
-                    gc.collect()
+        if os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+                print("🗑️ Cleaned up video file")
+                gc.collect()
                 except:
                     pass
 
