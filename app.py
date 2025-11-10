@@ -911,7 +911,7 @@ def extract_api():
             del cache[vid]
             save_cache(cache)
         else:
-        print("⚡ Using cached result.")
+            print("⚡ Using cached result.")
             return jsonify(cached_data)
 
     try:
