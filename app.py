@@ -832,8 +832,8 @@ def extract_api():
             print("⚠️ Cached result contains placeholders, clearing cache and re-extracting")
             del cache[vid]
             save_cache(cache)
-    else:
-        print("⚡ Using cached result.")
+        else:
+            print("⚡ Using cached result.")
             return jsonify(cached_data)
 
     try:
