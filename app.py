@@ -152,15 +152,18 @@ def download_tiktok(video_url):
     result1 = subprocess.run(
         f'{yt_dlp_cmd} --skip-download --write-info-json {impersonate_flag} {extra_opts} '
         f'-o "{tmpdir}/content" "{video_url}"', shell=True, check=False, capture_output=True, text=True, timeout=60)
+    
+    is_photo_url = "/photo/" in video_url.lower()
+    
     if result1.returncode != 0:
         error1 = (result1.stderr or result1.stdout or "Unknown error")[:1000]
         print(f"⚠️ Metadata download warning: {error1}")
+        # For photo URLs, metadata download might also fail - that's okay, we'll try to continue
     
     result2 = subprocess.run(
         f'{yt_dlp_cmd} {impersonate_flag} {extra_opts} -o "{file_path}.%(ext)s" "{video_url}"',
         shell=True, check=False, capture_output=True, text=True, timeout=120)
     
-    is_photo_url = "/photo/" in video_url.lower()
     download_failed = result2.returncode != 0
     
     if download_failed:
@@ -168,7 +171,7 @@ def download_tiktok(video_url):
         print(f"⚠️ Content download error (full): {error2}")
         
         # For photo URLs, yt-dlp will fail - that's expected, continue with metadata only
-        if "Unsupported URL" in error2 and is_photo_url:
+        if is_photo_url and ("Unsupported URL" in error2 or "ERROR" in error2):
             print("⚠️ Photo URL detected - yt-dlp cannot download photos, will use metadata (caption) only")
         elif not is_photo_url:
             # For non-photo URLs, check if file was actually downloaded
