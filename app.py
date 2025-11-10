@@ -689,8 +689,53 @@ def extract_api():
         if "comments" in meta and isinstance(meta["comments"], list):
             comments_text = " | ".join(c.get("text", "") for c in meta["comments"][:10])
 
-        if not os.path.exists(video_path):
-            raise Exception("Content file was not downloaded successfully")
+        # Handle case where no file was downloaded (e.g., photo URLs that yt-dlp can't download)
+        if not video_path or not os.path.exists(video_path):
+            # For photo URLs, try to extract from caption only
+            if "/photo/" in url.lower():
+                print("🖼️ Photo URL - no file downloaded, extracting from caption only")
+                transcript = ""
+                ocr_text = ""
+                
+                if not caption:
+                    return jsonify({
+                        "error": "Static photo with no extractable text",
+                        "message": "The photo post has no caption and the image could not be downloaded. Unable to extract venue information.",
+                        "video_url": url,
+                        "places_extracted": []
+                    }), 200
+                
+                # Extract from caption only
+                venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+                
+                data = {
+                    "video_url": url,
+                    "context_summary": context_title or "No venues found",
+                    "places_extracted": []
+                }
+                
+                if venues:
+                    places_extracted = []
+                    for v in venues:
+                        intel = enrich_place_intel(v, transcript, ocr_text, caption, comments_text)
+                        photo = get_photo_url(v)
+                        places_extracted.append({
+                            "name": v,
+                            "description": intel.get("summary", ""),
+                            "vibe_tags": intel.get("vibe_tags", []),
+                            "photo": photo,
+                        })
+                    data["places_extracted"] = places_extracted
+                
+                if vid:
+                    cache = load_cache()
+                    cache[vid] = data
+                    save_cache(cache)
+                
+                return jsonify(data)
+            else:
+                raise Exception("Content file was not downloaded successfully")
         
         file_size = os.path.getsize(video_path)
         print(f"✅ Content downloaded: {video_path} ({file_size} bytes)")
