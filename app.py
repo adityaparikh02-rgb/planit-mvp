@@ -630,20 +630,20 @@ def extract_ocr_text(video_path):
         
         print(f"📹 Processing {len(frames)} frames from {total} total frames (duration: {duration:.1f}s)")
         
-    texts = []
+        texts = []
         seen_texts = set()  # Deduplicate similar text
         
         # OCR config for better accuracy on stylized text
         ocr_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:()[]{}-\'"&@#$% '
         
-    for n in frames:
-        vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
-        ok, img = vidcap.read()
-        if not ok:
-            continue
+        for n in frames:
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
+            ok, img = vidcap.read()
+            if not ok:
+                continue
                 
             # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
             # Image preprocessing to improve OCR accuracy
             # 1. Increase contrast
