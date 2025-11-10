@@ -965,7 +965,7 @@ def extract_api():
                 print(f"⚠️ Large video file ({file_size / 1024 / 1024:.1f}MB) - may cause memory issues")
 
         audio_path = extract_audio(video_path)
-            print(f"✅ Audio extracted: {audio_path}")
+        print(f"✅ Audio extracted: {audio_path}")
             
         transcript = transcribe_audio(audio_path)
             print(f"✅ Transcript: {len(transcript)} chars")
