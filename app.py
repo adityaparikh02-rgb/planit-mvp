@@ -165,9 +165,9 @@ def download_tiktok(video_url):
         error2 = (result2.stderr or result2.stdout or "Unknown error")
         print(f"⚠️ Video download error (full): {error2}")
         
-        # Check for photo URL error specifically
+        # Check for photo URL error specifically - provide helpful guidance
         if "Unsupported URL" in error2 and "/photo/" in video_url.lower():
-            raise Exception("TikTok photo posts are not supported. Please use a video URL (URLs with /video/ in them). Static photo posts cannot be processed - only videos (including slideshow videos) are supported.")
+            raise Exception("TikTok photo posts are not supported. Your URL contains '/photo/' which is a static photo post. Slideshow videos (multiple images in video format) will have '/video/' in the URL. Please find the video version of this post or use a different URL that contains '/video/' instead of '/photo/'.")
         
         if not os.path.exists(video_path):
             # Extract the actual error message from the traceback
