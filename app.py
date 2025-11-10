@@ -558,7 +558,7 @@ def extract_ocr_text(video_path):
         # OCR config for better accuracy on stylized text
         ocr_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:()[]{}-\'"&@#$% '
         
-    for n in frames:
+        for n in frames:
         vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
         ok, img = vidcap.read()
         if not ok:
