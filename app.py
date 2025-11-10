@@ -159,31 +159,38 @@ def download_tiktok(video_url):
     result2 = subprocess.run(
         f'{yt_dlp_cmd} {impersonate_flag} {extra_opts} -o "{file_path}.%(ext)s" "{video_url}"',
         shell=True, check=False, capture_output=True, text=True, timeout=120)
-    if result2.returncode != 0:
+    
+    is_photo_url = "/photo/" in video_url.lower()
+    download_failed = result2.returncode != 0
+    
+    if download_failed:
         error2 = (result2.stderr or result2.stdout or "Unknown error")
         print(f"⚠️ Content download error (full): {error2}")
         
-        # For photo URLs, yt-dlp might fail - try to continue anyway if we have metadata
-        if "Unsupported URL" in error2 and "/photo/" in video_url.lower():
-            print("⚠️ Photo URL detected - yt-dlp may not download, but we'll try OCR fallback if metadata is available")
-        elif not any(f.startswith("content") and not f.endswith(".info.json") for f in os.listdir(tmpdir)):
-            # Extract the actual error message from the traceback
-            error_lines = error2.split('\n')
-            # Find the last meaningful error line
-            actual_error = "Unknown yt-dlp error"
-            for line in reversed(error_lines):
-                if line.strip() and not line.startswith('File "') and not line.startswith('  File '):
-                    actual_error = line.strip()
-                    break
-            raise Exception(f"Failed to download content. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
+        # For photo URLs, yt-dlp will fail - that's expected, continue with metadata only
+        if "Unsupported URL" in error2 and is_photo_url:
+            print("⚠️ Photo URL detected - yt-dlp cannot download photos, will use metadata (caption) only")
+        elif not is_photo_url:
+            # For non-photo URLs, check if file was actually downloaded
+            downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
+            if not downloaded_files:
+                # Extract the actual error message from the traceback
+                error_lines = error2.split('\n')
+                # Find the last meaningful error line
+                actual_error = "Unknown yt-dlp error"
+                for line in reversed(error_lines):
+                    if line.strip() and not line.startswith('File "') and not line.startswith('  File '):
+                        actual_error = line.strip()
+                        break
+                raise Exception(f"Failed to download content. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
 
     # Find the actual downloaded file (yt-dlp adds extension)
     downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
     if downloaded_files:
         file_path = os.path.join(tmpdir, downloaded_files[0])
     else:
-        # If no file downloaded, create a placeholder path
-        file_path = os.path.join(tmpdir, "content")
+        # If no file downloaded (e.g., photo URL), return None to indicate no file
+        file_path = None
 
     meta = {}
     try:
