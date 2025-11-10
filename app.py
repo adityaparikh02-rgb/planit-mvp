@@ -714,7 +714,7 @@ Summary: <short creative title>
                 print(f"⚠️ Skipping placeholder-like venue: {v}")
                 continue
             seen.add(v_lower)
-                unique.append(v)
+            unique.append(v)
 
         print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
