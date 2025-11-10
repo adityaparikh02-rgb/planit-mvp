@@ -118,12 +118,10 @@ def get_tiktok_id(url):
 # TikTok Download
 # ─────────────────────────────
 def download_tiktok(video_url):
-    # Double-check for photo URLs (case-insensitive)
-    if "/photo/" in video_url.lower():
-        raise Exception("TikTok photo posts are not supported. Please use a video URL (URLs with /video/ in them). Static photo posts cannot be processed - only videos (including slideshow videos) are supported.")
-    
+    """Download TikTok content (video or photo). Returns file path and metadata."""
     tmpdir = tempfile.mkdtemp()
-    video_path = os.path.join(tmpdir, "video.mp4")
+    # Use generic filename - will be image or video depending on content
+    file_path = os.path.join(tmpdir, "content")
 
     print("🎞 Downloading TikTok + metadata...")
     
@@ -153,23 +151,22 @@ def download_tiktok(video_url):
     
     result1 = subprocess.run(
         f'{yt_dlp_cmd} --skip-download --write-info-json {impersonate_flag} {extra_opts} '
-        f'-o "{tmpdir}/video" "{video_url}"', shell=True, check=False, capture_output=True, text=True, timeout=60)
+        f'-o "{tmpdir}/content" "{video_url}"', shell=True, check=False, capture_output=True, text=True, timeout=60)
     if result1.returncode != 0:
         error1 = (result1.stderr or result1.stdout or "Unknown error")[:1000]
         print(f"⚠️ Metadata download warning: {error1}")
     
     result2 = subprocess.run(
-        f'{yt_dlp_cmd} {impersonate_flag} {extra_opts} -o "{video_path}" "{video_url}"',
+        f'{yt_dlp_cmd} {impersonate_flag} {extra_opts} -o "{file_path}.%(ext)s" "{video_url}"',
         shell=True, check=False, capture_output=True, text=True, timeout=120)
     if result2.returncode != 0:
         error2 = (result2.stderr or result2.stdout or "Unknown error")
-        print(f"⚠️ Video download error (full): {error2}")
+        print(f"⚠️ Content download error (full): {error2}")
         
-        # Check for photo URL error specifically - provide helpful guidance
+        # For photo URLs, yt-dlp might fail - try to continue anyway if we have metadata
         if "Unsupported URL" in error2 and "/photo/" in video_url.lower():
-            raise Exception("TikTok photo posts are not supported. Your URL contains '/photo/' which is a static photo post. Slideshow videos (multiple images in video format) will have '/video/' in the URL. Please find the video version of this post or use a different URL that contains '/video/' instead of '/photo/'.")
-        
-        if not os.path.exists(video_path):
+            print("⚠️ Photo URL detected - yt-dlp may not download, but we'll try OCR fallback if metadata is available")
+        elif not any(f.startswith("content") and not f.endswith(".info.json") for f in os.listdir(tmpdir)):
             # Extract the actual error message from the traceback
             error_lines = error2.split('\n')
             # Find the last meaningful error line
@@ -178,7 +175,15 @@ def download_tiktok(video_url):
                 if line.strip() and not line.startswith('File "') and not line.startswith('  File '):
                     actual_error = line.strip()
                     break
-            raise Exception(f"Failed to download video. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
+            raise Exception(f"Failed to download content. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
+
+    # Find the actual downloaded file (yt-dlp adds extension)
+    downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
+    if downloaded_files:
+        file_path = os.path.join(tmpdir, downloaded_files[0])
+    else:
+        # If no file downloaded, create a placeholder path
+        file_path = os.path.join(tmpdir, "content")
 
     meta = {}
     try:
@@ -188,7 +193,7 @@ def download_tiktok(video_url):
                 meta = json.load(f)
     except Exception as e:
         print("⚠️ Metadata load fail:", e)
-    return video_path, meta
+    return file_path, meta
 
 # ─────────────────────────────
 # Audio + OCR
@@ -246,8 +251,95 @@ def transcribe_audio(media_path):
         print("❌ Whisper failed:", e)
         return ""
 
+def is_static_photo(file_path):
+    """Check if file is a static image (not a video)."""
+    try:
+        # Check file extension
+        ext = os.path.splitext(file_path)[1].lower()
+        image_exts = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+        if ext in image_exts:
+            return True
+        
+        # Try to open as image with PIL
+        try:
+            img = Image.open(file_path)
+            img.verify()
+            return True
+        except:
+            pass
+        
+        # Try to open as video - if it fails or has very few frames, might be an image
+        vidcap = cv2.VideoCapture(file_path)
+        frame_count = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = vidcap.get(cv2.CAP_PROP_FPS) or 1
+        duration = frame_count / fps if fps > 0 else 0
+        vidcap.release()
+        
+        # If it has 1 frame or very short duration, likely a static image
+        if frame_count <= 1 or duration < 0.1:
+            return True
+        
+        return False
+    except Exception as e:
+        print(f"⚠️ Error checking if file is static photo: {e}")
+        return False
+
+def run_ocr_on_image(image_path):
+    """Run OCR on a single static image. Returns extracted text."""
+    if not OCR_AVAILABLE:
+        print("⚠️ OCR not available (tesseract not installed) - skipping OCR")
+        return ""
+    
+    try:
+        print("🖼️ Running OCR on static image…")
+        img = cv2.imread(image_path)
+        if img is None:
+            # Try with PIL if cv2 fails
+            pil_img = Image.open(image_path)
+            img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        
+        # Convert to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Image preprocessing to improve OCR accuracy
+        # 1. Increase contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(gray)
+        
+        # 2. Apply thresholding to make text more distinct
+        _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # OCR config for better accuracy on stylized text
+        ocr_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:()[]{}-\'"&@#$% '
+        
+        # Try OCR on multiple processed versions
+        texts = []
+        for processed_img in [gray, enhanced, thresh]:
+            try:
+                txt = image_to_string(Image.fromarray(processed_img), config=ocr_config)
+                txt_clean = txt.strip()
+                if txt_clean and len(txt_clean) > 2:
+                    texts.append(txt_clean)
+            except:
+                continue
+        
+        # Return the longest/best result
+        if texts:
+            result = max(texts, key=len)
+            print(f"✅ OCR extracted {len(result)} chars from image")
+            print(f"📝 OCR text preview: {result[:200]}...")
+            return result
+        
+        print("⚠️ OCR found no text in image")
+        return ""
+    except Exception as e:
+        print(f"⚠️ OCR extraction from image failed: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return ""
+
 def extract_ocr_text(video_path):
-    """Extract on-screen text using OCR. Returns empty string if OCR unavailable."""
+    """Extract on-screen text using OCR from video frames. Returns empty string if OCR unavailable."""
     if not OCR_AVAILABLE:
         print("⚠️ OCR not available (tesseract not installed) - skipping OCR")
         return ""
@@ -528,14 +620,7 @@ def extract_api():
             "message": "Please provide a valid TikTok video URL."
         }), 400
     
-    # Check if it's a photo URL (not supported)
-    # Only block actual /photo/ URLs, allow other formats to try (they'll fail gracefully if invalid)
-    url_lower = url.lower()
-    if "/photo/" in url_lower:
-        return jsonify({
-            "error": "TikTok photo posts are not supported. Please use a video URL.",
-            "message": "❌ Your URL contains '/photo/' which is a static photo post, not a video.\n\n✅ To process a slideshow video:\n1. Open the TikTok post in your browser\n2. Look for a 'Share' button\n3. Click 'Copy link'\n4. Make sure the URL contains '/video/' not '/photo/'\n\nSlideshow videos (multiple images in video format) will have '/video/' in the URL, not '/photo/'.\n\nIf this is actually a slideshow video, try finding the video version of the post or use a different URL."
-        }), 400
+    # Photo URLs are now supported with OCR fallback - no need to block them
     
     vid = get_tiktok_id(url)
     print(f"\n🟦 Extracting TikTok: {url}")
@@ -598,49 +683,82 @@ def extract_api():
             comments_text = " | ".join(c.get("text", "") for c in meta["comments"][:10])
 
         if not os.path.exists(video_path):
-            raise Exception("Video file was not downloaded successfully")
+            raise Exception("Content file was not downloaded successfully")
         
-        video_size = os.path.getsize(video_path)
-        print(f"✅ Video downloaded: {video_path} ({video_size} bytes)")
+        file_size = os.path.getsize(video_path)
+        print(f"✅ Content downloaded: {video_path} ({file_size} bytes)")
         
-        # Check video size - warn if very large
-        if video_size > 50 * 1024 * 1024:  # 50MB
-            print(f"⚠️ Large video file ({video_size / 1024 / 1024:.1f}MB) - may cause memory issues")
+        # Check if it's a static photo
+        is_photo = is_static_photo(video_path)
         
-        audio_path = extract_audio(video_path)
-        print(f"✅ Audio extracted: {audio_path}")
-        
-        transcript = transcribe_audio(audio_path)
-        print(f"✅ Transcript: {len(transcript)} chars")
-        
-        # Clean up audio file immediately after transcription
-        if audio_path != video_path and os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-                print("🗑️ Cleaned up audio file")
-            except:
-                pass
-        
-        # Try OCR (especially important for slideshow videos without audio)
-        # OCR will try to run even on Render (will fail gracefully if tesseract not available)
-        ocr_text = extract_ocr_text(video_path)
-        if ocr_text:
-            print(f"✅ OCR text: {len(ocr_text)} chars")
+        if is_photo:
+            print("🖼️ Detected static photo - using OCR fallback mode")
+            # For static photos, only use OCR + caption
+            transcript = ""  # No audio for static photos
+            ocr_text = run_ocr_on_image(video_path)
+            
+            if not ocr_text and not caption:
+                # Clean up file
+                if os.path.exists(video_path):
+                    try:
+                        os.remove(video_path)
+                    except:
+                        pass
+                return jsonify({
+                    "error": "Static photo with no extractable text",
+                    "message": "The photo post has no text visible in the image and no caption. Unable to extract venue information.",
+                    "video_url": url,
+                    "places_extracted": []
+                }), 200
+            
+            # Clean up image file
+            if os.path.exists(video_path):
+                try:
+                    os.remove(video_path)
+                    print("🗑️ Cleaned up image file")
+                    gc.collect()
+                except:
+                    pass
         else:
-            print("⚠️ OCR returned no text (tesseract may not be available)")
-        
-        # Warn if we have no transcript and no OCR (slideshow/image-only videos)
-        if not transcript and not ocr_text:
-            print("⚠️ No audio transcript and no OCR text - extraction will rely on captions/description only")
-        
-        # Clean up video file immediately after processing
-        if os.path.exists(video_path):
-            try:
-                os.remove(video_path)
-                print("🗑️ Cleaned up video file")
-                gc.collect()
-            except:
-                pass
+            # Regular video processing
+            # Check file size - warn if very large
+            if file_size > 50 * 1024 * 1024:  # 50MB
+                print(f"⚠️ Large video file ({file_size / 1024 / 1024:.1f}MB) - may cause memory issues")
+            
+            audio_path = extract_audio(video_path)
+            print(f"✅ Audio extracted: {audio_path}")
+            
+            transcript = transcribe_audio(audio_path)
+            print(f"✅ Transcript: {len(transcript)} chars")
+            
+            # Clean up audio file immediately after transcription
+            if audio_path != video_path and os.path.exists(audio_path):
+                try:
+                    os.remove(audio_path)
+                    print("🗑️ Cleaned up audio file")
+                except:
+                    pass
+            
+            # Try OCR (especially important for slideshow videos without audio)
+            # OCR will try to run even on Render (will fail gracefully if tesseract not available)
+            ocr_text = extract_ocr_text(video_path)
+            if ocr_text:
+                print(f"✅ OCR text: {len(ocr_text)} chars")
+            else:
+                print("⚠️ OCR returned no text (tesseract may not be available)")
+            
+            # Warn if we have no transcript and no OCR (slideshow/image-only videos)
+            if not transcript and not ocr_text:
+                print("⚠️ No audio transcript and no OCR text - extraction will rely on captions/description only")
+            
+            # Clean up video file immediately after processing
+            if os.path.exists(video_path):
+                try:
+                    os.remove(video_path)
+                    print("🗑️ Cleaned up video file")
+                    gc.collect()
+                except:
+                    pass
 
         venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
 
