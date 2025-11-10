@@ -35,6 +35,7 @@ from PIL import Image
 from moviepy.editor import VideoFileClip
 from openai import OpenAI
 from httpx import Client as HttpxClient
+from bs4 import BeautifulSoup
 
 # Optional OCR - tesseract may not be available on all systems
 OCR_AVAILABLE = False
@@ -114,11 +115,153 @@ def get_tiktok_id(url):
     # Shortened URLs (/t/ format) will be handled by extracting ID from metadata
     return None
 
+def fetch_tiktok_photo_post(url):
+    """Fetch and parse TikTok photo post HTML to extract caption and photo URLs."""
+    try:
+        print("🌐 Fetching TikTok photo post HTML...")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://www.tiktok.com/",
+        }
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Try to extract JSON data from script tags (TikTok embeds data in JSON)
+        meta = {}
+        caption = ""
+        photo_urls = []
+        
+        # Look for JSON data in script tags
+        scripts = soup.find_all('script')
+        for script in scripts:
+            if script.string:
+                # Try to find JSON data containing post information
+                # TikTok often embeds data in window.__UNIVERSAL_DATA_FOR_REHYDRATION__ or similar
+                if '__UNIVERSAL_DATA_FOR_REHYDRATION__' in script.string or 'SIGI_STATE' in script.string:
+                    try:
+                        # Extract JSON from script
+                        json_match = re.search(r'({.+})', script.string, re.DOTALL)
+                        if json_match:
+                            data = json.loads(json_match.group(1))
+                            # Navigate through the JSON structure to find caption
+                            # This structure varies, so we'll try multiple paths
+                            if isinstance(data, dict):
+                                # Try common paths
+                                for key in ['ItemModule', 'ItemList', 'props', 'pageProps']:
+                                    if key in data:
+                                        item_data = data[key]
+                                        if isinstance(item_data, dict):
+                                            for item_key, item_value in item_data.items():
+                                                if isinstance(item_value, dict):
+                                                    if 'desc' in item_value:
+                                                        caption = item_value['desc']
+                                                    elif 'description' in item_value:
+                                                        caption = item_value['description']
+                                                    elif 'text' in item_value:
+                                                        caption = item_value['text']
+                    except:
+                        pass
+        
+        # Fallback: Try to find caption in meta tags
+        if not caption:
+            meta_desc = soup.find('meta', property='og:description')
+            if meta_desc and meta_desc.get('content'):
+                caption = meta_desc['content']
+        
+        # Fallback: Try to find caption in title or other meta tags
+        if not caption:
+            meta_title = soup.find('meta', property='og:title')
+            if meta_title and meta_title.get('content'):
+                caption = meta_title['content']
+        
+        # Extract photo URLs from img tags or JSON
+        images = soup.find_all('img')
+        for img in images:
+            src = img.get('src') or img.get('data-src')
+            if src and ('tiktok' in src.lower() or 'cdn' in src.lower()):
+                if src.startswith('http'):
+                    photo_urls.append(src)
+                elif src.startswith('//'):
+                    photo_urls.append('https:' + src)
+        
+        # Also try to extract from JSON data
+        for script in scripts:
+            if script.string and ('image' in script.string.lower() or 'photo' in script.string.lower()):
+                # Try to find image URLs in the script
+                url_matches = re.findall(r'https?://[^\s"\'<>]+\.(?:jpg|jpeg|png|webp)', script.string, re.I)
+                photo_urls.extend(url_matches)
+        
+        # Remove duplicates
+        photo_urls = list(set(photo_urls))
+        
+        meta['description'] = caption
+        meta['title'] = caption
+        meta['photo_urls'] = photo_urls
+        
+        print(f"✅ Extracted caption: {caption[:100] if caption else 'None'}...")
+        print(f"✅ Found {len(photo_urls)} photo URLs")
+        
+        return meta, photo_urls
+        
+    except Exception as e:
+        print(f"⚠️ Failed to fetch TikTok photo post HTML: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return {}, []
+
 # ─────────────────────────────
 # TikTok Download
 # ─────────────────────────────
 def download_tiktok(video_url):
     """Download TikTok content (video or photo). Returns file path and metadata."""
+    is_photo_url = "/photo/" in video_url.lower()
+    
+    # For photo URLs, use HTML parsing instead of yt-dlp
+    if is_photo_url:
+        print("🖼️ Photo URL detected - using HTML parsing method")
+        meta, photo_urls = fetch_tiktok_photo_post(video_url)
+        
+        # Optionally download the first photo for OCR
+        file_path = None
+        if photo_urls and OCR_AVAILABLE:
+            try:
+                print(f"📥 Downloading photo for OCR: {photo_urls[0][:100]}...")
+                tmpdir = tempfile.mkdtemp()
+                response = requests.get(photo_urls[0], headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                }, timeout=30)
+                response.raise_for_status()
+                
+                # Determine file extension from URL or content type
+                ext = '.jpg'
+                if '.png' in photo_urls[0].lower():
+                    ext = '.png'
+                elif '.webp' in photo_urls[0].lower():
+                    ext = '.webp'
+                elif 'image/png' in response.headers.get('content-type', ''):
+                    ext = '.png'
+                
+                file_path = os.path.join(tmpdir, f"photo{ext}")
+                with open(file_path, 'wb') as f:
+                    f.write(response.content)
+                print(f"✅ Photo downloaded: {file_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to download photo for OCR: {e}")
+                file_path = None
+        
+        return file_path, meta
+    
+    # For video URLs, use yt-dlp as before
+    tmpdir = tempfile.mkdtemp()
+    # Use generic filename - will be image or video depending on content
+    file_path = os.path.join(tmpdir, "content")
+
+    # For video URLs, use yt-dlp as before
     tmpdir = tempfile.mkdtemp()
     # Use generic filename - will be image or video depending on content
     file_path = os.path.join(tmpdir, "content")
@@ -153,12 +296,9 @@ def download_tiktok(video_url):
         f'{yt_dlp_cmd} --skip-download --write-info-json {impersonate_flag} {extra_opts} '
         f'-o "{tmpdir}/content" "{video_url}"', shell=True, check=False, capture_output=True, text=True, timeout=60)
     
-    is_photo_url = "/photo/" in video_url.lower()
-    
     if result1.returncode != 0:
         error1 = (result1.stderr or result1.stdout or "Unknown error")[:1000]
         print(f"⚠️ Metadata download warning: {error1}")
-        # For photo URLs, metadata download might also fail - that's okay, we'll try to continue
     
     result2 = subprocess.run(
         f'{yt_dlp_cmd} {impersonate_flag} {extra_opts} -o "{file_path}.%(ext)s" "{video_url}"',
@@ -170,30 +310,25 @@ def download_tiktok(video_url):
         error2 = (result2.stderr or result2.stdout or "Unknown error")
         print(f"⚠️ Content download error (full): {error2}")
         
-        # For photo URLs, yt-dlp will fail - that's expected, continue with metadata only
-        if is_photo_url:
-            # Photo URLs always fail with yt-dlp - this is expected, not an error
-            print("⚠️ Photo URL detected - yt-dlp cannot download photos, will use metadata (caption) only")
-        elif not is_photo_url:
-            # For non-photo URLs, check if file was actually downloaded
-            downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
-            if not downloaded_files:
-                # Extract the actual error message from the traceback
-                error_lines = error2.split('\n')
-                # Find the last meaningful error line
-                actual_error = "Unknown yt-dlp error"
-                for line in reversed(error_lines):
-                    if line.strip() and not line.startswith('File "') and not line.startswith('  File '):
-                        actual_error = line.strip()
-                        break
-                raise Exception(f"Failed to download content. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
+        # For non-photo URLs, check if file was actually downloaded
+        downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
+        if not downloaded_files:
+            # Extract the actual error message from the traceback
+            error_lines = error2.split('\n')
+            # Find the last meaningful error line
+            actual_error = "Unknown yt-dlp error"
+            for line in reversed(error_lines):
+                if line.strip() and not line.startswith('File "') and not line.startswith('  File '):
+                    actual_error = line.strip()
+                    break
+            raise Exception(f"Failed to download content. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
 
     # Find the actual downloaded file (yt-dlp adds extension)
     downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
     if downloaded_files:
         file_path = os.path.join(tmpdir, downloaded_files[0])
     else:
-        # If no file downloaded (e.g., photo URL), return None to indicate no file
+        # If no file downloaded, return None to indicate no file
         file_path = None
 
     meta = {}
@@ -205,10 +340,6 @@ def download_tiktok(video_url):
     except Exception as e:
         print("⚠️ Metadata load fail:", e)
     return file_path, meta
-
-# ─────────────────────────────
-# Audio + OCR
-# ─────────────────────────────
 def extract_audio(video_path):
     """Extract audio from video as WAV for Whisper. Uses ffmpeg directly for memory efficiency."""
     try:

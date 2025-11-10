@@ -10,3 +10,4 @@ numpy==1.26.4
 requests==2.32.3
 yt-dlp==2024.11.18
 gunicorn==21.2.0
+beautifulsoup4==4.12.3
