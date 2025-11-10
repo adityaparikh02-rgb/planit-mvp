@@ -128,120 +128,173 @@ def fetch_tiktok_photo_post(url):
         
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
+        html = response.text
         
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(html, 'html.parser')
         
-        # Try to extract JSON data from script tags (TikTok embeds data in JSON)
         meta = {}
         caption = ""
         photo_urls = []
         
-        # Look for JSON data in script tags - TikTok uses various formats
-        scripts = soup.find_all('script', type='application/json')
-        for script in scripts:
-            if script.string:
+        # Method 1: Try window.__UNIVERSAL_DATA__ (most reliable for photo posts)
+        match = re.search(r'window\.__UNIVERSAL_DATA__\s*=\s*({.+?});', html, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group(1))
+                print("✅ Found window.__UNIVERSAL_DATA__")
+                
+                # Recursively search for photo URLs and captions
+                def find_photos_and_caption(obj, depth=0):
+                    if depth > 10:  # Limit recursion depth
+                        return None, []
+                    
+                    if isinstance(obj, dict):
+                        # Look for ImageList or similar structures
+                        if "ImageList" in obj:
+                            urls = []
+                            for img in obj["ImageList"]:
+                                if isinstance(img, dict) and "UrlList" in img:
+                                    if isinstance(img["UrlList"], list) and len(img["UrlList"]) > 0:
+                                        urls.append(img["UrlList"][0])
+                            if urls:
+                                return None, urls
+                        
+                        # Look for caption/description fields
+                        for key in ['desc', 'description', 'text', 'caption', 'content']:
+                            if key in obj and obj[key]:
+                                caption_text = str(obj[key])
+                                if caption_text and len(caption_text) > 5:
+                                    return caption_text, []
+                        
+                        # Recursively search nested objects
+                        for value in obj.values():
+                            found_caption, found_urls = find_photos_and_caption(value, depth + 1)
+                            if found_urls:
+                                photo_urls.extend(found_urls)
+                            if found_caption and not caption:
+                                caption = found_caption
+                    
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            found_caption, found_urls = find_photos_and_caption(item, depth + 1)
+                            if found_urls:
+                                photo_urls.extend(found_urls)
+                            if found_caption and not caption:
+                                caption = found_caption
+                    
+                    return None, []
+                
+                found_caption, found_urls = find_photos_and_caption(data)
+                if found_urls:
+                    photo_urls = found_urls
+                if found_caption:
+                    caption = found_caption
+                    
+            except Exception as e:
+                print(f"⚠️ Failed to parse __UNIVERSAL_DATA__: {e}")
+        
+        # Method 2: Try window.__UNIVERSAL_DATA_FOR_REHYDRATION__ (fallback)
+        if not photo_urls:
+            match = re.search(r'window\.__UNIVERSAL_DATA_FOR_REHYDRATION__\s*=\s*({.+?});', html, re.DOTALL)
+            if match:
                 try:
-                    data = json.loads(script.string)
-                    # Recursively search for caption/description fields
-                    def find_caption(obj, depth=0):
-                        if depth > 5:  # Limit recursion depth
-                            return None
+                    data = json.loads(match.group(1))
+                    print("✅ Found window.__UNIVERSAL_DATA_FOR_REHYDRATION__")
+                    # Use same recursive search
+                    def find_in_data(obj, depth=0):
+                        if depth > 10:
+                            return None, []
                         if isinstance(obj, dict):
-                            for key in ['desc', 'description', 'text', 'caption', 'content']:
+                            if "ImageList" in obj:
+                                urls = []
+                                for img in obj.get("ImageList", []):
+                                    if isinstance(img, dict) and "UrlList" in img:
+                                        if isinstance(img["UrlList"], list) and len(img["UrlList"]) > 0:
+                                            urls.append(img["UrlList"][0])
+                                if urls:
+                                    return None, urls
+                            for key in ['desc', 'description', 'text', 'caption']:
                                 if key in obj and obj[key]:
-                                    return str(obj[key])
+                                    return str(obj[key]), []
                             for value in obj.values():
-                                result = find_caption(value, depth + 1)
-                                if result:
-                                    return result
+                                c, u = find_in_data(value, depth + 1)
+                                if u:
+                                    photo_urls.extend(u)
+                                if c and not caption:
+                                    caption = c
                         elif isinstance(obj, list):
                             for item in obj:
-                                result = find_caption(item, depth + 1)
-                                if result:
-                                    return result
-                        return None
-                    
-                    found_caption = find_caption(data)
-                    if found_caption:
-                        caption = found_caption
-                except:
-                    pass
+                                c, u = find_in_data(item, depth + 1)
+                                if u:
+                                    photo_urls.extend(u)
+                                if c and not caption:
+                                    caption = c
+                        return None, []
+                    find_in_data(data)
+                except Exception as e:
+                    print(f"⚠️ Failed to parse __UNIVERSAL_DATA_FOR_REHYDRATION__: {e}")
         
-        # Also check script tags with text content (not JSON)
-        if not caption:
-            scripts = soup.find_all('script')
+        # Method 3: Try to extract from script tags with JSON
+        if not photo_urls:
+            scripts = soup.find_all('script', type='application/json')
             for script in scripts:
                 if script.string:
-                    # Try to find JSON data containing post information
-                    # TikTok often embeds data in window.__UNIVERSAL_DATA_FOR_REHYDRATION__ or similar
-                    if '__UNIVERSAL_DATA_FOR_REHYDRATION__' in script.string or 'SIGI_STATE' in script.string:
-                        try:
-                            # Extract JSON from script - look for window.__UNIVERSAL_DATA_FOR_REHYDRATION__ = {...}
-                            json_match = re.search(r'window\.__UNIVERSAL_DATA_FOR_REHYDRATION__\s*=\s*({.+?});', script.string, re.DOTALL)
-                            if not json_match:
-                                json_match = re.search(r'({.+})', script.string, re.DOTALL)
-                            if json_match:
-                                data = json.loads(json_match.group(1))
-                                # Navigate through the JSON structure to find caption
-                                def find_caption(obj, depth=0):
-                                    if depth > 5:
-                                        return None
-                                    if isinstance(obj, dict):
-                                        for key in ['desc', 'description', 'text', 'caption', 'content']:
-                                            if key in obj and obj[key]:
-                                                return str(obj[key])
-                                        for value in obj.values():
-                                            result = find_caption(value, depth + 1)
-                                            if result:
-                                                return result
-                                    elif isinstance(obj, list):
-                                        for item in obj:
-                                            result = find_caption(item, depth + 1)
-                                            if result:
-                                                return result
-                                    return None
-                                
-                                found_caption = find_caption(data)
-                                if found_caption:
-                                    caption = found_caption
-                        except Exception as e:
-                            print(f"⚠️ JSON parsing error: {e}")
-                            pass
+                    try:
+                        data = json.loads(script.string)
+                        def find_caption(obj, depth=0):
+                            if depth > 5:
+                                return None
+                            if isinstance(obj, dict):
+                                for key in ['desc', 'description', 'text', 'caption', 'content']:
+                                    if key in obj and obj[key]:
+                                        return str(obj[key])
+                                for value in obj.values():
+                                    result = find_caption(value, depth + 1)
+                                    if result:
+                                        return result
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    result = find_caption(item, depth + 1)
+                                    if result:
+                                        return result
+                            return None
+                        found_caption = find_caption(data)
+                        if found_caption and not caption:
+                            caption = found_caption
+                    except:
+                        pass
         
-        # Fallback: Try to find caption in meta tags
+        # Method 4: Extract caption from regex in HTML
+        if not caption:
+            captions = re.findall(r'"desc":"([^"]+)"', html)
+            if captions:
+                caption = captions[0]
+        
+        # Method 5: Fallback to meta tags
         if not caption:
             meta_desc = soup.find('meta', property='og:description')
             if meta_desc and meta_desc.get('content'):
                 caption = meta_desc['content']
         
-        # Fallback: Try to find caption in title or other meta tags
-        if not caption:
-            meta_title = soup.find('meta', property='og:title')
-            if meta_title and meta_title.get('content'):
-                caption = meta_title['content']
+        # Extract photo URLs from img tags if not found in JSON
+        if not photo_urls:
+            images = soup.find_all('img')
+            for img in images:
+                src = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
+                if src:
+                    if src.startswith('//'):
+                        src = 'https:' + src
+                    elif src.startswith('/'):
+                        src = 'https://www.tiktok.com' + src
+                    if src.startswith('http') and ('tiktok' in src.lower() or 'cdn' in src.lower() or 'image' in src.lower()):
+                        photo_urls.append(src)
         
-        # Extract photo URLs from img tags or JSON
-        images = soup.find_all('img')
-        for img in images:
-            src = img.get('src') or img.get('data-src') or img.get('data-lazy-src')
-            if src:
-                # Clean up the URL
-                if src.startswith('//'):
-                    src = 'https:' + src
-                elif src.startswith('/'):
-                    src = 'https://www.tiktok.com' + src
-                
-                if src.startswith('http') and ('tiktok' in src.lower() or 'cdn' in src.lower() or 'image' in src.lower()):
-                    photo_urls.append(src)
+        # Also try regex for image URLs
+        if not photo_urls:
+            url_matches = re.findall(r'https?://[^\s"\'<>\)]+\.(?:jpg|jpeg|png|webp)', html, re.I)
+            photo_urls.extend(url_matches)
         
-        # Also try to extract from JSON data in scripts
-        for script in scripts:
-            if script.string:
-                # Try to find image URLs in the script
-                url_matches = re.findall(r'https?://[^\s"\'<>\)]+\.(?:jpg|jpeg|png|webp)', script.string, re.I)
-                photo_urls.extend(url_matches)
-        
-        # Remove duplicates and filter
+        # Remove duplicates
         photo_urls = list(set([url for url in photo_urls if url.startswith('http')]))
         
         meta['description'] = caption
