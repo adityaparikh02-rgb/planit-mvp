@@ -534,7 +534,7 @@ def extract_api():
     if "/photo/" in url_lower:
         return jsonify({
             "error": "TikTok photo posts are not supported. Please use a video URL.",
-            "message": "Only TikTok videos can be processed, not static photo posts. Slideshow videos (multiple images in video format) are supported - make sure your URL is for a video, not a photo post. Your URL contains '/photo/' which indicates a static photo post."
+            "message": "❌ Your URL contains '/photo/' which is a static photo post, not a video.\n\n✅ To process a slideshow video:\n1. Open the TikTok post in your browser\n2. Look for a 'Share' button\n3. Click 'Copy link'\n4. Make sure the URL contains '/video/' not '/photo/'\n\nSlideshow videos (multiple images in video format) will have '/video/' in the URL, not '/photo/'.\n\nIf this is actually a slideshow video, try finding the video version of the post or use a different URL."
         }), 400
     
     vid = get_tiktok_id(url)
