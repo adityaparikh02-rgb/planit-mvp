@@ -983,9 +983,9 @@ def extract_api():
         # OCR will try to run even on Render (will fail gracefully if tesseract not available)
         ocr_text = extract_ocr_text(video_path)
         if ocr_text:
+        if ocr_text:
             print(f"✅ OCR text: {len(ocr_text)} chars")
-                print("⚠️ OCR returned no text (tesseract may not be available)")
-            
+        else:
             # Warn if we have no transcript and no OCR (slideshow/image-only videos)
             if not transcript and not ocr_text:
                 print("⚠️ No audio transcript and no OCR text - extraction will rely on captions/description only")
