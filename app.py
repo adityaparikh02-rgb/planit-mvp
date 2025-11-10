@@ -321,25 +321,30 @@ def download_tiktok(video_url):
     
     print(f"🔍 Checking URL type: {'Photo URL' if is_photo_url else 'Video URL'}")
     
-    # For photo URLs, use HTML parsing instead of yt-dlp
-    # CRITICAL: Photo URLs MUST NEVER reach yt-dlp - they are not supported
-    if is_photo_url:
-        print("🖼️ Photo URL detected - using HTML parsing method (skipping yt-dlp)")
-        try:
-            meta, photo_urls = fetch_tiktok_photo_post(video_url)
+    # Strategy: Try HTML parsing FIRST for ALL TikTok URLs (works for photos AND slideshows)
+    # Slideshows are videos that show multiple images - HTML parsing can extract them
+    # Only fall back to yt-dlp if HTML parsing doesn't find images
+    print("🌐 Attempting HTML parsing first (works for photos and slideshows)...")
+    try:
+        meta, photo_urls = fetch_tiktok_photo_post(video_url)
+        
+        # If HTML parsing found photo URLs, use them (works for both photo posts and slideshows)
+        if photo_urls and len(photo_urls) > 0:
+            print(f"✅ HTML parsing found {len(photo_urls)} images - using HTML method (skipping yt-dlp)")
+            print(f"   This works for: {'Photo posts' if is_photo_url else 'Slideshow videos'}")
             
-            # Optionally download the first photo for OCR
+            # Download the first photo for OCR/processing
             file_path = None
-            if photo_urls and OCR_AVAILABLE:
+            if OCR_AVAILABLE:
                 try:
-                    print(f"📥 Downloading photo for OCR: {photo_urls[0][:100]}...")
+                    print(f"📥 Downloading first image for OCR: {photo_urls[0][:100]}...")
                     tmpdir = tempfile.mkdtemp()
                     response = requests.get(photo_urls[0], headers={
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                     }, timeout=30)
                     response.raise_for_status()
                     
-                    # Determine file extension from URL or content type
+                    # Determine file extension
                     ext = '.jpg'
                     if '.png' in photo_urls[0].lower():
                         ext = '.png'
@@ -348,34 +353,40 @@ def download_tiktok(video_url):
                     elif 'image/png' in response.headers.get('content-type', ''):
                         ext = '.png'
                     
-                    file_path = os.path.join(tmpdir, f"photo{ext}")
+                    file_path = os.path.join(tmpdir, f"image{ext}")
                     with open(file_path, 'wb') as f:
                         f.write(response.content)
-                    print(f"✅ Photo downloaded: {file_path}")
+                    print(f"✅ Image downloaded: {file_path}")
                 except Exception as e:
-                    print(f"⚠️ Failed to download photo for OCR: {e}")
+                    print(f"⚠️ Failed to download image for OCR: {e}")
                     file_path = None
             
-            # Always return something for photo URLs - even if parsing failed
-            # This ensures we never fall through to yt-dlp
+            # Ensure metadata exists
             if not meta:
-                meta = {"description": "", "title": "", "photo_urls": photo_urls or []}
+                meta = {"description": "", "title": "", "photo_urls": photo_urls}
             
-            print(f"✅ Photo URL processed successfully. Caption: {meta.get('description', '')[:100] if meta.get('description') else 'None'}...")
+            # Mark as slideshow/photo content
+            meta["_is_slideshow"] = len(photo_urls) > 1
+            meta["_is_photo"] = is_photo_url
+            
+            print(f"✅ HTML parsing successful. Found {len(photo_urls)} images. Caption: {meta.get('description', '')[:100] if meta.get('description') else 'None'}...")
             return file_path, meta
-        except Exception as e:
-            print(f"❌ HTML parsing failed for photo URL: {e}")
-            import traceback
-            print(traceback.format_exc())
-            # Return empty metadata but mark it as a photo URL so extraction can handle it
-            # CRITICAL: Return something so we never reach yt-dlp
-            return None, {"description": "", "title": "", "photo_urls": [], "_is_photo": True}
+        else:
+            print("⚠️ HTML parsing didn't find images - will try yt-dlp as fallback")
+    except Exception as e:
+        print(f"⚠️ HTML parsing failed: {e}")
+        import traceback
+        print(traceback.format_exc())
+        print("🔄 Falling back to yt-dlp...")
     
-    # For video URLs, use yt-dlp as before
-    # IMPORTANT: Double-check this is NOT a photo URL (should never reach here for photo URLs)
+    # Fallback: Use yt-dlp for regular videos (only if HTML parsing didn't work)
+    # CRITICAL: Photo URLs should have been handled above, but double-check
     if is_photo_url:
-        raise Exception("CRITICAL ERROR: Photo URL reached yt-dlp code path! This should never happen.")
+        print("❌ Photo URL reached yt-dlp fallback - this shouldn't happen")
+        # Still try to return something useful
+        return None, {"description": "", "title": "", "photo_urls": [], "_is_photo": True}
     
+    print("🎞 Using yt-dlp for video download (HTML parsing didn't find images)...")
     tmpdir = tempfile.mkdtemp()
     # Use generic filename - will be image or video depending on content
     file_path = os.path.join(tmpdir, "content")
