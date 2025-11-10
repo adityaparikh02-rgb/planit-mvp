@@ -334,32 +334,33 @@ def download_tiktok(video_url):
             print(f"   This works for: {'Photo posts' if is_photo_url else 'Slideshow videos'}")
             
             # Download the first photo for OCR/processing
+            # IMPORTANT: Always try to download image, even if OCR might not be available
+            # We can still use it for processing
             file_path = None
-            if OCR_AVAILABLE:
-                try:
-                    print(f"📥 Downloading first image for OCR: {photo_urls[0][:100]}...")
-                    tmpdir = tempfile.mkdtemp()
-                    response = requests.get(photo_urls[0], headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    }, timeout=30)
-                    response.raise_for_status()
-                    
-                    # Determine file extension
-                    ext = '.jpg'
-                    if '.png' in photo_urls[0].lower():
-                        ext = '.png'
-                    elif '.webp' in photo_urls[0].lower():
-                        ext = '.webp'
-                    elif 'image/png' in response.headers.get('content-type', ''):
-                        ext = '.png'
-                    
-                    file_path = os.path.join(tmpdir, f"image{ext}")
-                    with open(file_path, 'wb') as f:
-                        f.write(response.content)
-                    print(f"✅ Image downloaded: {file_path}")
-                except Exception as e:
-                    print(f"⚠️ Failed to download image for OCR: {e}")
-                    file_path = None
+            try:
+                print(f"📥 Downloading first image for OCR: {photo_urls[0][:100]}...")
+                tmpdir = tempfile.mkdtemp()
+                response = requests.get(photo_urls[0], headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                }, timeout=30)
+                response.raise_for_status()
+                
+                # Determine file extension
+                ext = '.jpg'
+                if '.png' in photo_urls[0].lower():
+                    ext = '.png'
+                elif '.webp' in photo_urls[0].lower():
+                    ext = '.webp'
+                elif 'image/png' in response.headers.get('content-type', ''):
+                    ext = '.png'
+                
+                file_path = os.path.join(tmpdir, f"image{ext}")
+                with open(file_path, 'wb') as f:
+                    f.write(response.content)
+                print(f"✅ Image downloaded: {file_path}")
+            except Exception as e:
+                print(f"⚠️ Failed to download image for OCR: {e}")
+                file_path = None
             
             # Ensure metadata exists
             if not meta:
@@ -484,8 +485,8 @@ def extract_audio(video_path):
         if result.returncode != 0:
             print(f"⚠️ ffmpeg failed, trying MoviePy fallback: {result.stderr[:200]}")
             # Fallback to MoviePy if ffmpeg not available
-            clip = VideoFileClip(video_path)
-            clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+        clip = VideoFileClip(video_path)
+        clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
             clip.close()
             del clip
         gc.collect()
@@ -616,9 +617,9 @@ def extract_ocr_text(video_path):
         return ""
     
     try:
-        print("🧩 Extracting on-screen text with OCR…")
-        vidcap = cv2.VideoCapture(video_path)
-        total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print("🧩 Extracting on-screen text with OCR…")
+    vidcap = cv2.VideoCapture(video_path)
+    total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = vidcap.get(cv2.CAP_PROP_FPS) or 30
         duration = total / fps if fps > 0 else 0
         
@@ -629,20 +630,20 @@ def extract_ocr_text(video_path):
         
         print(f"📹 Processing {len(frames)} frames from {total} total frames (duration: {duration:.1f}s)")
         
-        texts = []
+    texts = []
         seen_texts = set()  # Deduplicate similar text
         
         # OCR config for better accuracy on stylized text
         ocr_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:()[]{}-\'"&@#$% '
         
-        for n in frames:
-            vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
-            ok, img = vidcap.read()
-            if not ok:
-                continue
+    for n in frames:
+        vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
+        ok, img = vidcap.read()
+        if not ok:
+            continue
                 
             # Convert to grayscale
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
             # Image preprocessing to improve OCR accuracy
             # 1. Increase contrast
@@ -677,15 +678,15 @@ def extract_ocr_text(video_path):
             del img, gray, enhanced, thresh
             gc.collect()
         
-        vidcap.release()
+    vidcap.release()
         del vidcap
         gc.collect()  # Force garbage collection
         
-        merged = " | ".join(texts)
+    merged = " | ".join(texts)
         print(f"✅ OCR extracted {len(merged)} chars from {len(texts)} unique text blocks")
         if merged:
             print(f"📝 OCR text preview: {merged[:200]}...")
-        return merged
+    return merged
     except Exception as e:
         print(f"⚠️ OCR extraction failed: {e}")
         import traceback
@@ -791,7 +792,7 @@ Summary: <short creative title>
                 print(f"⚠️ Skipping placeholder-like venue: {v}")
                 continue
             seen.add(v_lower)
-            unique.append(v)
+                unique.append(v)
 
         print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
@@ -910,7 +911,7 @@ def extract_api():
             del cache[vid]
             save_cache(cache)
         else:
-            print("⚡ Using cached result.")
+        print("⚡ Using cached result.")
             return jsonify(cached_data)
 
     try:
@@ -955,21 +956,65 @@ def extract_api():
 
         # Handle case where no file was downloaded (e.g., photo URLs that yt-dlp can't download)
         if not video_path or not os.path.exists(video_path):
-            # For photo URLs, try to extract from caption only
-            if "/photo/" in url.lower():
-                print("🖼️ Photo URL - no file downloaded, extracting from caption only")
+            # Check if this is a photo/slideshow post (has photo_urls in metadata)
+            is_photo_or_slideshow = meta.get("_is_photo") or meta.get("_is_slideshow") or "/photo/" in url.lower()
+            
+            if is_photo_or_slideshow:
+                print("🖼️ Photo/Slideshow post - no file downloaded, trying OCR on photo URLs...")
                 transcript = ""
                 ocr_text = ""
                 
-                if not caption:
+                # Try to download and run OCR on images if available
+                photo_urls = meta.get("photo_urls", [])
+                if photo_urls and OCR_AVAILABLE:
+                    print(f"🔍 Attempting OCR on {len(photo_urls)} images...")
+                    for i, photo_url in enumerate(photo_urls[:3]):  # Try first 3 images
+                        try:
+                            print(f"📥 Downloading image {i+1} for OCR: {photo_url[:100]}...")
+                            tmpdir = tempfile.mkdtemp()
+                            response = requests.get(photo_url, headers={
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                            }, timeout=30)
+                            response.raise_for_status()
+                            
+                            ext = '.jpg'
+                            if '.png' in photo_url.lower():
+                                ext = '.png'
+                            elif '.webp' in photo_url.lower():
+                                ext = '.webp'
+                            
+                            img_path = os.path.join(tmpdir, f"img{i}{ext}")
+                            with open(img_path, 'wb') as f:
+                                f.write(response.content)
+                            
+                            # Run OCR on the image
+                            img_ocr = run_ocr_on_image(img_path)
+                            if img_ocr:
+                                ocr_text += " " + img_ocr
+                                print(f"✅ OCR extracted {len(img_ocr)} chars from image {i+1}")
+                            
+                            # Clean up
+                            try:
+                                os.remove(img_path)
+                            except:
+                                pass
+                        except Exception as e:
+                            print(f"⚠️ Failed to process image {i+1} for OCR: {e}")
+                            continue
+                
+                ocr_text = ocr_text.strip()
+                
+                # If we have neither caption nor OCR text, return error
+                if not caption and not ocr_text:
                     return jsonify({
                         "error": "Static photo with no extractable text",
-                        "message": "The photo post has no caption and the image could not be downloaded. Unable to extract venue information.",
+                        "message": "The photo post has no caption and OCR found no text in the images. Unable to extract venue information.",
                         "video_url": url,
                         "places_extracted": []
                     }), 200
                 
-                # Extract from caption only
+                # Extract from caption and/or OCR text
+                print(f"📝 Using {'caption' if caption else ''} {'+ OCR' if ocr_text else ''} for extraction")
                 venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
                 
