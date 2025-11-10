@@ -311,11 +311,14 @@ def download_tiktok(video_url):
             return None, {}
     
     # For video URLs, use yt-dlp as before
+    # IMPORTANT: Double-check this is NOT a photo URL (should never reach here for photo URLs)
+    assert not is_photo_url, "Photo URLs should be handled above - this should never execute for photo URLs"
+    
     tmpdir = tempfile.mkdtemp()
     # Use generic filename - will be image or video depending on content
     file_path = os.path.join(tmpdir, "content")
 
-    print("🎞 Downloading TikTok + metadata...")
+    print("🎞 Downloading TikTok video + metadata with yt-dlp...")
     
     # Always use python -m yt_dlp on Render (safer, works when installed via pip)
     # On Render, the yt-dlp binary path can be broken, so use module import
@@ -404,8 +407,8 @@ def extract_audio(video_path):
         if result.returncode != 0:
             print(f"⚠️ ffmpeg failed, trying MoviePy fallback: {result.stderr[:200]}")
             # Fallback to MoviePy if ffmpeg not available
-            clip = VideoFileClip(video_path)
-            clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+        clip = VideoFileClip(video_path)
+        clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
             clip.close()
             del clip
         gc.collect()
@@ -536,9 +539,9 @@ def extract_ocr_text(video_path):
         return ""
     
     try:
-        print("🧩 Extracting on-screen text with OCR…")
-        vidcap = cv2.VideoCapture(video_path)
-        total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print("🧩 Extracting on-screen text with OCR…")
+    vidcap = cv2.VideoCapture(video_path)
+    total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = vidcap.get(cv2.CAP_PROP_FPS) or 30
         duration = total / fps if fps > 0 else 0
         
@@ -549,20 +552,20 @@ def extract_ocr_text(video_path):
         
         print(f"📹 Processing {len(frames)} frames from {total} total frames (duration: {duration:.1f}s)")
         
-        texts = []
+    texts = []
         seen_texts = set()  # Deduplicate similar text
         
         # OCR config for better accuracy on stylized text
         ocr_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:()[]{}-\'"&@#$% '
         
-        for n in frames:
-            vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
-            ok, img = vidcap.read()
-            if not ok:
-                continue
+    for n in frames:
+        vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
+        ok, img = vidcap.read()
+        if not ok:
+            continue
             
             # Convert to grayscale
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
             # Image preprocessing to improve OCR accuracy
             # 1. Increase contrast
@@ -597,15 +600,15 @@ def extract_ocr_text(video_path):
             del img, gray, enhanced, thresh
             gc.collect()
         
-        vidcap.release()
+    vidcap.release()
         del vidcap
         gc.collect()  # Force garbage collection
         
-        merged = " | ".join(texts)
+    merged = " | ".join(texts)
         print(f"✅ OCR extracted {len(merged)} chars from {len(texts)} unique text blocks")
         if merged:
             print(f"📝 OCR text preview: {merged[:200]}...")
-        return merged
+    return merged
     except Exception as e:
         print(f"⚠️ OCR extraction failed: {e}")
         import traceback
@@ -711,7 +714,7 @@ Summary: <short creative title>
                 print(f"⚠️ Skipping placeholder-like venue: {v}")
                 continue
             seen.add(v_lower)
-            unique.append(v)
+                unique.append(v)
 
         print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
@@ -830,7 +833,7 @@ def extract_api():
             del cache[vid]
             save_cache(cache)
         else:
-            print("⚡ Using cached result.")
+        print("⚡ Using cached result.")
             return jsonify(cached_data)
 
     try:
@@ -960,11 +963,11 @@ def extract_api():
             # Check file size - warn if very large
             if file_size > 50 * 1024 * 1024:  # 50MB
                 print(f"⚠️ Large video file ({file_size / 1024 / 1024:.1f}MB) - may cause memory issues")
-            
-            audio_path = extract_audio(video_path)
+
+        audio_path = extract_audio(video_path)
             print(f"✅ Audio extracted: {audio_path}")
             
-            transcript = transcribe_audio(audio_path)
+        transcript = transcribe_audio(audio_path)
             print(f"✅ Transcript: {len(transcript)} chars")
             
             # Clean up audio file immediately after transcription
@@ -977,7 +980,7 @@ def extract_api():
             
             # Try OCR (especially important for slideshow videos without audio)
             # OCR will try to run even on Render (will fail gracefully if tesseract not available)
-            ocr_text = extract_ocr_text(video_path)
+        ocr_text = extract_ocr_text(video_path)
             if ocr_text:
                 print(f"✅ OCR text: {len(ocr_text)} chars")
             else:
