@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
 
-const API_BASE = process.env.REACT_APP_API_URL || "https://planit-mvp.onrender.com";
+const API_BASE = process.env.REACT_APP_API_URL || "https://planit-backend-fbm5.onrender.com";
 
 // Log the API base URL for debugging
 console.log("🔧 API_BASE:", API_BASE);
@@ -142,7 +142,13 @@ function App() {
       if (err.name === "AbortError") {
         errorMessage = "Request timed out. Video processing is taking too long. The video might be too large or the backend is overloaded.";
       } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
-        errorMessage = `Cannot connect to backend at ${API_BASE}. Check if the backend is running and REACT_APP_API_URL is set correctly. Current API URL: ${API_BASE}`;
+        // Mobile-specific error message
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (isMobile) {
+          errorMessage = `Cannot connect to backend. Make sure you're on WiFi or have good mobile data. API URL: ${API_BASE}`;
+        } else {
+          errorMessage = `Cannot connect to backend at ${API_BASE}. Check if the backend is running and REACT_APP_API_URL is set correctly. Current API URL: ${API_BASE}`;
+        }
       } else if (err.message.includes("CORS")) {
         errorMessage = "CORS error: Backend is not allowing requests from this origin.";
       }
