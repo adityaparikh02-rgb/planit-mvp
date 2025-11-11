@@ -414,9 +414,9 @@ def download_tiktok(video_url):
     # Build yt-dlp command with optional impersonate
     impersonate_flag = f'--impersonate "{YT_IMPERSONATE}"' if YT_IMPERSONATE else ''
     
-    # Add extra options to avoid TikTok blocking (403 errors)
-    # Use better headers and retry logic
-    extra_opts = '--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --referer "https://www.tiktok.com/" --retries 3 --fragment-retries 3'
+    # Add extra options to avoid TikTok blocking (403 errors and connection issues)
+    # Use better headers, retry logic, and connection handling
+    extra_opts = '--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --referer "https://www.tiktok.com/" --retries 5 --fragment-retries 5 --socket-timeout 30 --extractor-retries 3'
     
     result1 = subprocess.run(
         f'{yt_dlp_cmd} --skip-download --write-info-json {impersonate_flag} {extra_opts} '
@@ -440,6 +440,46 @@ def download_tiktok(video_url):
         if "/photo/" in video_url.lower():
             raise Exception(f"CRITICAL: Photo URL reached yt-dlp! URL: {video_url}. This should never happen - photo URLs must be handled by HTML parsing.")
         
+        # Check if this is a connection error - try HTML parsing as fallback
+        is_connection_error = any(keyword in error2.lower() for keyword in [
+            "connection aborted", "remote end closed", "transport error",
+            "unable to download webpage", "connection reset", "network error"
+        ])
+        
+        if is_connection_error:
+            print("🔄 yt-dlp failed with connection error - trying HTML parsing fallback...")
+            try:
+                # Try HTML parsing as fallback for connection errors
+                meta_fallback, photo_urls_fallback = fetch_tiktok_photo_post(video_url)
+                if photo_urls_fallback and len(photo_urls_fallback) > 0:
+                    print(f"✅ HTML parsing fallback found {len(photo_urls_fallback)} images")
+                    # Download first image for OCR
+                    file_path_fallback = None
+                    try:
+                        tmpdir_fallback = tempfile.mkdtemp()
+                        response = requests.get(photo_urls_fallback[0], headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        }, timeout=30)
+                        response.raise_for_status()
+                        ext = '.jpg'
+                        if '.png' in photo_urls_fallback[0].lower():
+                            ext = '.png'
+                        elif '.webp' in photo_urls_fallback[0].lower():
+                            ext = '.webp'
+                        file_path_fallback = os.path.join(tmpdir_fallback, f"image{ext}")
+                        with open(file_path_fallback, 'wb') as f:
+                            f.write(response.content)
+                        print(f"✅ Fallback image downloaded: {file_path_fallback}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to download fallback image: {e}")
+                    
+                    if not meta_fallback:
+                        meta_fallback = {"description": "", "title": "", "photo_urls": photo_urls_fallback}
+                    meta_fallback["_is_slideshow"] = len(photo_urls_fallback) > 1
+                    return file_path_fallback, meta_fallback
+            except Exception as fallback_error:
+                print(f"⚠️ HTML parsing fallback also failed: {fallback_error}")
+        
         # For non-photo URLs, check if file was actually downloaded
         downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
         if not downloaded_files:
@@ -451,7 +491,12 @@ def download_tiktok(video_url):
                 if line.strip() and not line.startswith('File "') and not line.startswith('  File '):
                     actual_error = line.strip()
                     break
-            raise Exception(f"Failed to download content. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
+            
+            # Provide helpful error message for connection issues
+            if is_connection_error:
+                raise Exception(f"TikTok connection error: TikTok closed the connection. This may be due to rate limiting or network issues. Error: {actual_error[:300]}")
+            else:
+                raise Exception(f"Failed to download content. yt-dlp error: {actual_error[:500]}. Full error: {error2[:1000]}")
 
     # Find the actual downloaded file (yt-dlp adds extension)
     downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
