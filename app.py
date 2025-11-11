@@ -477,8 +477,12 @@ def download_tiktok(video_url):
                         meta_fallback = {"description": "", "title": "", "photo_urls": photo_urls_fallback}
                     meta_fallback["_is_slideshow"] = len(photo_urls_fallback) > 1
                     return file_path_fallback, meta_fallback
+                else:
+                    print("⚠️ HTML parsing fallback didn't find images either")
             except Exception as fallback_error:
                 print(f"⚠️ HTML parsing fallback also failed: {fallback_error}")
+                import traceback
+                print(traceback.format_exc())
         
         # For non-photo URLs, check if file was actually downloaded
         downloaded_files = [f for f in os.listdir(tmpdir) if not f.endswith(".info.json")]
