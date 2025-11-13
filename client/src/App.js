@@ -5,6 +5,7 @@ import PlanItLogo from "./components/PlanItLogo";
 import Login from "./components/Login";
 import Signup from "./components/Signup";
 import { UserContext } from "./contexts/UserContext";
+import MapView from "./components/MapView";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://planit-backend-fbm5.onrender.com";
 
@@ -27,6 +28,7 @@ function App() {
   const [viewMode, setViewMode] = useState("list");
   const [expandedIndex, setExpandedIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("home");
+  const [abortController, setAbortController] = useState(null);
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -117,6 +119,7 @@ function App() {
       
       // Add timeout for long-running requests (10 minutes for videos with OCR)
       const controller = new AbortController();
+      setAbortController(controller); // Store controller for cancel button
       const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 minutes
       
       const res = await fetch(`${API_BASE}/api/extract`, {
@@ -127,6 +130,7 @@ function App() {
       });
       
       clearTimeout(timeoutId);
+      setAbortController(null); // Clear controller after request completes
       
       console.log(`📡 Response status: ${res.status}`);
       
@@ -262,6 +266,17 @@ function App() {
       setError(errorMessage);
       setLoadingStep("");
       setResult(null);
+      setAbortController(null); // Clear controller on error
+    }
+  };
+
+  // ===== Stop Analyzing =====
+  const handleStopAnalyzing = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setLoadingStep("");
+      setError("Analysis cancelled by user.");
     }
   };
 
@@ -423,7 +438,19 @@ function App() {
               />
               <button onClick={() => handleExtract()}>Extract</button>
             </div>
-            {loadingStep && <p className="loading">{loadingStep}</p>}
+            {loadingStep && (
+              <div className="loading-container">
+                <p className="loading">{loadingStep}</p>
+                {abortController && (
+                  <button 
+                    onClick={handleStopAnalyzing}
+                    className="stop-analyzing-btn"
+                  >
+                    Stop Analyzing
+                  </button>
+                )}
+              </div>
+            )}
             {error && <p className="error">{error}</p>}
 
             {result && (
@@ -469,15 +496,18 @@ function App() {
                       List
                     </button>
                     <button
-                      className={viewMode === "grid" ? "active" : ""}
-                      onClick={() => setViewMode("grid")}
+                      className={viewMode === "map" ? "active" : ""}
+                      onClick={() => setViewMode("map")}
                     >
-                      Grid
+                      Map
                     </button>
                   </div>
                 )}
 
-                {result.places_extracted && result.places_extracted.length > 0 && (
+                {result.places_extracted && result.places_extracted.length > 0 && viewMode === "map" && (
+                  <MapView places={result.places_extracted} />
+                )}
+                {result.places_extracted && result.places_extracted.length > 0 && viewMode !== "map" && (
                   <div
                     className={
                       viewMode === "grid" ? "results-grid" : "results-list"
@@ -667,78 +697,124 @@ function App() {
             {Object.keys(savedPlaces).length === 0 ? (
               <p className="empty">No saved places yet.</p>
             ) : (
-              Object.entries(savedPlaces).map(([list, places], idx) => (
-                <div key={idx} className="saved-list-card">
-                  <div
-                    className="saved-list-header"
-                    onClick={() =>
-                      setExpandedIndex(expandedIndex === idx ? null : idx)
-                    }
-                  >
-                    <h3>{list}</h3>
-                    <span className="count">
-                      {places.length} place{places.length !== 1 ? "s" : ""}
-                    </span>
+              <>
+                {/* View toggle for saved places */}
+                {Object.values(savedPlaces).flat().length > 0 && (
+                  <div className="view-toggle" style={{ marginBottom: "20px" }}>
+                    <button
+                      className={viewMode === "list" ? "active" : ""}
+                      onClick={() => setViewMode("list")}
+                    >
+                      List
+                    </button>
+                    <button
+                      className={viewMode === "map" ? "active" : ""}
+                      onClick={() => setViewMode("map")}
+                    >
+                      Map
+                    </button>
                   </div>
+                )}
 
-                  {expandedIndex === idx && (
-                    <div className="saved-list-places">
-                      {places.map((p, i) => (
-                        <div key={i} className="place-card">
-                          {p.photo_url && (
-                            <img
-                              src={p.photo_url}
-                              alt={p.name}
-                              className="place-photo"
-                            />
-                          )}
-                          <div className="place-info">
-                            <h4>{p.name}</h4>
-                            {p.summary && (
-                              <p className="description">{p.summary}</p>
-                            )}
-                            {p.vibe_tags && p.vibe_tags.length > 0 && (
-                              <p className="vibe-line">
-                                Vibes: {p.vibe_tags.join(", ")}
-                              </p>
-                            )}
-                            <div className="button-row">
-                              {p.maps_url && (
-                                <a
-                                  href={p.maps_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="action-btn"
-                                >
-                                  Open in Maps
-                                </a>
+                {viewMode === "map" ? (
+                  <MapView places={Object.values(savedPlaces).flat()} />
+                ) : (
+                  Object.entries(savedPlaces).map(([list, places], idx) => (
+                    <div key={idx} className="saved-list-card">
+                      <div
+                        className="saved-list-header"
+                        onClick={() =>
+                          setExpandedIndex(expandedIndex === idx ? null : idx)
+                        }
+                      >
+                        <h3>{list}</h3>
+                        <span className="count">
+                          {places.length} place{places.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+
+                      {expandedIndex === idx && (
+                        <div className="saved-list-places">
+                          {places.map((p, i) => (
+                            <div key={i} className="place-card">
+                              {p.photo_url && (
+                                <img
+                                  src={p.photo_url}
+                                  alt={p.name}
+                                  className="place-photo"
+                                />
                               )}
-                              {p.video_url && (
-                                <a
-                                  href={p.video_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="action-btn"
-                                >
-                                  View on TikTok
-                                </a>
-                              )}
-                              <button
-                                className="action-btn remove"
-                                onClick={() =>
-                                  handleRemoveFromList(list, i)
-                                }
-                              >
-                                Remove
-                              </button>
+                              <div className="place-info">
+                                <h4>{p.name}</h4>
+                                {p.summary && (
+                                  <p className="description">{p.summary}</p>
+                                )}
+                                {p.vibe_tags && p.vibe_tags.length > 0 && (
+                                  <p className="vibe-line">
+                                    Vibes: {p.vibe_tags.join(", ")}
+                                  </p>
+                                )}
+                                {p.other_videos && p.other_videos.length > 0 && (
+                                  <div className="other-videos-note">
+                                    <strong>📹 Also featured in:</strong>
+                                    <div className="other-videos-list">
+                                      {p.other_videos.map((vid, vidIdx) => (
+                                        <div key={vidIdx} className="other-video-item">
+                                          {vid.username && (
+                                            <span className="other-video-username">@{vid.username}</span>
+                                          )}
+                                          <a
+                                            href={vid.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="other-video-link"
+                                          >
+                                            {vid.summary || "this video"}
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                <div className="button-row">
+                                  {p.maps_url && (
+                                    <a
+                                      href={p.maps_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="action-btn"
+                                    >
+                                      Open in Maps
+                                    </a>
+                                  )}
+                                  {p.video_url && (
+                                    <a
+                                      href={p.video_url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="action-btn"
+                                    >
+                                      View on TikTok
+                                    </a>
+                                  )}
+                                  <button
+                                    className="action-btn remove"
+                                    onClick={() =>
+                                      handleRemoveFromList(list, i)
+                                    }
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                          </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
-              ))
+                  ))
+                )}
+              </>
             )}
           </div>
         )}
