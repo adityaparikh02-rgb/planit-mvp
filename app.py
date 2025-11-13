@@ -40,6 +40,7 @@ from moviepy.editor import VideoFileClip
 from openai import OpenAI
 from httpx import Client as HttpxClient
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Optional OCR - tesseract may not be available on all systems
 OCR_AVAILABLE = False
@@ -1338,6 +1339,64 @@ def extract_username_from_url(url):
     match = re.search(r"@([^/]+)", url)
     return match.group(1) if match else None
 
+def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text, url, username, context_title):
+    """Enrich multiple places in parallel for better performance."""
+    places_extracted = []
+    
+    def enrich_and_fetch_photo(venue_name):
+        """Enrich a single venue and fetch its photo - runs in parallel."""
+        intel = enrich_place_intel(venue_name, transcript, ocr_text, caption, comments_text)
+        photo = get_photo_url(venue_name)
+        place_data = {
+            "name": venue_name,
+            "maps_url": f"https://www.google.com/maps/search/{venue_name.replace(' ', '+')}",
+            "photo_url": photo or "https://via.placeholder.com/600x400?text=No+Photo",
+            "description": intel.get("summary", ""),
+            "vibe_tags": intel.get("vibe_tags", []),
+            **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags"]}
+        }
+        return place_data
+    
+    # Run enrichment and photo fetching in parallel (max 5 concurrent to avoid rate limits)
+    if len(venues) > 1:
+        print(f"⚡ Enriching {len(venues)} places in parallel...")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_venue = {
+            executor.submit(enrich_and_fetch_photo, v): v 
+            for v in venues
+        }
+        
+        for future in as_completed(future_to_venue):
+            venue_name = future_to_venue[future]
+            try:
+                place_data = future.result()
+                # Merge with cached places - pass video summary
+                merged_place = merge_place_with_cache(place_data, url, username, context_title)
+                places_extracted.append(merged_place)
+                if len(venues) > 1:
+                    print(f"✅ Enriched: {venue_name}")
+            except Exception as e:
+                print(f"⚠️ Failed to enrich {venue_name}: {e}")
+                # Add basic place data even if enrichment fails
+                place_data = {
+                    "name": venue_name,
+                    "maps_url": f"https://www.google.com/maps/search/{venue_name.replace(' ', '+')}",
+                    "photo_url": "https://via.placeholder.com/600x400?text=No+Photo",
+                    "summary": "",
+                    "description": "",
+                    "when_to_go": "",
+                    "vibe": "",
+                    "must_try": "",
+                    "must_try_field": "must_try",
+                    "specials": "",
+                    "comments_summary": "",
+                    "vibe_tags": [],
+                }
+                merged_place = merge_place_with_cache(place_data, url, username, context_title)
+                places_extracted.append(merged_place)
+    
+    return places_extracted
+
 # ─────────────────────────────
 # Authentication Endpoints
 # ─────────────────────────────
@@ -1870,22 +1929,11 @@ def extract_api():
             }
             
             if venues:
-                places_extracted = []
                 username = extract_username_from_url(url)
-                for v in venues:
-                    intel = enrich_place_intel(v, transcript, ocr_text, photo_data.get("caption", ""), comments_text)
-                    photo = get_photo_url(v)
-                    place_data = {
-                        "name": v,
-                        "maps_url": f"https://www.google.com/maps/search/{v.replace(' ', '+')}",
-                        "photo_url": photo or "https://via.placeholder.com/600x400?text=No+Photo",
-                        "description": intel.get("summary", ""),
-                        "vibe_tags": intel.get("vibe_tags", []),
-                        **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags"]}
-                    }
-                    # Merge with cached places
-                    merged_place = merge_place_with_cache(place_data, url, username, context_title)
-                    places_extracted.append(merged_place)
+                places_extracted = enrich_places_parallel(
+                    venues, transcript, ocr_text, photo_data.get("caption", ""), comments_text,
+                    url, username, context_title
+                )
                 data["places_extracted"] = places_extracted
             
             # Cache the result
@@ -2033,22 +2081,11 @@ def extract_api():
                 }
                 
                 if venues:
-                    places_extracted = []
                     username = extract_username_from_url(url)
-                    for v in venues:
-                        intel = enrich_place_intel(v, transcript, ocr_text, caption, comments_text)
-                        photo = get_photo_url(v)
-                        place_data = {
-                            "name": v,
-                            "maps_url": f"https://www.google.com/maps/search/{v.replace(' ', '+')}",
-                            "photo_url": photo or "https://via.placeholder.com/600x400?text=No+Photo",
-                            "description": intel.get("summary", ""),
-                            "vibe_tags": intel.get("vibe_tags", []),
-                            **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags"]}
-                        }
-                        # Merge with cached places - pass video summary
-                        merged_place = merge_place_with_cache(place_data, url, username, context_title)
-                        places_extracted.append(merged_place)
+                    places_extracted = enrich_places_parallel(
+                        venues, transcript, ocr_text, caption, comments_text,
+                        url, username, context_title
+                    )
                     data["places_extracted"] = places_extracted
                 
                 if vid:
@@ -2100,21 +2137,23 @@ def extract_api():
             if file_size > 50 * 1024 * 1024:  # 50MB
                 print(f"⚠️ Large video file ({file_size / 1024 / 1024:.1f}MB) - may cause memory issues")
 
-        # First, run OCR immediately (don't wait for audio)
-        # This is especially important for videos with on-screen text
-        print("🔍 Running OCR on video frames to extract on-screen text...")
-        ocr_text = extract_ocr_text(video_path)
-        
-        # Extract audio and detect if it's music or speech
+        # OPTIMIZATION: Extract audio first and transcribe immediately for voiceover videos
+        # OCR can be deferred if we have a good transcript
         audio_path = extract_audio(video_path)
         print(f"✅ Audio extracted: {audio_path}")
         
         # Quick music detection (saves time if it's just music)
         is_music, sample_transcript = detect_music_vs_speech(audio_path)
         
+        transcript = ""
+        ocr_text = ""
+        
         if is_music:
-            print("🎵 Music detected - skipping full transcription, prioritizing OCR")
+            print("🎵 Music detected - skipping full transcription, running OCR instead")
             transcript = ""  # No transcript for music
+            # For music videos, OCR is critical - run it now
+            print("🔍 Running OCR on video frames (music video - OCR is primary source)...")
+            ocr_text = extract_ocr_text(video_path)
             # Clean up audio file immediately
             if audio_path != video_path and os.path.exists(audio_path):
                 try:
@@ -2123,7 +2162,8 @@ def extract_api():
                 except:
                     pass
         else:
-            # It's speech - proceed with full transcription
+            # It's speech - transcribe first (faster than OCR for voiceover)
+            print("🗣️ Speech detected - transcribing audio first (OCR will run only if needed)...")
             transcript = transcribe_audio(audio_path)
             print(f"✅ Transcript: {len(transcript)} chars")
             
@@ -2134,6 +2174,18 @@ def extract_api():
                     print("🗑️ Cleaned up audio file")
                 except:
                     pass
+            
+            # OPTIMIZATION: Only run OCR if transcript is short/insufficient
+            # For voiceover videos with good transcripts, OCR is often unnecessary
+            transcript_length = len(transcript) if transcript else 0
+            if transcript_length < 100:  # Short transcript - might need OCR
+                print(f"⚠️ Short transcript ({transcript_length} chars) - running OCR as backup...")
+                ocr_text = extract_ocr_text(video_path)
+            else:
+                print(f"✅ Good transcript length ({transcript_length} chars) - skipping OCR for speed")
+                # Still try a quick OCR on just a few frames if video is short
+                # But don't do full processing
+                ocr_text = ""
         if ocr_text:
             print(f"✅ OCR successfully extracted {len(ocr_text)} chars of on-screen text")
             print(f"📝 OCR text preview: {ocr_text[:200]}...")
@@ -2178,20 +2230,12 @@ def extract_api():
             }
             return jsonify(data)
 
-        places_extracted = []
+        # OPTIMIZATION: Parallelize enrichment and photo fetching for multiple places
         username = extract_username_from_url(url)
-        for v in venues:
-            intel = enrich_place_intel(v, transcript, ocr_text, caption, comments_text)
-            photo = get_photo_url(v)
-            place_data = {
-                "name": v,
-                "maps_url": f"https://www.google.com/maps/search/{v.replace(' ', '+')}",
-                "photo_url": photo or "https://via.placeholder.com/600x400?text=No+Photo",
-                **intel
-            }
-            # Merge with cached places - pass video summary
-            merged_place = merge_place_with_cache(place_data, url, username, context_title)
-            places_extracted.append(merged_place)
+        places_extracted = enrich_places_parallel(
+            venues, transcript, ocr_text, caption, comments_text,
+            url, username, context_title
+        )
 
         data = {
             "video_url": url,

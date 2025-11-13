@@ -157,17 +157,57 @@ git push origin main
 
 **Deployment takes 5-10 minutes.** Check status in Render dashboard.
 
-### Ensure Auto-Deploy is Enabled
+### Verify Auto-Deploy is Working
 
-1. Go to Render Dashboard → Your service → Settings
-2. Under "Build & Deploy", make sure **"Auto-Deploy"** is set to **"Yes"**
-3. Branch should be set to `main` (or your default branch)
+**Auto-deploy is enabled by default** when your service is connected to a Git repository. Here's how to verify:
+
+1. **Check your service is connected to Git**:
+   - Go to Render Dashboard → Your service → Settings
+   - Look for "Repository" section - it should show your GitHub repo
+   - If not connected, go to Settings → Connect a repository
+
+2. **Verify the branch**:
+   - In Settings → Build & Deploy section
+   - Check that "Branch" is set to `main` (or your default branch)
+
+3. **Test auto-deploy**:
+   - Make a small change (like updating a comment)
+   - Run `./quick-deploy.sh "Test auto-deploy"`
+   - Go to Render Dashboard → Your service → Events
+   - You should see a new deployment triggered automatically
+
+**Note**: If you don't see an "Auto-Deploy" toggle, that's normal - Render enables it automatically for Git-connected services. The key is ensuring your service is connected to your GitHub repository.
 
 ### Update Environment Variables (if needed)
 - Go to each service → Environment → Update variables
 - Changes take effect on next deployment
 
 ## 🐛 Troubleshooting
+
+### Auto-Deploy Not Working
+
+**If deployments aren't happening automatically:**
+
+1. **Check repository connection**:
+   - Go to Dashboard → Your service → Settings
+   - Verify "Repository" shows your GitHub repo
+   - If missing, click "Connect a repository" and select your repo
+
+2. **Verify branch**:
+   - Settings → Build & Deploy → Branch should be `main`
+   - Make sure you're pushing to the same branch
+
+3. **Check GitHub integration**:
+   - Go to Render Dashboard → Account Settings → Connected Services
+   - Ensure GitHub is connected and authorized
+   - Reconnect if needed
+
+4. **Manual trigger** (if auto-deploy isn't working):
+   - Go to Dashboard → Your service → Manual Deploy
+   - Click "Deploy latest commit"
+   - This will deploy even if auto-deploy isn't working
+
+**Note**: Auto-deploy is enabled by default for Git-connected services. If you don't see an "Auto-Deploy" toggle in settings, that's normal - it's automatically enabled.
 
 ### Backend Issues
 
