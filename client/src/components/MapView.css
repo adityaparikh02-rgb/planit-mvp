@@ -1,0 +1,117 @@
+/* Map View Styles - Matching App Design */
+
+.map-places-list {
+  margin-top: 30px;
+}
+
+.map-places-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: #fff;
+  text-align: center;
+}
+
+.map-places-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.map-place-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.map-place-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.map-place-card.selected {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: #6366f1;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+}
+
+.map-place-name {
+  margin: 0 0 8px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.map-place-address {
+  margin: 0 0 6px 0;
+  font-size: 0.85rem;
+  color: #aab1c6;
+  line-height: 1.4;
+}
+
+.map-place-summary {
+  margin: 8px 0 0 0;
+  font-size: 0.9rem;
+  color: #cfcfcf;
+  line-height: 1.5;
+}
+
+/* Map container styling */
+.map-container {
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Info Window Styling */
+.map-info-window {
+  padding: 12px;
+  max-width: 280px;
+  color: #333;
+}
+
+.map-info-title {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a26;
+}
+
+.map-info-summary {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: #555;
+  line-height: 1.4;
+}
+
+.map-info-address {
+  margin: 0 0 10px 0;
+  font-size: 12px;
+  color: #777;
+}
+
+.map-info-link {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.map-info-link:hover {
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+}
+
