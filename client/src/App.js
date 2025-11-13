@@ -29,6 +29,7 @@ function App() {
   const [expandedIndex, setExpandedIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("home");
   const [abortController, setAbortController] = useState(null);
+  const [viewingHistory, setViewingHistory] = useState(false);
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -60,10 +61,32 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, token]);
 
-  // Load saved places and history from API
+  // Load saved places and history from API + localStorage
   useEffect(() => {
+    // Always load from localStorage first (for persistence across sessions)
+    const localHistory = localStorage.getItem("planit_history");
+    const localCachedResults = localStorage.getItem("planit_cached_results");
+    
+    if (localHistory) {
+      try {
+        const parsed = JSON.parse(localHistory);
+        setHistory(parsed);
+      } catch (e) {
+        console.error("Failed to parse localStorage history:", e);
+      }
+    }
+    
+    if (localCachedResults) {
+      try {
+        const parsed = JSON.parse(localCachedResults);
+        setCachedResults(parsed);
+      } catch (e) {
+        console.error("Failed to parse localStorage cached results:", e);
+      }
+    }
+
     if (user && token) {
-      // Load saved places
+      // Load saved places from API
       fetch(`${API_BASE}/api/user/saved-places`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -75,42 +98,84 @@ function App() {
         })
         .catch((err) => console.error("Failed to load saved places:", err));
 
-      // Load history
+      // Load history from API and merge with localStorage
       fetch(`${API_BASE}/api/user/history`, {
         headers: { Authorization: `Bearer ${token}` },
       })
         .then((res) => res.json())
         .then((data) => {
           if (data && !data.error) {
-            setHistory(data.map((h) => ({
+            const apiHistory = data.map((h) => ({
               title: h.summary_title || "Untitled",
               time: new Date(h.timestamp).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
               }),
               url: h.video_url,
-            })));
+            }));
+            
+            // Merge API history with localStorage (API takes priority, but keep unique URLs from both)
+            const localHistoryParsed = localHistory ? JSON.parse(localHistory) : [];
+            const mergedHistory = [...apiHistory];
+            
+            // Add local history items that aren't in API history
+            localHistoryParsed.forEach((localItem) => {
+              if (!mergedHistory.find((h) => h.url === localItem.url)) {
+                mergedHistory.push(localItem);
+              }
+            });
+            
+            // Sort by time (most recent first) and limit to 50
+            mergedHistory.sort((a, b) => {
+              // Try to parse time, but if it fails, keep order
+              return 0; // Keep API order (most recent first)
+            });
+            
+            setHistory(mergedHistory.slice(0, 50));
+            
+            // Save merged history back to localStorage
+            localStorage.setItem("planit_history", JSON.stringify(mergedHistory.slice(0, 50)));
           }
         })
-        .catch((err) => console.error("Failed to load history:", err));
+        .catch((err) => {
+          console.error("Failed to load history from API:", err);
+          // If API fails, use localStorage history
+          if (localHistory) {
+            try {
+              const parsed = JSON.parse(localHistory);
+              setHistory(parsed);
+            } catch (e) {
+              console.error("Failed to parse localStorage history:", e);
+            }
+          }
+        });
     } else {
       setSavedPlaces({});
-      setHistory([]);
+      // Keep localStorage history even when not logged in
+      if (!localHistory) {
+        setHistory([]);
+      }
     }
   }, [user, token]);
 
   // ===== Extract TikTok =====
-  const handleExtract = async (urlToUse = null) => {
+  const handleExtract = async (urlToUse = null, isFromHistory = false) => {
     const url = urlToUse || videoUrl;
     if (!url) return setError("Enter a TikTok URL");
 
     setError("");
     setResult(null);
+    if (!isFromHistory) {
+      setViewingHistory(false); // Reset history view when starting new extraction
+    }
     setLoadingStep("Analyzing TikTok...");
 
     if (cachedResults[url]) {
       setResult(cachedResults[url]);
       setLoadingStep("");
+      if (!isFromHistory) {
+        setViewingHistory(false); // Not viewing history when extracting new
+      }
       return;
     }
 
@@ -188,7 +253,16 @@ function App() {
       const cleanData = { ...data, places_extracted: uniquePlaces };
 
       console.log("💾 Setting result:", cleanData);
-      setCachedResults((prev) => ({ ...prev, [url]: cleanData }));
+      setCachedResults((prev) => {
+        const updated = { ...prev, [url]: cleanData };
+        // Save to localStorage for persistence
+        try {
+          localStorage.setItem("planit_cached_results", JSON.stringify(updated));
+        } catch (e) {
+          console.error("Failed to save cached results to localStorage:", e);
+        }
+        return updated;
+      });
       setResult(cleanData);
 
       const title =
@@ -218,30 +292,47 @@ function App() {
         .then((res) => res.json())
         .then((data) => {
           if (data && !data.error) {
-            setHistory(data.map((h) => ({
+            const apiHistory = data.map((h) => ({
               title: h.summary_title || "Untitled",
               time: new Date(h.timestamp).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
               }),
               url: h.video_url,
-            })));
+            }));
+            setHistory(apiHistory);
+            // Also save to localStorage for persistence
+            try {
+              localStorage.setItem("planit_history", JSON.stringify(apiHistory));
+            } catch (e) {
+              console.error("Failed to save history to localStorage:", e);
+            }
           }
         })
         .catch((err) => console.error("Failed to save/load history:", err));
       } else {
-        // If not logged in, just update local state (will be lost on refresh)
-        setHistory((prev) => [
-          {
-            title,
-            time: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            url,
-          },
-          ...prev.filter((h) => h.url !== url).slice(0, 10),
-        ]);
+        // If not logged in, update local state AND localStorage
+        const newHistoryItem = {
+          title,
+          time: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          url,
+        };
+        setHistory((prev) => {
+          const updated = [
+            newHistoryItem,
+            ...prev.filter((h) => h.url !== url).slice(0, 49), // Keep max 50 items
+          ];
+          // Save to localStorage
+          try {
+            localStorage.setItem("planit_history", JSON.stringify(updated));
+          } catch (e) {
+            console.error("Failed to save history to localStorage:", e);
+          }
+          return updated;
+        });
       }
       setLoadingStep("");
     } catch (err) {
@@ -281,9 +372,27 @@ function App() {
   };
 
   // ===== Tabs =====
-  const handleHistoryClick = (item) => {
-    setVideoUrl(item.url);
-    handleExtract(item.url);
+  const handleHistoryClick = async (item) => {
+    // Load cached result if available, otherwise extract
+    if (cachedResults[item.url]) {
+      setResult(cachedResults[item.url]);
+      setVideoUrl(item.url);
+      setViewingHistory(true);
+      setActiveTab("home");
+    } else {
+      // If not cached, extract it (but keep viewingHistory flag)
+      setVideoUrl(item.url);
+      setViewingHistory(true); // Set before extract so it doesn't get reset
+      await handleExtract(item.url, true); // Pass flag to indicate it's from history
+      setActiveTab("home");
+    }
+  };
+
+  const handleNewSearch = () => {
+    setViewingHistory(false);
+    setResult(null);
+    setVideoUrl("");
+    setError("");
     setActiveTab("home");
   };
 
@@ -429,35 +538,65 @@ function App() {
                 Logout
               </button>
             </div>
-            <div className="input-section">
-              <input
-                type="text"
-                placeholder="Paste TikTok video URL..."
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-              />
-              <button onClick={() => handleExtract()}>Extract</button>
-            </div>
+            {!viewingHistory && (
+              <div className="input-section">
+                <input
+                  type="text"
+                  placeholder="Paste TikTok video URL..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                />
+                <button onClick={() => handleExtract()}>Extract</button>
+              </div>
+            )}
+            {viewingHistory && (
+              <div className="history-view-header">
+                <button onClick={handleNewSearch} className="back-to-search-btn">
+                  ＋ New Search
+                </button>
+              </div>
+            )}
             {loadingStep && (
               <div className="loading-container">
-                <p className="loading">{loadingStep}</p>
+                <p className="loading">
+                  {loadingStep.includes("Analyzing") && "🔍 "}
+                  {loadingStep.includes("Downloading") && "📥 "}
+                  {loadingStep.includes("Transcribing") && "🎤 "}
+                  {loadingStep.includes("Extracting") && "✨ "}
+                  {loadingStep.includes("Enriching") && "🌟 "}
+                  {loadingStep}
+                </p>
                 {abortController && (
                   <button 
                     onClick={handleStopAnalyzing}
                     className="stop-analyzing-btn"
                   >
-                    Stop Analyzing
+                    ⏹️ Stop Analyzing
                   </button>
                 )}
               </div>
             )}
-            {error && <p className="error">{error}</p>}
+            {error && <p className="error">⚠️ {error}</p>}
 
             {result && (
               <div className="results-container">
                 {(result.summary_title || result.context_summary) && (
                   <h2 className="summary-title">
-                    {(result.summary_title || result.context_summary || "TikTok Venues").replace(/(^"|"$)/g, "")}
+                    {(() => {
+                      const title = (result.summary_title || result.context_summary || "TikTok Venues").replace(/(^"|"$)/g, "");
+                      // Add contextual emoji based on title content
+                      let emoji = "📍";
+                      if (title.toLowerCase().includes("pizza") || title.toLowerCase().includes("pizzeria")) emoji = "🍕";
+                      else if (title.toLowerCase().includes("coffee") || title.toLowerCase().includes("cafe") || title.toLowerCase().includes("café")) emoji = "☕";
+                      else if (title.toLowerCase().includes("bar") || title.toLowerCase().includes("cocktail")) emoji = "🍸";
+                      else if (title.toLowerCase().includes("restaurant") || title.toLowerCase().includes("dining")) emoji = "🍽️";
+                      else if (title.toLowerCase().includes("rooftop") || title.toLowerCase().includes("roof")) emoji = "🏙️";
+                      else if (title.toLowerCase().includes("brunch")) emoji = "🥐";
+                      else if (title.toLowerCase().includes("hidden") || title.toLowerCase().includes("secret")) emoji = "🔍";
+                      else if (title.toLowerCase().includes("top") || title.toLowerCase().includes("best")) emoji = "⭐";
+                      else if (title.toLowerCase().includes("date") || title.toLowerCase().includes("romantic")) emoji = "💕";
+                      return `${emoji} ${title}`;
+                    })()}
                   </h2>
                 )}
                 {result.video_url && (
@@ -475,13 +614,13 @@ function App() {
 
                 {result.places_extracted?.length === 0 && (
                   <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
-                    <p>No venues found in this video.</p>
+                    <p>🔍 No venues found in this video.</p>
                     <p style={{ fontSize: "0.9rem", marginTop: "10px" }}>
                       {result.warning || "The video might not mention specific venue names, or they couldn't be extracted."}
                     </p>
                     {result.warning && (
                       <p style={{ fontSize: "0.85rem", marginTop: "10px", color: "#aaa", fontStyle: "italic" }}>
-                        Tip: Try a video with spoken audio or visible text on screen for better results.
+                        💡 Tip: Try a video with spoken audio or visible text on screen for better results.
                       </p>
                     )}
                   </div>
@@ -493,13 +632,13 @@ function App() {
                       className={viewMode === "list" ? "active" : ""}
                       onClick={() => setViewMode("list")}
                     >
-                      List
+                      📋 List
                     </button>
                     <button
                       className={viewMode === "map" ? "active" : ""}
                       onClick={() => setViewMode("map")}
                     >
-                      Map
+                      🗺️ Map
                     </button>
                   </div>
                 )}
@@ -571,7 +710,7 @@ function App() {
                               className="add-new-list-btn"
                               onClick={handleAddNewList}
                             >
-                              Add to New List
+                              ➕ Add to New List
                             </button>
                           </div>
                         )}
@@ -629,20 +768,20 @@ function App() {
                             {p.must_try && (
                               <p>
                                 <strong>
-                                  {p.must_try_field === "highlights" ? "Highlights:" :
-                                   p.must_try_field === "features" ? "Features:" :
-                                   "Must Try:"}
+                                  {p.must_try_field === "highlights" ? "✨ Highlights:" :
+                                   p.must_try_field === "features" ? "🎯 Features:" :
+                                   "🍴 Must Try:"}
                                 </strong> {p.must_try}
                               </p>
                             )}
                             {p.when_to_go && (
                               <p>
-                                <strong>When to Go:</strong> {p.when_to_go}
+                                <strong>🕐 When to Go:</strong> {p.when_to_go}
                               </p>
                             )}
                             {p.vibe && (
                               <p>
-                                <strong>Vibe:</strong> {p.vibe}
+                                <strong>💫 Vibe:</strong> {p.vibe}
                               </p>
                             )}
                           </div>
@@ -653,7 +792,7 @@ function App() {
                               rel="noreferrer"
                               className="maps-link"
                             >
-                              Open in Maps
+                              🗺️ Open in Maps
                             </a>
                           )}
                         </div>
@@ -670,9 +809,9 @@ function App() {
         {/* HISTORY */}
         {activeTab === "history" && (
           <div className="history-page">
-            <h2>Extraction History</h2>
+            <h2>📜 Extraction History</h2>
             {history.length === 0 ? (
-              <p className="empty">No extractions yet.</p>
+              <p className="empty">📭 No extractions yet.</p>
             ) : (
               <div className="history-scroll">
                 {history.map((h, i) => (
@@ -681,8 +820,8 @@ function App() {
                     className="hist-item"
                     onClick={() => handleHistoryClick(h)}
                   >
-                    <strong>{h.title}</strong>
-                    <span className="time">{h.time}</span>
+                    <strong>📍 {h.title}</strong>
+                    <span className="time">🕐 {h.time}</span>
                   </div>
                 ))}
               </div>
@@ -693,9 +832,9 @@ function App() {
         {/* SAVED */}
         {activeTab === "saved" && (
           <div className="saved-page">
-            <h2 className="saved-header">Your Saved Lists</h2>
+            <h2 className="saved-header">⭐ Your Saved Lists</h2>
             {Object.keys(savedPlaces).length === 0 ? (
-              <p className="empty">No saved places yet.</p>
+              <p className="empty">💾 No saved places yet.</p>
             ) : (
               <>
                 {/* View toggle for saved places */}
@@ -705,13 +844,13 @@ function App() {
                       className={viewMode === "list" ? "active" : ""}
                       onClick={() => setViewMode("list")}
                     >
-                      List
+                      📋 List
                     </button>
                     <button
                       className={viewMode === "map" ? "active" : ""}
                       onClick={() => setViewMode("map")}
                     >
-                      Map
+                      🗺️ Map
                     </button>
                   </div>
                 )}
@@ -830,7 +969,10 @@ function App() {
         </button>
         <button
           className={`nav-btn center-btn ${activeTab === "home" ? "active" : ""}`}
-          onClick={() => setActiveTab("home")}
+          onClick={() => {
+            handleNewSearch();
+            setActiveTab("home");
+          }}
         >
           ＋
         </button>
