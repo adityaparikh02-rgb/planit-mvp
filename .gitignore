@@ -1,13 +1,28 @@
 # Ignore Python & environment files
 venv/
 __pycache__/
+*.pyc
 .env
 backend.log
+*.log
 
 # Ignore Node modules and build files
 node_modules/
 client/node_modules/
 client/build/
 
+# Ignore database (but keep schema - it's created automatically)
+planit.db
+*.db
+
+# Ignore cache files
+cache.json
+
 # Ignore system files
 .DS_Store
+*.swp
+*.swo
+
+# Keep test scripts and docs
+!test_share_target.sh
+!*.md
