@@ -45,6 +45,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Optional OCR - tesseract may not be available on all systems
 OCR_AVAILABLE = False
 try:
+    import pytesseract
     from pytesseract import image_to_string
     # Test if tesseract binary is actually available
     import shutil
@@ -222,7 +223,441 @@ def get_tiktok_id(url):
     m = re.search(r"/video/(\d+)", url)
     if m:
         return m.group(1)
+    # Try /photo/ format
+    m = re.search(r"/photo/(\d+)", url)
+    if m:
+        return m.group(1)
     # Shortened URLs (/t/ format) will be handled by extracting ID from metadata
+    return None
+
+def get_tiktok_post_data(url):
+    """Fetch TikTok post data using mobile API endpoint. Returns dict with type, caption, photo_urls/video_url."""
+    try:
+        # Extract item ID from URL (handles both /video/ and /photo/ formats)
+        item_id_match = re.search(r'/video/(\d+)|/photo/(\d+)', url)
+        if not item_id_match:
+            raise ValueError("Invalid TikTok URL - no video/photo ID found")
+        
+        # Get the non-None group
+        item_id = next(g for g in item_id_match.groups() if g)
+        print(f"📱 Extracted TikTok item ID: {item_id}")
+        
+        # Call TikTok mobile API
+        api_url = f"https://m.tiktok.com/api/item/detail/?itemId={item_id}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+            "Accept": "application/json",
+            "Referer": "https://www.tiktok.com/",
+        }
+        
+        print(f"🌐 Calling TikTok mobile API: {api_url}")
+        response = requests.get(api_url, headers=headers, timeout=30)
+        response.raise_for_status()
+        
+        data = response.json()
+        print(f"✅ API response received (status: {response.status_code})")
+        
+        # Parse response structure
+        item_info = data.get("itemInfo", {})
+        item_struct = item_info.get("itemStruct", {})
+        
+        if not item_struct:
+            print("⚠️ API response missing itemStruct - TikTok may be blocking access")
+            raise ValueError("Invalid API response structure")
+        
+        # Extract caption
+        caption = item_struct.get("desc", "").strip()
+        print(f"📝 Caption extracted: {caption[:100] if caption else 'None'}...")
+        
+        # Check if it's a photo post
+        if "imagePost" in item_struct:
+            print("📸 Detected photo post via API")
+            image_post = item_struct["imagePost"]
+            images = image_post.get("images", [])
+            
+            photo_urls = []
+            for img in images:
+                image_url_obj = img.get("imageURL", {})
+                url_list = image_url_obj.get("urlList", [])
+                if url_list and len(url_list) > 0:
+                    photo_urls.append(url_list[0])
+            
+            print(f"✅ Extracted {len(photo_urls)} photo URLs from API")
+            return {
+                "type": "photo",
+                "caption": caption,
+                "photo_urls": photo_urls,
+                "author": item_struct.get("author", {}).get("nickname", ""),
+            }
+        
+        # Check if it's a video post
+        elif "video" in item_struct:
+            print("🎥 Detected video post via API")
+            video = item_struct["video"]
+            play_addr = video.get("playAddr", "")
+            
+            if play_addr:
+                print(f"✅ Extracted video URL from API")
+                return {
+                    "type": "video",
+                    "caption": caption,
+                    "video_url": play_addr,
+                    "author": item_struct.get("author", {}).get("nickname", ""),
+                }
+            else:
+                raise ValueError("Video post missing playAddr")
+        
+        else:
+            raise ValueError("Unsupported TikTok post type - neither photo nor video")
+            
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ TikTok API request failed: {e}")
+        raise
+    except (KeyError, ValueError) as e:
+        print(f"⚠️ TikTok API parsing failed: {e}")
+        raise
+    except Exception as e:
+        print(f"⚠️ Unexpected error calling TikTok API: {e}")
+        import traceback
+        print(traceback.format_exc())
+        raise
+
+def get_tiktok_media(tiktok_url):
+    """Fetch TikTok media directly using TikTok's internal API16 endpoint."""
+    try:
+        # Extract item ID from URL (handles both /video/ and /photo/ formats)
+        item_id_match = re.search(r'/video/(\d+)|/photo/(\d+)', tiktok_url)
+        if not item_id_match:
+            raise ValueError("Invalid TikTok URL - no video/photo ID found")
+        
+        # Get the non-None group
+        item_id = next(g for g in item_id_match.groups() if g)
+        print(f"📱 Extracted TikTok item ID: {item_id}")
+        
+        # Call TikTok API16 endpoint (internal mobile API)
+        api_url = f"https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id={item_id}"
+        headers = {
+            "User-Agent": "okhttp/3.14.9 (Linux; Android 10; Pixel 6 Build/QP1A.190711.020; wv)",
+            "Referer": "https://www.tiktok.com/",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "application/json",
+        }
+        
+        print(f"🌐 Calling TikTok API16: {api_url}")
+        response = requests.get(api_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        data = response.json()
+        print(f"✅ API16 response received (status: {response.status_code})")
+        
+        # Initialize result structure
+        media = {
+            "source": "tiktok_api16",
+            "video_url": None,
+            "photo_urls": [],
+            "caption": None,
+        }
+        
+        try:
+            aweme_list = data.get("aweme_list", [])
+            if not aweme_list:
+                print("⚠️ API16 response missing aweme_list")
+                raise ValueError("Invalid API16 response structure")
+            
+            aweme = aweme_list[0]
+            
+            # Extract caption
+            caption = aweme.get("desc", "").strip()
+            media["caption"] = caption
+            if caption:
+                print(f"📝 Caption extracted: {caption[:100]}...")
+            
+            # Check for video post
+            if "video" in aweme and "play_addr" in aweme["video"]:
+                play_addr = aweme["video"]["play_addr"]
+                url_list = play_addr.get("url_list", [])
+                if url_list and len(url_list) > 0:
+                    media["video_url"] = url_list[0]
+                    print(f"✅ Extracted video URL from API16")
+            
+            # Check for photo post
+            if "image_post_info" in aweme:
+                image_post_info = aweme["image_post_info"]
+                images = image_post_info.get("images", [])
+                
+                photo_urls = []
+                for img in images:
+                    display_image = img.get("display_image", {})
+                    url_list = display_image.get("url_list", [])
+                    if url_list and len(url_list) > 0:
+                        photo_urls.append(url_list[0])
+                
+                media["photo_urls"] = photo_urls
+                if photo_urls:
+                    print(f"✅ Extracted {len(photo_urls)} photo URLs from API16")
+            
+            return media
+            
+        except (KeyError, IndexError) as e:
+            print(f"⚠️ Could not parse TikTok API16 response: {e}")
+            import traceback
+            print(traceback.format_exc())
+            raise ValueError(f"Failed to parse API16 response: {e}")
+            
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ TikTok API16 request failed: {e}")
+        raise
+    except (KeyError, ValueError) as e:
+        print(f"⚠️ TikTok API16 parsing failed: {e}")
+        raise
+    except Exception as e:
+        print(f"⚠️ Unexpected error calling TikTok API16: {e}")
+        import traceback
+        print(traceback.format_exc())
+        raise
+
+def robust_tiktok_extractor(url):
+    """
+    Fool-proof TikTok media extractor.
+    Tries TikTok API16 first, then SnapTik fallback, then Playwright.
+    Returns dict with {source, caption, photo_urls, video_url}.
+    """
+    print(f"🌐 Starting robust extraction for {url}")
+    result = {"source": None, "caption": "", "photo_urls": [], "video_url": None}
+    
+    # --- STEP 1: TikTok Mobile API16 ---
+    try:
+        match = re.search(r'/video/(\d+)|/photo/(\d+)', url)
+        if match:
+            # Get the non-None group
+            item_id = next(g for g in match.groups() if g)
+            api_url = f"https://api16-normal-c-useast1a.tiktokv.com/aweme/v1/feed/?aweme_id={item_id}"
+            headers = {
+                "User-Agent": "okhttp/3.14.9 (Linux; Android 10; Pixel 6 Build/QP1A.190711.020; wv)",
+                "Referer": "https://www.tiktok.com/",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
+            r = requests.get(api_url, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            
+            if "aweme_list" in data and len(data["aweme_list"]) > 0:
+                aweme = data["aweme_list"][0]
+                result["caption"] = aweme.get("desc", "").strip()
+                
+                # Check for photo post
+                if "image_post_info" in aweme:
+                    images = aweme["image_post_info"].get("images", [])
+                    result["photo_urls"] = [
+                        img["display_image"]["url_list"][0]
+                        for img in images
+                        if "display_image" in img and "url_list" in img["display_image"] and len(img["display_image"]["url_list"]) > 0
+                    ]
+                
+                # Check for video post
+                if "video" in aweme and "play_addr" in aweme["video"]:
+                    play_addr = aweme["video"]["play_addr"]
+                    if "url_list" in play_addr and len(play_addr["url_list"]) > 0:
+                        result["video_url"] = play_addr["url_list"][0]
+                
+                if result["photo_urls"] or result["video_url"]:
+                    result["source"] = "tiktok_api16"
+                    print(f"✅ TikTok API16 success: {len(result['photo_urls'])} photos, video: {bool(result['video_url'])}")
+                    return result
+    except Exception as e:
+        print(f"⚠️ TikTok API16 failed: {e}")
+    
+    # --- STEP 2: SnapTik fallback ---
+    try:
+        print("🔄 Trying SnapTik fallback…")
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+            "Referer": "https://snaptik.kim/",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        r = requests.post(
+            "https://snaptik.kim/?sd=1",
+            headers=headers,
+            data={"url": url},
+            timeout=25,
+        )
+        r.raise_for_status()
+        soup = BeautifulSoup(r.text, "html.parser")
+        
+        # Extract all tiktokcdn links
+        links = []
+        for a in soup.find_all("a", href=True):
+            href = a.get("href", "")
+            if "tiktokcdn" in href:
+                # Make sure it's a full URL
+                if href.startswith("http"):
+                    links.append(href)
+                elif href.startswith("//"):
+                    links.append("https:" + href)
+        
+        # Remove duplicates
+        seen = set()
+        unique_links = []
+        for link in links:
+            if link not in seen:
+                seen.add(link)
+                unique_links.append(link)
+        
+        if unique_links:
+            # Separate photos and videos
+            photo_urls = []
+            video_url = None
+            for link in unique_links:
+                if ".mp4" in link.lower() or "/video/" in link.lower():
+                    if not video_url:
+                        video_url = link
+                else:
+                    photo_urls.append(link)
+            
+            result["photo_urls"] = photo_urls
+            result["video_url"] = video_url
+            
+            # Try to extract caption from SnapTik page
+            caption_elem = soup.find("div", class_=re.compile("desc|description|caption", re.I))
+            if caption_elem:
+                result["caption"] = caption_elem.get_text(strip=True)
+            else:
+                # Try meta tags
+                meta_desc = soup.find("meta", attrs={"property": "og:description"})
+                if meta_desc:
+                    result["caption"] = meta_desc.get("content", "").strip()
+            
+            if result["photo_urls"] or result["video_url"]:
+                result["source"] = "snaptik"
+                print(f"✅ SnapTik fallback success: {len(result['photo_urls'])} photos, video: {bool(result['video_url'])}")
+                return result
+        else:
+            print("⚠️ SnapTik returned no links.")
+    except Exception as e:
+        print(f"❌ SnapTik fallback error: {e}")
+        import traceback
+        print(traceback.format_exc())
+    
+    # --- STEP 3: Playwright fallback (delegated to existing extract_photo_post) ---
+    print("🎭 Falling back to Playwright dynamic scraping…")
+    result["source"] = "playwright"
+    return result
+
+# SnapTik fallback (kept as backup but not used by default)
+def snaptik_fallback(tiktok_url):
+    """Fallback function to extract TikTok media using SnapTik service."""
+    try:
+        print(f"🔄 Trying SnapTik fallback for: {tiktok_url}")
+        
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+            "Referer": "https://snaptik.kim/",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        
+        data = {"url": tiktok_url}
+        api_url = "https://snaptik.kim/?sd=1"
+        
+        print(f"🌐 POSTing to SnapTik: {api_url}")
+        response = requests.post(api_url, headers=headers, data=data, timeout=15)
+        response.raise_for_status()
+        
+        print(f"✅ SnapTik response received (status: {response.status_code})")
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Extract all links containing tiktokcdn
+        links = []
+        for a in soup.find_all("a", href=True):
+            href = a.get("href", "")
+            if "tiktokcdn" in href:
+                # Make sure it's a full URL
+                if href.startswith("http"):
+                    links.append(href)
+                elif href.startswith("//"):
+                    links.append("https:" + href)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_links = []
+        for link in links:
+            if link not in seen:
+                seen.add(link)
+                unique_links.append(link)
+        
+        if not unique_links:
+            print("⚠️ SnapTik returned no tiktokcdn links")
+            # Try to extract caption from SnapTik page
+            caption = ""
+            # Look for caption in various places
+            desc_elem = soup.find("div", class_=re.compile("desc|description|caption", re.I))
+            if desc_elem:
+                caption = desc_elem.get_text(strip=True)
+            
+            if not caption:
+                # Try meta tags
+                meta_desc = soup.find("meta", attrs={"property": "og:description"})
+                if meta_desc:
+                    caption = meta_desc.get("content", "").strip()
+            
+            if caption:
+                print(f"📝 SnapTik extracted caption: {caption[:100]}...")
+                return {
+                    "source": "snaptik",
+                    "photo_urls": [],
+                    "video_url": "",
+                    "caption": caption,
+                }
+            return None
+        
+        print(f"✅ SnapTik extracted {len(unique_links)} media files")
+        
+        # Determine if these are photos or videos based on URL patterns
+        photo_urls = []
+        video_url = ""
+        
+        for link in unique_links:
+            # Check if it's a video (usually contains 'video' or ends with .mp4)
+            if ".mp4" in link.lower() or "/video/" in link.lower():
+                if not video_url:  # Use first video URL found
+                    video_url = link
+            else:
+                # Assume it's a photo
+                photo_urls.append(link)
+        
+        # Try to extract caption
+        caption = ""
+        desc_elem = soup.find("div", class_=re.compile("desc|description|caption", re.I))
+        if desc_elem:
+            caption = desc_elem.get_text(strip=True)
+        
+        if not caption:
+            meta_desc = soup.find("meta", attrs={"property": "og:description"})
+            if meta_desc:
+                caption = meta_desc.get("content", "").strip()
+        
+        result = {
+            "source": "snaptik",
+            "photo_urls": photo_urls,
+            "video_url": video_url,
+        }
+        
+        if caption:
+            result["caption"] = caption
+            print(f"📝 SnapTik extracted caption: {caption[:100]}...")
+        
+        return result
+        
+    except requests.exceptions.RequestException as e:
+        print(f"❌ SnapTik request failed: {e}")
+        return None
+    except Exception as e:
+        print(f"❌ SnapTik fallback failed: {e}")
+        import traceback
+        print(traceback.format_exc())
     return None
 
 def fetch_tiktok_photo_post(url):
@@ -494,7 +929,7 @@ def download_tiktok(video_url):
     if is_photo_url:
         print("📸 Photo URL - using yt-dlp fallback (HTML parsing didn't find images)")
     else:
-            print("🎞 Using yt-dlp for video download (HTML parsing didn't find images)...")
+        print("🎞 Using yt-dlp for video download (HTML parsing didn't find images)...")
     tmpdir = tempfile.mkdtemp()
     # Use generic filename - will be image or video depending on content
     file_path = os.path.join(tmpdir, "content")
@@ -779,56 +1214,162 @@ def is_static_photo(file_path):
         print(f"⚠️ Error checking if file is static photo: {e}")
         return False
 
+def clean_ocr_text(text):
+    """
+    Clean OCR text by removing garbled characters, excessive punctuation, and noise.
+    """
+    if not text:
+        return ""
+    
+    # Remove excessive special characters (keep only common punctuation)
+    import string
+    # Keep letters, numbers, spaces, and common punctuation
+    allowed_chars = string.ascii_letters + string.digits + string.whitespace + ".,!?;:'\"-()[]"
+    cleaned = ''.join(c if c in allowed_chars else ' ' for c in text)
+    
+    # Remove excessive whitespace
+    import re
+    cleaned = re.sub(r'\s+', ' ', cleaned)
+    
+    # Remove lines that are mostly special characters or very short (< 2 chars)
+    lines = cleaned.split('\n')
+    good_lines = []
+    for line in lines:
+        line = line.strip()
+        if len(line) < 2:
+            continue
+        # Skip lines that are mostly punctuation or special chars
+        alpha_count = sum(1 for c in line if c.isalnum())
+        if alpha_count < len(line) * 0.3:  # At least 30% should be alphanumeric
+            continue
+        good_lines.append(line)
+    
+    cleaned = '\n'.join(good_lines)
+    
+    # Remove standalone single characters or very short words that are likely OCR errors
+    words = cleaned.split()
+    good_words = []
+    for word in words:
+        # Keep words that are at least 2 chars OR are common short words
+        if len(word) >= 2 or word.lower() in ['a', 'i', 'at', 'in', 'on', 'to', 'of', 'is', 'it']:
+            # Remove words that are mostly punctuation
+            if sum(1 for c in word if c.isalnum()) >= len(word) * 0.5:
+                good_words.append(word)
+    
+    cleaned = ' '.join(good_words)
+    
+    return cleaned.strip()
+
 def run_ocr_on_image(image_path):
-    """Run OCR on a single static image. Returns extracted text."""
+    """
+    Run OCR on a single static image with improved preprocessing for better text detection.
+    Downloads image if path is a URL, converts formats, applies multiple preprocessing methods.
+    Returns cleaned extracted text.
+    """
     if not OCR_AVAILABLE:
         print("⚠️ OCR not available (tesseract not installed) - skipping OCR")
         return ""
     
     try:
-        print("🖼️ Running OCR on static image…")
+        print(f"🖼️ Running OCR on image: {image_path[:60]}...")
+        
+        # If image_path is a URL, download it first
+        if image_path.startswith("http://") or image_path.startswith("https://"):
+            print(f"📥 Downloading image for OCR: {image_path[:60]}...")
+            r = requests.get(image_path, timeout=10)
+            r.raise_for_status()
+            
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+                tmp.write(r.content)
+                image_path = tmp.name
+        
+        # Read image with OpenCV
         img = cv2.imread(image_path)
         if img is None:
-            # Try with PIL if cv2 fails
+            print("⚠️ OpenCV failed to read image, trying PIL fallback...")
+            # Fallback to PIL if OpenCV fails (handles WebP, HEIC, etc.)
             pil_img = Image.open(image_path)
-            img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            # Convert PIL image to RGB numpy array
+            img = np.array(pil_img.convert("RGB"))
+            # Convert RGB to BGR for OpenCV
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        
+        # Resize if image is too large (improves OCR accuracy)
+        height, width = img.shape[:2]
+        if width > 2000 or height > 2000:
+            scale = min(2000 / width, 2000 / height)
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+            print(f"📏 Resized image from {width}x{height} to {new_width}x{new_height} for better OCR")
         
         # Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # Image preprocessing to improve OCR accuracy
-        # 1. Increase contrast
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced = clahe.apply(gray)
-        
-        # 2. Apply thresholding to make text more distinct
-        _, thresh = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # OCR config for better accuracy on stylized text
-        ocr_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?;:()[]{}-\'"&@#$% '
-        
-        # Try OCR on multiple processed versions
+        # Try multiple preprocessing methods and pick the best result
         texts = []
-        for processed_img in [gray, enhanced, thresh]:
-            try:
-                txt = image_to_string(Image.fromarray(processed_img), config=ocr_config)
-                txt_clean = txt.strip()
-                if txt_clean and len(txt_clean) > 2:
-                    texts.append(txt_clean)
-            except:
-                continue
         
-        # Return the longest/best result
-        if texts:
-            result = max(texts, key=len)
-            print(f"✅ OCR extracted {len(result)} chars from image")
-            print(f"📝 OCR text preview: {result[:200]}...")
-            return result
+        # Method 1: Adaptive thresholding
+        processed1 = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, 10
+        )
+        text1 = pytesseract.image_to_string(processed1, config="--oem 3 --psm 6")
+        if text1.strip():
+            texts.append(("adaptive_thresh", text1))
         
-        print("⚠️ OCR found no text in image")
-        return ""
+        # Method 2: Otsu thresholding
+        _, processed2 = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        text2 = pytesseract.image_to_string(processed2, config="--oem 3 --psm 6")
+        if text2.strip():
+            texts.append(("otsu_thresh", text2))
+        
+        # Method 3: Denoising + adaptive threshold
+        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        processed3 = cv2.adaptiveThreshold(
+            denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        )
+        text3 = pytesseract.image_to_string(processed3, config="--oem 3 --psm 6")
+        if text3.strip():
+            texts.append(("denoised_adaptive", text3))
+        
+        # Method 4: Inverted adaptive threshold (for white text on dark background)
+        inverted = cv2.bitwise_not(processed1)
+        text4 = pytesseract.image_to_string(inverted, config="--oem 3 --psm 6")
+        if text4.strip():
+            texts.append(("inverted", text4))
+        
+        # Method 5: Morphological operations to clean up text
+        kernel = np.ones((2, 2), np.uint8)
+        processed5 = cv2.morphologyEx(processed1, cv2.MORPH_CLOSE, kernel)
+        text5 = pytesseract.image_to_string(processed5, config="--oem 3 --psm 6")
+        if text5.strip():
+            texts.append(("morphology", text5))
+        
+        # Pick the best result (longest meaningful text)
+        best_text = ""
+        best_method = ""
+        best_score = 0
+        
+        for method, text in texts:
+            cleaned = clean_ocr_text(text)
+            # Score based on length and alphanumeric ratio
+            alpha_count = sum(1 for c in cleaned if c.isalnum())
+            score = len(cleaned) * (alpha_count / max(len(cleaned), 1))
+            if score > best_score:
+                best_score = score
+                best_text = cleaned
+                best_method = method
+        
+        if best_text:
+            print(f"✅ OCR detected text via {best_method} ({len(best_text)} chars): {best_text[:100]}...")
+            return best_text
+        else:
+            print("⚠️ No readable text detected after all preprocessing methods.")
+            return ""
+            
     except Exception as e:
-        print(f"⚠️ OCR extraction from image failed: {e}")
+        print(f"❌ OCR failed on image: {e}")
         import traceback
         print(traceback.format_exc())
         return ""
@@ -1002,6 +1543,13 @@ def get_photo_url(name):
 # GPT: Extract Venues + Summary
 # ─────────────────────────────
 def extract_places_and_context(transcript, ocr_text, caption, comments):
+    # Clean OCR text before processing
+    original_ocr_len = len(ocr_text) if ocr_text else 0
+    if ocr_text:
+        ocr_text = clean_ocr_text(ocr_text)
+        if original_ocr_len != len(ocr_text):
+            print(f"🧹 Cleaned OCR text: {len(ocr_text)} chars (was {original_ocr_len} chars before cleaning)")
+    
     # Log what we have for debugging
     print(f"📋 Content sources:")
     print(f"   - Caption: {len(caption)} chars - {caption[:100] if caption else 'None'}...")
@@ -1088,6 +1636,11 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • Photo posts: The images contain the venue names - extract them from OCR text
    • Ignore broad neighborhoods like "SoHo" or "Brooklyn" unless they're part of a venue name
    • ONLY list actual venue names that are mentioned. Do NOT use placeholders like "venue 1" or "<venue 1>".
+   • IMPORTANT: OCR text may contain garbled characters or errors. Look for REAL venue names, not random words.
+   • If OCR text is mostly garbled (lots of special characters, random letters), rely MORE on the caption.
+   • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's").
+   • Do NOT extract random words from garbled OCR text (e.g., "Danny's" or "Ballerina" if they don't appear in context).
+   • If OCR text is too garbled or unclear, prioritize the caption for venue names.
    • Be thorough - if the content is about NYC venues, there ARE venues to extract (likely in OCR text)
    • If no venues are found after careful analysis, return an empty list (no venues, just the Summary line).
 {ocr_emphasis}
@@ -1770,27 +2323,124 @@ def add_history():
 # API Endpoint
 # ─────────────────────────────
 def extract_photo_post(url):
-    """Extract photo post data from TikTok URL by scraping HTML."""
+    """Extract photo post data from TikTok URL using mobile API first, then fallback to Playwright."""
     try:
+        print(f"🌐 Extracting TikTok post data from: {url}")
+        
+        # Try TikTok mobile API FIRST (avoids bot detection)
+        try:
+            api_data = get_tiktok_post_data(url)
+            
+            if api_data.get("type") == "photo":
+                print("✅ Successfully extracted photo post via TikTok mobile API")
+                return {
+                    "photos": api_data.get("photo_urls", []),
+                    "caption": api_data.get("caption", ""),
+                    "author": api_data.get("author", ""),
+                }
+            elif api_data.get("type") == "video":
+                print("⚠️ API returned video post, not photo post")
+                # Return empty for photo extraction (video will be handled elsewhere)
+                return {
+                    "photos": [],
+                    "caption": api_data.get("caption", ""),
+                    "author": api_data.get("author", ""),
+                }
+        except Exception as api_error:
+            print(f"⚠️ TikTok mobile API failed: {api_error}")
+            print("   Trying TikTok API16 fallback...")
+            
+            # Try TikTok API16 fallback before Playwright
+            try:
+                api16_data = get_tiktok_media(url)
+                if api16_data and (api16_data.get("photo_urls") or api16_data.get("video_url")):
+                    print("✅ TikTok API16 fallback succeeded!")
+                    # Convert API16 format to our format
+                    return {
+                        "photos": api16_data.get("photo_urls", []),
+                        "caption": api16_data.get("caption", ""),
+                        "author": "",
+                        "source": "tiktok_api16",
+                    }
+                else:
+                    print("⚠️ TikTok API16 fallback returned no media")
+            except Exception as api16_error:
+                print(f"⚠️ TikTok API16 fallback failed: {api16_error}")
+            
+            print("   Falling back to Playwright HTML scraping...")
+        
+        # Fallback to Playwright HTML scraping if API and SnapTik both fail
         print(f"🌐 Fetching HTML from: {url}")
         html = None
         
-        # Try Playwright FIRST (for dynamic content) - this is critical for photo posts
+        # Try Playwright (for dynamic content) - fallback only
         playwright_used = False
         try:
             from playwright.sync_api import sync_playwright
             print("🎭 Using Playwright to render dynamic content...")
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
+                # Launch browser with stealth settings to avoid bot detection
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                    ]
+                )
+                context = browser.new_context(
+                    viewport={'width': 1920, 'height': 1080},
+                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    locale='en-US',
+                    timezone_id='America/New_York',
+                )
+                # Remove webdriver property
+                context.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+                    // Override permissions
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                            Promise.resolve({ state: Notification.permission }) :
+                            originalQuery(parameters)
+                    );
+                """)
+                page = context.new_page()
                 # Set a longer timeout for TikTok to load
                 page.set_default_timeout(60000)
+                
+                # Set extra headers to look like a real browser
+                page.set_extra_http_headers({
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'DNT': '1',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'none',
+                    'Cache-Control': 'max-age=0',
+                })
+                
                 print(f"   Navigating to {url}...")
                 # Use networkidle to wait for all resources to load
                 page.goto(url, wait_until="networkidle", timeout=60000)
                 print("   Waiting for dynamic content to load...")
                 # Wait longer for TikTok's JavaScript to load the caption (photo posts need more time)
-                page.wait_for_timeout(8000)
+                page.wait_for_timeout(10000)  # Increased wait time
+                
+                # Try to wait for actual content, not generic page
+                try:
+                    # Wait for TikTok content to load (not generic page)
+                    page.wait_for_selector('article, [data-e2e="browse-video-desc"], [data-e2e="video-desc"]', timeout=10000)
+                    print("   ✅ Found TikTok content elements")
+                except:
+                    print("   ⚠️ Content elements not found, but continuing...")
+                    page.wait_for_timeout(5000)  # Extra wait
                 
                 # Try multiple selectors that TikTok uses for captions
                 caption_selectors = [
@@ -1816,14 +2466,28 @@ def extract_photo_post(url):
                     page.wait_for_timeout(5000)
                 
                 html = page.content()
+                context.close()
                 browser.close()
                 playwright_used = True
                 print(f"✅ Rendered HTML with Playwright ({len(html)} chars)")
                 
                 # Check if we got the real caption (not generic TikTok page)
-                if "Download TikTok Lite" in html or ("Make Your Day" in html and len(html) < 100000):
-                    print("⚠️ Warning: Still seeing generic TikTok page title - TikTok may be blocking automated access")
-                    print("   Trying to extract caption from rendered HTML anyway...")
+                if "Download TikTok Lite" in html or ("Make Your Day" in html and len(html) < 150000):
+                    print("⚠️ Warning: Still seeing generic TikTok page - TikTok may be blocking automated access")
+                    print("   Checking for actual content indicators...")
+                    # Check if we have actual TikTok content
+                    has_real_content = (
+                        '__UNIVERSAL_DATA__' in html or 
+                        'SIGI_STATE' in html or 
+                        'ItemModule' in html or
+                        'imagePost' in html or
+                        'ImageList' in html
+                    )
+                    if not has_real_content:
+                        print("   ⚠️ No TikTok data structures found - TikTok is likely blocking access")
+                        print("   💡 Tip: TikTok may require manual browser access or cookies")
+                    else:
+                        print("   ✅ Found TikTok data structures despite generic title")
         except ImportError:
             print("⚠️ Playwright not available, falling back to static HTML")
         except Exception as e:
@@ -1923,17 +2587,51 @@ def extract_photo_post(url):
             
             return found_photos, found_caption
         
-        # Method 1: Try window.__UNIVERSAL_DATA__
+        # Method 1: Try window.__UNIVERSAL_DATA__ with explicit ItemModule parsing
         match = re.search(r'window\.__UNIVERSAL_DATA__\s*=\s*({.+?});', html, re.DOTALL)
         if match:
             try:
                 data = json.loads(match.group(1))
                 print("✅ Found window.__UNIVERSAL_DATA__")
+                
+                # Explicitly check for ItemModule (as per user requirements)
+                if "ItemModule" in data and isinstance(data["ItemModule"], dict):
+                    print("   Found ItemModule - extracting first post...")
+                    item_module = data["ItemModule"]
+                    # Get the first post from ItemModule
+                    first_post_key = list(item_module.keys())[0] if item_module else None
+                    if first_post_key:
+                        first_post = item_module[first_post_key]
+                        
+                        # Extract images array (as per user requirements)
+                        if "images" in first_post and isinstance(first_post["images"], list):
+                            for img in first_post["images"]:
+                                if isinstance(img, dict):
+                                    # Try url field
+                                    if "url" in img and isinstance(img["url"], str):
+                                        photos.append(img["url"])
+                                    # Try urlList array
+                                    elif "urlList" in img and isinstance(img["urlList"], list) and len(img["urlList"]) > 0:
+                                        photos.append(img["urlList"][0])
+                                elif isinstance(img, str) and img.startswith("http"):
+                                    photos.append(img)
+                            print(f"   ✅ Extracted {len(photos)} images from ItemModule.images[]")
+                        
+                        # Extract desc (caption) from first post
+                        if "desc" in first_post and first_post["desc"]:
+                            caption = str(first_post["desc"])
+                            print(f"   ✅ Extracted caption from ItemModule: {caption[:100]}...")
+                
+                # Fallback to recursive search if ItemModule parsing didn't work
+                if not photos or not caption:
+                    print("   ItemModule parsing incomplete, trying recursive search...")
                 found_photos, found_caption = find_in_data(data)
                 photos.extend(found_photos)
                 if found_caption and not caption:
                     caption = found_caption
-                print(f"   Found {len(found_photos)} photos, caption: {found_caption[:50] if found_caption else 'None'}...")
+                    print(f"   Recursive search found {len(found_photos)} photos, caption: {found_caption[:50] if found_caption else 'None'}...")
+                else:
+                    print(f"   ✅ ItemModule extraction complete: {len(photos)} photos, caption: {caption[:50] if caption else 'None'}...")
             except (json.JSONDecodeError, KeyError) as e:
                 print(f"⚠️ Failed to parse __UNIVERSAL_DATA__: {e}")
                 import traceback
@@ -2246,12 +2944,42 @@ def extract_photo_post(url):
                 # Save a sample of HTML for debugging (first 5000 chars)
                 print(f"   HTML sample (first 500 chars): {html[:500]}")
         
+        # If still no photos found, try TikTok API16 as final fallback
+        if not photos:
+            print("⚠️ All HTML extraction methods failed - trying TikTok API16 fallback...")
+            try:
+                api16_data = get_tiktok_media(url)
+                if api16_data and api16_data.get("photo_urls"):
+                    print("✅ TikTok API16 fallback succeeded!")
+                    photos = api16_data.get("photo_urls", [])
+                    if api16_data.get("caption") and not caption:
+                        caption = api16_data.get("caption", "")
+                elif api16_data and api16_data.get("caption") and not caption:
+                    # Even if no photos, use caption from API16
+                    caption = api16_data.get("caption", "")
+            except Exception as api16_error:
+                print(f"⚠️ TikTok API16 fallback failed: {api16_error}")
+        
         return {"photos": photos, "caption": caption}
     except Exception as e:
         print(f"❌ Error extracting photo post: {e}")
         import traceback
         print(traceback.format_exc())
-        return None
+        
+        # Try TikTok API16 as last resort even if there's an error
+        try:
+            print("🔄 Trying TikTok API16 as last resort...")
+            api16_data = get_tiktok_media(url)
+            if api16_data and (api16_data.get("photo_urls") or api16_data.get("caption")):
+                print("✅ TikTok API16 succeeded as last resort!")
+                return {
+                    "photos": api16_data.get("photo_urls", []),
+                    "caption": api16_data.get("caption", ""),
+                }
+        except:
+            pass
+        
+        return {"photos": [], "caption": ""}
 
 
 @app.route("/api/extract", methods=["POST"])
@@ -2265,172 +2993,139 @@ def extract_api():
         }), 400
     
     # ===== PHOTO POST HANDLING =====
-    # Detect if the TikTok URL contains /photo/ and skip yt-dlp entirely
+    # Detect if the TikTok URL contains /photo/ and use robust extractor
     if "/photo/" in url.lower():
-        print("📸 Detected TikTok photo post - skipping yt-dlp, using HTML extraction")
+        print("📸 Detected TikTok photo post - using robust extractor (API16 -> SnapTik -> Playwright)")
         
-        try:
-            # Clean URL - remove query parameters that might interfere
-            clean_url = url.split('?')[0] if '?' in url else url
-            if clean_url != url:
-                print(f"🔗 Cleaned URL: {url} -> {clean_url}")
+        # Clean URL - remove query parameters that might interfere
+        clean_url = url.split('?')[0] if '?' in url else url
+        if clean_url != url:
+            print(f"🔗 Cleaned URL: {url} -> {clean_url}")
+        
+        # Use robust extractor (API16 -> SnapTik -> Playwright)
+        media = robust_tiktok_extractor(clean_url)
+        
+        if media.get("photo_urls"):
+            photo_urls = media["photo_urls"]
+            caption = media.get("caption", "").strip()
             
-            # Extract photo post data (images + caption) from HTML
+            print(f"✅ Robust extractor succeeded via {media['source']}: {len(photo_urls)} photos")
+        else:
+            # Fallback to existing extract_photo_post if robust extractor didn't find photos
+            print("⚠️ Robust extractor returned no photos - trying extract_photo_post...")
             photo_data = extract_photo_post(clean_url)
             
-            if not photo_data or not photo_data.get("photos"):
-                print("⚠️ HTML extraction failed - trying yt-dlp as fallback...")
-                # Fallback: try yt-dlp for photo posts (sometimes it works)
-                # Continue to normal video flow below
-                pass
-            else:
-                # Successfully extracted photos via HTML - process them
+            if photo_data and photo_data.get("photos"):
                 photo_urls = photo_data["photos"]
                 caption = photo_data.get("caption", "").strip()
+                print(f"✅ extract_photo_post succeeded: {len(photo_urls)} photos")
+            else:
+                print("⚠️ All extraction methods failed - returning error")
+                return jsonify({
+                    "error": "Photo extraction failed",
+                    "message": "Unable to extract photos from the TikTok photo post. The post may be private or the URL may be invalid.",
+                    "video_url": url,
+                }), 200
+        
+        if photo_urls:
+            print(f"✅ Extracted {len(photo_urls)} photos, caption: {caption[:100] if caption else 'None'}...")
+            
+            # Download first few images locally (e.g. temp_photo_1.jpg, temp_photo_2.jpg)
+            ocr_text = ""
+            tmpdir = tempfile.mkdtemp()
+            
+            try:
+                # Process first few images with OCR (limit to 5 for performance)
+                num_images = min(5, len(photo_urls))
+                print(f"🔍 Processing {num_images} images with OCR...")
                 
-                print(f"✅ Extracted {len(photo_urls)} photos via HTML, caption: {caption[:100] if caption else 'None'}...")
-                
-                # Download first few images locally (e.g. temp_photo_1.jpg, temp_photo_2.jpg)
-                ocr_text = ""
-                tmpdir = tempfile.mkdtemp()
-                
-                try:
-                    # Download first few images (limit to 5 for performance)
-                    num_images = min(5, len(photo_urls))
-                    print(f"🔍 Downloading {num_images} images for OCR...")
-                    
-                    for i, img_url in enumerate(photo_urls[:num_images]):
-                        try:
-                            print(f"📥 Downloading photo {i+1}/{num_images}...")
-                            response = requests.get(img_url, headers={
-                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                            }, timeout=30)
-                            response.raise_for_status()
-                            
-                            # Determine file extension
-                            ext = '.jpg'
-                            if '.png' in img_url.lower():
-                                ext = '.png'
-                            elif '.webp' in img_url.lower():
-                                ext = '.webp'
-                            
-                            # Save to temp file (e.g., temp_photo_1.jpg)
-                            temp_photo_path = os.path.join(tmpdir, f"temp_photo_{i+1}{ext}")
-                            with open(temp_photo_path, "wb") as f:
-                                f.write(response.content)
-                            
-                            # Run OCR on the downloaded image using existing OCR pipeline
-                            if OCR_AVAILABLE:
-                                print(f"🔍 Running OCR on photo {i+1}...")
-                                photo_ocr = run_ocr_on_image(temp_photo_path)
-                                if photo_ocr and len(photo_ocr.strip()) > 3:
-                                    ocr_text += photo_ocr + " "
-                                    print(f"✅ OCR extracted text from photo {i+1} ({len(photo_ocr)} chars): {photo_ocr[:150]}...")
-                                else:
-                                    print(f"⚠️ OCR found no text in photo {i+1} (OCR returned: {photo_ocr[:50] if photo_ocr else 'None'}...)")
-                            else:
-                                print(f"⚠️ OCR not available - skipping photo {i+1}")
-                                print(f"   OCR_AVAILABLE={OCR_AVAILABLE}")
-                        except Exception as e:
-                            print(f"⚠️ Failed to process photo {i+1}: {e}")
-                            continue
-                    
-                    ocr_text = ocr_text.strip()
-                    print(f"📊 Total OCR text extracted: {len(ocr_text)} chars")
-                    if ocr_text:
-                        print(f"📝 OCR text preview: {ocr_text[:300]}...")
-                    else:
-                        print("⚠️ No OCR text extracted from any images")
-                    
-                finally:
-                    # Clean up temp directory
+                for i, img_url in enumerate(photo_urls[:num_images]):
                     try:
-                        import shutil
-                        shutil.rmtree(tmpdir, ignore_errors=True)
-                    except:
-                        pass
-                
-                # Combine OCR + caption text
-                combined_text = f"{caption} {ocr_text}".strip()
-                
-                # Validate we have some text to extract from
-                if not combined_text:
-                    return jsonify({
-                        "error": "No extractable text",
-                        "message": "The photo post has no caption and OCR found no text in the images. Unable to extract venue information.",
-                        "video_url": url,
-                        "places_extracted": []
-                    }), 200
+                        # Run OCR directly on the URL - the function will download and process it
+                        if OCR_AVAILABLE:
+                            print(f"🔍 Running OCR on photo {i+1}/{num_images}...")
+                            photo_ocr = run_ocr_on_image(img_url)
+                            if photo_ocr and len(photo_ocr.strip()) > 3:
+                                ocr_text += photo_ocr + " "
+                                print(f"✅ OCR extracted text from photo {i+1} ({len(photo_ocr)} chars): {photo_ocr[:150]}...")
+                            else:
+                                print(f'⚠️ OCR found no text in photo {i+1} (OCR returned: {photo_ocr[:50] if photo_ocr else "None"}...)')
+                        else:
+                            print(f"⚠️ OCR not available - skipping photo {i+1}")
+                            print(f"   OCR_AVAILABLE={OCR_AVAILABLE}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to process photo {i+1}: {e}")
+                        continue
             
-                print(f"📋 Text sources: Caption={len(caption)} chars, OCR={len(ocr_text)} chars")
                 
-                # Pass combined OCR + caption through existing GPT-based place extraction function
-                print(f"📝 Extracting venues from photo post using GPT...")
-                transcript = ""  # No audio for photo posts
-                comments_text = ""
-                venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-            
-                # Build response with same JSON structure as video extraction
-                data = {
-                    "video_url": url,
-                    "summary_title": context_title or caption or "TikTok Photo Post",
-                    "context_summary": context_title or caption or "TikTok Photo Post",
-                    "places_extracted": [],
-                    "photo_urls": photo_urls,  # Include photo URLs in response
-                    "caption_extracted": caption  # Include actual caption for debugging
-                }
-                
-                # Enrich places if any were found
-                if venues:
-                    username = extract_username_from_url(url)
-                    places_extracted = enrich_places_parallel(
-                        venues, transcript, ocr_text, caption, comments_text,
-                        url, username, context_title
-                    )
-                    data["places_extracted"] = places_extracted
-                
-                # Cache the result
-                vid = get_tiktok_id(url)
-                if vid:
-                    cache = load_cache()
-                    cache[vid] = data
-                    save_cache(cache)
-                
-                return jsonify(data), 200
-            
-            # If HTML extraction failed, try to use caption if we got one
-            if photo_data and photo_data.get("caption"):
-                caption = photo_data.get("caption", "").strip()
-                print(f"📝 HTML extraction found caption but no photos: {caption[:100]}...")
-                print("📝 Attempting venue extraction from caption only...")
-                
-                # Extract venues from caption only
-                transcript = ""
-                ocr_text = ""
-                comments_text = ""
-                venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-                
-                # Build response
-                data = {
-                    "video_url": url,
-                    "summary_title": context_title or caption or "TikTok Photo Post",
-                    "context_summary": context_title or caption or "TikTok Photo Post",
-                    "places_extracted": [],
-                    "photo_urls": [],  # No photos found
-                    "caption_extracted": caption  # Include actual caption for debugging
-                }
-                
-                if venues:
-                    username = extract_username_from_url(url)
-                    places_extracted = enrich_places_parallel(
-                        venues, transcript, ocr_text, caption, comments_text,
-                        url, username, context_title
-                    )
-                    data["places_extracted"] = places_extracted
+                ocr_text = ocr_text.strip()
+                print(f"📊 Total OCR text extracted: {len(ocr_text)} chars")
+                if ocr_text:
+                    print(f"📝 OCR text preview: {ocr_text[:300]}...")
                 else:
-                    data["places_extracted"] = []
+                    print("⚠️ No OCR text extracted from any images")
+            finally:
+                # Clean up temp directory
+                try:
+                    import shutil
+                    shutil.rmtree(tmpdir, ignore_errors=True)
+                except:
+                    pass
+            
+            # Combine OCR + caption text
+            combined_text = f"{caption} {ocr_text}".strip()
+            
+            # Validate we have some text to extract from
+            if not combined_text:
+                return jsonify({
+                    "error": "No extractable text",
+                    "message": "The photo post has no caption and OCR found no text in the images. Unable to extract venue information.",
+                    "video_url": url,
+                    "places_extracted": []
+                }), 200
+            
+            print(f"📋 Text sources: Caption={len(caption)} chars, OCR={len(ocr_text)} chars")
+            print(f"📝 Caption preview: {caption[:200] if caption else 'None'}...")
+            print(f"📝 OCR preview: {ocr_text[:200] if ocr_text else 'None'}...")
+            
+            # Pass combined OCR + caption through existing GPT-based place extraction function
+            print(f"🤖 Extracting venues from photo post using GPT...")
+            transcript = ""  # No audio for photo posts
+            comments_text = ""
+            print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
+            venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            print(f"🤖 GPT returned {len(venues)} venues: {venues}")
+            print(f"🤖 GPT returned title: {context_title}")
+            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+            print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+            
+            # Build response with same JSON structure as video extraction
+            data = {
+                "video_url": url,
+                "summary_title": context_title or caption or "TikTok Photo Post",
+                "context_summary": context_title or caption or "TikTok Photo Post",
+                "places_extracted": [],
+                "photo_urls": photo_urls,  # Include photo URLs in response
+                "caption_extracted": caption  # Include actual caption for debugging
+            }
+            
+            # Enrich places if any were found
+            if venues:
+                print(f"🌟 Enriching {len(venues)} places with Google Maps data...")
+                username = extract_username_from_url(url)
+                places_extracted = enrich_places_parallel(
+                    venues, transcript, ocr_text, caption, comments_text,
+                    url, username, context_title
+                )
+                print(f"✅ Enriched {len(places_extracted)} places successfully")
+                data["places_extracted"] = places_extracted
+            else:
+                print(f"⚠️ No venues found by GPT extraction")
+                print(f"   This could mean:")
+                print(f"   - The caption/OCR text doesn't contain venue names")
+                print(f"   - GPT couldn't identify venues in the text")
+                print(f"   - The text was too short or unclear")
+                data["places_extracted"] = []
             
             # Cache the result
             vid = get_tiktok_id(url)
@@ -2439,46 +3134,52 @@ def extract_api():
                 cache[vid] = data
                 save_cache(cache)
             
-                return jsonify(data), 200
+            return jsonify(data), 200
+        
+        # If HTML extraction failed, try to use caption if we got one
+        if photo_data and photo_data.get("caption") and not photo_data.get("photos"):
+            caption = photo_data.get("caption", "").strip()
+            print(f"📝 HTML extraction found caption but no photos: {caption[:100]}...")
+            print("📝 Attempting venue extraction from caption only...")
             
-            # If no caption either, fall through to yt-dlp (though it likely won't work)
-            print("📸 HTML extraction failed - no caption found, trying yt-dlp (may fail)...")
+            # Extract venues from caption only
+            transcript = ""
+            ocr_text = ""
+            comments_text = ""
+            venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
             
-        except Exception as e:
-            print(f"❌ Error processing photo post: {e}")
-            import traceback
-            print(traceback.format_exc())
-            # Try to use caption if we got one before the error
-            if 'photo_data' in locals() and photo_data and photo_data.get("caption"):
-                caption = photo_data.get("caption", "").strip()
-                print(f"📝 Using caption from before error: {caption[:100]}...")
-                # Extract from caption
-                transcript = ""
-                ocr_text = ""
-                comments_text = ""
-                venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-                
-                data = {
-                    "video_url": url,
-                    "summary_title": context_title or caption or "TikTok Photo Post",
-                    "context_summary": context_title or caption or "TikTok Photo Post",
-                    "places_extracted": [],
-                    "photo_urls": []
-                }
-                
-                if venues:
-                    username = extract_username_from_url(url)
-                    places_extracted = enrich_places_parallel(
-                        venues, transcript, ocr_text, caption, comments_text,
-                        url, username, context_title
-                    )
-                    data["places_extracted"] = places_extracted
-                
-                return jsonify(data), 200
+            # Build response
+            data = {
+                "video_url": url,
+                "summary_title": context_title or caption or "TikTok Photo Post",
+                "context_summary": context_title or caption or "TikTok Photo Post",
+                "places_extracted": [],
+                "photo_urls": [],  # No photos found
+                "caption_extracted": caption  # Include actual caption for debugging
+            }
             
-            # Fall through to yt-dlp as last resort
-            print("📸 Falling back to yt-dlp after error...")
+            if venues:
+                username = extract_username_from_url(url)
+                places_extracted = enrich_places_parallel(
+                    venues, transcript, ocr_text, caption, comments_text,
+                    url, username, context_title
+                )
+                data["places_extracted"] = places_extracted
+            else:
+                data["places_extracted"] = []
+            
+            # Cache the result
+            vid = get_tiktok_id(url)
+            if vid:
+                cache = load_cache()
+                cache[vid] = data
+                save_cache(cache)
+            
+            return jsonify(data), 200
+        
+        # If no caption either, fall through to yt-dlp (though it likely won't work)
+        print("📸 HTML extraction failed - no caption found, trying yt-dlp (may fail)...")
     
     # ===== VIDEO POST HANDLING =====
     # Continue with normal video processing (works for both videos and photo posts via yt-dlp fallback)
@@ -2508,23 +3209,53 @@ def extract_api():
             print("⚡ Using cached result.")
             return jsonify(cached_data)
 
-    # Try HTML extraction first for photo posts (before yt-dlp)
+    # Try TikTok API16 first for video posts (before yt-dlp)
+    api_video_url = None
+    api_caption = ""
+    if not is_photo_post:
+        print("🎥 Video post detected - trying TikTok API16 first...")
+        try:
+            api16_data = get_tiktok_media(url)
+            if api16_data:
+                api_video_url = api16_data.get("video_url")
+                api_caption = api16_data.get("caption", "").strip()
+                if api_video_url:
+                    print(f"✅ Got video URL from API16: {api_video_url[:100]}...")
+                if api_caption:
+                    print(f"✅ Got caption from API16 ({len(api_caption)} chars): {api_caption[:200]}...")
+        except Exception as e:
+            print(f"⚠️ TikTok API16 failed for video: {e}")
+            # Try mobile API as fallback
+            try:
+                api_data = get_tiktok_post_data(url)
+                if api_data.get("type") == "video":
+                    api_video_url = api_data.get("video_url")
+                    api_caption = api_data.get("caption", "").strip()
+                    if api_video_url:
+                        print(f"✅ Got video URL from mobile API: {api_video_url[:100]}...")
+                    if api_caption:
+                        print(f"✅ Got caption from mobile API ({len(api_caption)} chars): {api_caption[:200]}...")
+            except Exception as e2:
+                print(f"⚠️ TikTok mobile API also failed: {e2}")
+            # Continue with yt-dlp fallback
+    
+    # Try API/HTML extraction for photo posts (before yt-dlp)
     html_caption = ""
     if is_photo_post:
-        print("📸 Photo post detected - trying HTML extraction for caption...")
+        print("📸 Photo post detected - trying mobile API/HTML extraction for caption...")
         try:
             clean_url = url.split('?')[0] if '?' in url else url
             photo_data_html = extract_photo_post(clean_url)
             if photo_data_html:
                 html_caption = photo_data_html.get("caption", "").strip()
                 if html_caption:
-                    print(f"✅ Got caption from HTML ({len(html_caption)} chars): {html_caption[:200]}...")
+                    print(f"✅ Got caption from API/HTML ({len(html_caption)} chars): {html_caption[:200]}...")
                 else:
-                    print(f"⚠️ HTML extraction found no caption")
+                    print(f"⚠️ API/HTML extraction found no caption")
                 if photo_data_html.get("photos"):
                     print(f"✅ Also found {len(photo_data_html.get('photos', []))} photos")
         except Exception as e:
-            print(f"⚠️ HTML extraction failed: {e}")
+            print(f"⚠️ API/HTML extraction failed: {e}")
             import traceback
             print(traceback.format_exc())
 
@@ -2550,8 +3281,10 @@ def extract_api():
                         print("⚡ Using cached result (from metadata ID).")
                         return jsonify(cached_data)
         
-        # Extract caption from multiple possible fields
+        # Extract caption from multiple possible fields (prioritize API caption if available)
         caption = (
+            api_caption or  # API caption takes priority
+            html_caption or  # HTML caption for photo posts
             meta.get("description", "") or 
             meta.get("fulltitle", "") or 
             meta.get("title", "") or

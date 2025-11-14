@@ -227,6 +227,13 @@ const MapView = ({ places }) => {
               onCloseClick={() => setSelectedPlace(null)}
             >
               <div className="map-info-window">
+                {selectedPlace.photo_url && (
+                  <img 
+                    src={selectedPlace.photo_url} 
+                    alt={selectedPlace.name}
+                    className="map-info-photo"
+                  />
+                )}
                 <h3 className="map-info-title">{selectedPlace.name}</h3>
                 {selectedPlace.summary && (
                   <p className="map-info-summary">
@@ -264,13 +271,22 @@ const MapView = ({ places }) => {
               className={`map-place-card ${selectedPlace?.name === place.name ? "selected" : ""}`}
               onClick={() => setSelectedPlace(place)}
             >
-              <h4 className="map-place-name">{place.name}</h4>
-              {place.address && (
-                <p className="map-place-address">{place.address}</p>
+              {place.photo_url && (
+                <img 
+                  src={place.photo_url} 
+                  alt={place.name}
+                  className="map-place-photo"
+                />
               )}
-              {place.summary && (
-                <p className="map-place-summary">{place.summary.substring(0, 80)}...</p>
-              )}
+              <div style={{ padding: "16px" }}>
+                <h4 className="map-place-name">{place.name}</h4>
+                {place.address && (
+                  <p className="map-place-address">{place.address}</p>
+                )}
+                {place.summary && (
+                  <p className="map-place-summary">{place.summary.substring(0, 80)}...</p>
+                )}
+              </div>
             </div>
           ))}
         </div>

@@ -1,10 +1,7 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect } from "react";
 import { Grid } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
-import Login from "./components/Login";
-import Signup from "./components/Signup";
-import { UserContext } from "./contexts/UserContext";
 import MapView from "./components/MapView";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://planit-backend-fbm5.onrender.com";
@@ -14,9 +11,6 @@ console.log("🔧 API_BASE:", API_BASE);
 console.log("🔧 REACT_APP_API_URL env:", process.env.REACT_APP_API_URL);
 
 function App() {
-  const { user, token, loading: userLoading } = useContext(UserContext);
-  const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState("login"); // "login" or "signup"
   const [savedPlaces, setSavedPlaces] = useState({});
   const [activeMenu, setActiveMenu] = useState(null);
   const [videoUrl, setVideoUrl] = useState("");
@@ -30,6 +24,8 @@ function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [abortController, setAbortController] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(false);
+  const [selectedList, setSelectedList] = useState(null); // For saved list detail view
+  const [showListMap, setShowListMap] = useState(false); // For map view in list detail
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -38,12 +34,10 @@ function App() {
     const sharedUrl = urlParams.get("url") || urlParams.get("tiktok_url") || urlParams.get("text");
     if (sharedUrl && sharedUrl.includes("tiktok.com")) {
       setVideoUrl(sharedUrl);
-      // Auto-extract if user is logged in
-      if (user && token) {
-        setTimeout(() => {
-          handleExtract(sharedUrl);
-        }, 500);
-      }
+      // Auto-extract
+      setTimeout(() => {
+        handleExtract(sharedUrl);
+      }, 500);
     }
 
     // Handle Android share intent
@@ -51,15 +45,13 @@ function App() {
       const sharedUrl = window.Android.getSharedUrl();
       if (sharedUrl && sharedUrl.includes("tiktok.com")) {
         setVideoUrl(sharedUrl);
-        if (user && token) {
-          setTimeout(() => {
-            handleExtract(sharedUrl);
-          }, 500);
-        }
+        setTimeout(() => {
+          handleExtract(sharedUrl);
+        }, 500);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, token]);
+  }, []);
 
   // Load saved places and history from API + localStorage
   useEffect(() => {
@@ -85,78 +77,17 @@ function App() {
       }
     }
 
-    if (user && token) {
-      // Load saved places from API
-      fetch(`${API_BASE}/api/user/saved-places`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && !data.error) {
-            setSavedPlaces(data);
-          }
-        })
-        .catch((err) => console.error("Failed to load saved places:", err));
-
-      // Load history from API and merge with localStorage
-      fetch(`${API_BASE}/api/user/history`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && !data.error) {
-            const apiHistory = data.map((h) => ({
-              title: h.summary_title || "Untitled",
-              time: new Date(h.timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              url: h.video_url,
-            }));
-            
-            // Merge API history with localStorage (API takes priority, but keep unique URLs from both)
-            const localHistoryParsed = localHistory ? JSON.parse(localHistory) : [];
-            const mergedHistory = [...apiHistory];
-            
-            // Add local history items that aren't in API history
-            localHistoryParsed.forEach((localItem) => {
-              if (!mergedHistory.find((h) => h.url === localItem.url)) {
-                mergedHistory.push(localItem);
-              }
-            });
-            
-            // Sort by time (most recent first) and limit to 50
-            mergedHistory.sort((a, b) => {
-              // Try to parse time, but if it fails, keep order
-              return 0; // Keep API order (most recent first)
-            });
-            
-            setHistory(mergedHistory.slice(0, 50));
-            
-            // Save merged history back to localStorage
-            localStorage.setItem("planit_history", JSON.stringify(mergedHistory.slice(0, 50)));
-          }
-        })
-        .catch((err) => {
-          console.error("Failed to load history from API:", err);
-          // If API fails, use localStorage history
-          if (localHistory) {
-            try {
-              const parsed = JSON.parse(localHistory);
-              setHistory(parsed);
-            } catch (e) {
-              console.error("Failed to parse localStorage history:", e);
-            }
-          }
-        });
-    } else {
-      setSavedPlaces({});
-      // Keep localStorage history even when not logged in
-      if (!localHistory) {
-        setHistory([]);
+    // Load saved places from localStorage
+    const localSavedPlaces = localStorage.getItem("planit_saved_places");
+    if (localSavedPlaces) {
+      try {
+        const parsed = JSON.parse(localSavedPlaces);
+        setSavedPlaces(parsed);
+      } catch (e) {
+        console.error("Failed to parse localStorage saved places:", e);
       }
     }
-  }, [user, token]);
+  }, []);
 
   // ===== Extract TikTok =====
   const handleExtract = async (urlToUse = null, isFromHistory = false) => {
@@ -270,70 +201,28 @@ function App() {
         cleanData.context_summary?.replace(/(^"|"$)/g, "") ||
         "Untitled";
 
-      // Save to history API if logged in
-      if (user && token) {
-        fetch(`${API_BASE}/api/user/history`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            video_url: url,
-            summary_title: title,
-          }),
-        })
-        .then(() => {
-          // Reload history from API to ensure consistency
-          return fetch(`${API_BASE}/api/user/history`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-        })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && !data.error) {
-            const apiHistory = data.map((h) => ({
-              title: h.summary_title || "Untitled",
-              time: new Date(h.timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              url: h.video_url,
-            }));
-            setHistory(apiHistory);
-            // Also save to localStorage for persistence
-            try {
-              localStorage.setItem("planit_history", JSON.stringify(apiHistory));
-            } catch (e) {
-              console.error("Failed to save history to localStorage:", e);
-            }
-          }
-        })
-        .catch((err) => console.error("Failed to save/load history:", err));
-      } else {
-        // If not logged in, update local state AND localStorage
-        const newHistoryItem = {
-          title,
-          time: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          url,
-        };
-        setHistory((prev) => {
-          const updated = [
-            newHistoryItem,
-            ...prev.filter((h) => h.url !== url).slice(0, 49), // Keep max 50 items
-          ];
-          // Save to localStorage
-          try {
-            localStorage.setItem("planit_history", JSON.stringify(updated));
-          } catch (e) {
-            console.error("Failed to save history to localStorage:", e);
-          }
-          return updated;
-        });
-      }
+      // Save to history (localStorage only)
+      const newHistoryItem = {
+            title,
+            time: new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            url,
+      };
+      setHistory((prev) => {
+        const updated = [
+          newHistoryItem,
+          ...prev.filter((h) => h.url !== url).slice(0, 49), // Keep max 50 items
+        ];
+        // Save to localStorage
+        try {
+          localStorage.setItem("planit_history", JSON.stringify(updated));
+        } catch (e) {
+          console.error("Failed to save history to localStorage:", e);
+        }
+        return updated;
+      });
       setLoadingStep("");
     } catch (err) {
       console.error("Extraction error:", err);
@@ -381,7 +270,7 @@ function App() {
       setActiveTab("home");
     } else {
       // If not cached, extract it (but keep viewingHistory flag)
-      setVideoUrl(item.url);
+    setVideoUrl(item.url);
       setViewingHistory(true); // Set before extract so it doesn't get reset
       await handleExtract(item.url, true); // Pass flag to indicate it's from history
       setActiveTab("home");
@@ -397,92 +286,79 @@ function App() {
   };
 
   // ===== Lists =====
-  const togglePlaceInList = async (listName, place) => {
-    if (!user || !token) {
-      setShowAuth(true);
-      setAuthMode("login");
-      return;
-    }
-
+  const togglePlaceInList = (listName, place) => {
     const current = savedPlaces[listName] || [];
     const alreadyInList = current.some((p) => p.name === place.name);
 
     if (alreadyInList) {
       // Remove from list
+      const updated = {
+        ...savedPlaces,
+        [listName]: (savedPlaces[listName] || []).filter((p) => p.name !== place.name),
+      };
+      // Remove empty lists
+      if (updated[listName].length === 0) {
+        delete updated[listName];
+      }
+      setSavedPlaces(updated);
+      // Save to localStorage
       try {
-        await fetch(`${API_BASE}/api/user/saved-places`, {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            list_name: listName,
-            place_name: place.name,
-          }),
-        });
-        setSavedPlaces((prev) => ({
-          ...prev,
-          [listName]: (prev[listName] || []).filter((p) => p.name !== place.name),
-        }));
-      } catch (err) {
-        console.error("Failed to remove place:", err);
+        localStorage.setItem("planit_saved_places", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to save to localStorage:", e);
       }
     } else {
       // Add to list
+      const updated = {
+        ...savedPlaces,
+        [listName]: [...(savedPlaces[listName] || []), place],
+      };
+      setSavedPlaces(updated);
+      // Save to localStorage
       try {
-        await fetch(`${API_BASE}/api/user/saved-places`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            list_name: listName,
-            place_data: place,
-          }),
-        });
-        setSavedPlaces((prev) => ({
-          ...prev,
-          [listName]: [...(prev[listName] || []), place],
-        }));
-      } catch (err) {
-        console.error("Failed to add place:", err);
+        localStorage.setItem("planit_saved_places", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to save to localStorage:", e);
       }
     }
   };
 
   const handleAddNewList = () => {
     const listName = prompt("Add to new list (e.g., NYC Eats):");
-    if (!listName) return;
-    setSavedPlaces((prev) => ({ ...prev, [listName]: [] }));
+    if (!listName || !listName.trim()) return;
+    const trimmedName = listName.trim();
+    const updated = { ...savedPlaces, [trimmedName]: [] };
+    setSavedPlaces(updated);
+    // Save to localStorage
+    try {
+      localStorage.setItem("planit_saved_places", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save to localStorage:", e);
+    }
   };
 
-  const handleRemoveFromList = async (listName, index) => {
+  const handleRemoveFromList = (listName, index) => {
     if (!window.confirm(`Remove this place from "${listName}"?`)) return;
     
     const place = savedPlaces[listName]?.[index];
-    if (!place || !user || !token) return;
+    if (!place) return;
 
+    const updated = { ...savedPlaces };
+    const listPlaces = [...(updated[listName] || [])];
+    listPlaces.splice(index, 1);
+    
+    if (listPlaces.length === 0) {
+      delete updated[listName];
+    } else {
+      updated[listName] = listPlaces;
+    }
+    
+    setSavedPlaces(updated);
+    // Save to localStorage
     try {
-      await fetch(`${API_BASE}/api/user/saved-places`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          list_name: listName,
-          place_name: place.name,
-        }),
-      });
-      setSavedPlaces((prev) => {
-        const updated = [...(prev[listName] || [])];
-        updated.splice(index, 1);
-        return { ...prev, [listName]: updated };
-      });
-    } catch (err) {
-      console.error("Failed to remove place:", err);
+      localStorage.setItem("planit_saved_places", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save to localStorage:", e);
     }
   };
 
@@ -493,30 +369,6 @@ function App() {
     setExpandedIndex(expandedIndex === index ? null : index);
   };
 
-  // Show auth screen if not logged in
-  if (userLoading) {
-    return (
-      <div className="App">
-        <div className="main" style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <p style={{ color: "#aaa" }}>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (showAuth || !user) {
-    return (
-      <div className="App">
-        <div className="main" style={{ padding: 0 }}>
-          {authMode === "login" ? (
-            <Login onSwitchToSignup={() => setAuthMode("signup")} />
-          ) : (
-            <Signup onSwitchToLogin={() => setAuthMode("login")} />
-          )}
-        </div>
-      </div>
-    );
-  }
 
   // ===== UI =====
   return (
@@ -528,26 +380,17 @@ function App() {
             <div className="app-header">
               <PlanItLogo size={50} showText={false} />
               <h1 className="app-title">PlanIt</h1>
-              <button
-                onClick={() => {
-                  localStorage.removeItem("planit_token");
-                  window.location.reload();
-                }}
-                className="logout-btn"
-              >
-                Logout
-              </button>
             </div>
             {!viewingHistory && (
-              <div className="input-section">
-                <input
-                  type="text"
-                  placeholder="Paste TikTok video URL..."
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                />
-                <button onClick={() => handleExtract()}>Extract</button>
-              </div>
+            <div className="input-section">
+              <input
+                type="text"
+                placeholder="Paste TikTok video URL..."
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+              />
+              <button onClick={() => handleExtract()}>Extract</button>
+            </div>
             )}
             {viewingHistory && (
               <div className="history-view-header">
@@ -744,24 +587,28 @@ function App() {
                           )}
                           {p.other_videos && p.other_videos.length > 0 && (
                             <div className="other-videos-note">
-                              <strong>📹 Also featured in:</strong>
-                              <div className="other-videos-list">
-                                {p.other_videos.map((vid, idx) => (
-                                  <div key={idx} className="other-video-item">
-                                    {vid.username && (
-                                      <span className="other-video-username">@{vid.username}</span>
-                                    )}
-                                    <a
-                                      href={vid.url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="other-video-link"
-                                    >
-                                      {vid.summary || "this video"}
-                                    </a>
-                                  </div>
-                                ))}
-                              </div>
+                              <details className="tiktok-dropdown">
+                                <summary className="tiktok-dropdown-summary">
+                                  <strong>📹 From TikTok{p.other_videos.length > 1 ? 's' : ''} ({p.other_videos.length})</strong>
+                                </summary>
+                                <div className="other-videos-list">
+                                  {p.other_videos.map((vid, idx) => (
+                                    <div key={idx} className="other-video-item">
+                                      {vid.username && (
+                                        <span className="other-video-username">@{vid.username}</span>
+                                      )}
+                                      <a
+                                        href={vid.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="other-video-link"
+                                      >
+                                        {vid.summary || "this video"}
+                                      </a>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
                             </div>
                           )}
                           <div className="meta">
@@ -832,128 +679,144 @@ function App() {
         {/* SAVED */}
         {activeTab === "saved" && (
           <div className="saved-page">
-            <h2 className="saved-header">⭐ Your Saved Lists</h2>
-            {Object.keys(savedPlaces).length === 0 ? (
-              <p className="empty">💾 No saved places yet.</p>
-            ) : (
+            {!selectedList ? (
               <>
-                {/* View toggle for saved places */}
-                {Object.values(savedPlaces).flat().length > 0 && (
-                  <div className="view-toggle" style={{ marginBottom: "20px" }}>
-                    <button
-                      className={viewMode === "list" ? "active" : ""}
-                      onClick={() => setViewMode("list")}
-                    >
-                      📋 List
-                    </button>
-                    <button
-                      className={viewMode === "map" ? "active" : ""}
-                      onClick={() => setViewMode("map")}
-                    >
-                      🗺️ Map
-                    </button>
-                  </div>
-                )}
-
-                {viewMode === "map" ? (
-                  <MapView places={Object.values(savedPlaces).flat()} />
+                <h2 className="saved-header">⭐ Your Saved Lists</h2>
+                {Object.keys(savedPlaces).length === 0 ? (
+                  <p className="empty">💾 No saved places yet.</p>
                 ) : (
                   Object.entries(savedPlaces).map(([list, places], idx) => (
                     <div key={idx} className="saved-list-card">
                       <div
                         className="saved-list-header"
-                        onClick={() =>
-                          setExpandedIndex(expandedIndex === idx ? null : idx)
-                        }
+                        onClick={() => setSelectedList(list)}
                       >
                         <h3>{list}</h3>
                         <span className="count">
                           {places.length} place{places.length !== 1 ? "s" : ""}
                         </span>
                       </div>
-
-                      {expandedIndex === idx && (
-                        <div className="saved-list-places">
-                          {places.map((p, i) => (
-                            <div key={i} className="place-card">
-                              {p.photo_url && (
-                                <img
-                                  src={p.photo_url}
-                                  alt={p.name}
-                                  className="place-photo"
-                                />
-                              )}
-                              <div className="place-info">
-                                <h4>{p.name}</h4>
-                                {p.summary && (
-                                  <p className="description">{p.summary}</p>
-                                )}
-                                {p.vibe_tags && p.vibe_tags.length > 0 && (
-                                  <p className="vibe-line">
-                                    Vibes: {p.vibe_tags.join(", ")}
-                                  </p>
-                                )}
-                                {p.other_videos && p.other_videos.length > 0 && (
-                                  <div className="other-videos-note">
-                                    <strong>📹 Also featured in:</strong>
-                                    <div className="other-videos-list">
-                                      {p.other_videos.map((vid, vidIdx) => (
-                                        <div key={vidIdx} className="other-video-item">
-                                          {vid.username && (
-                                            <span className="other-video-username">@{vid.username}</span>
-                                          )}
-                                          <a
-                                            href={vid.url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="other-video-link"
-                                          >
-                                            {vid.summary || "this video"}
-                                          </a>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                <div className="button-row">
-                                  {p.maps_url && (
-                                    <a
-                                      href={p.maps_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="action-btn"
-                                    >
-                                      Open in Maps
-                                    </a>
-                                  )}
-                                  {p.video_url && (
-                                    <a
-                                      href={p.video_url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="action-btn"
-                                    >
-                                      View on TikTok
-                                    </a>
-                                  )}
-                                  <button
-                                    className="action-btn remove"
-                                    onClick={() =>
-                                      handleRemoveFromList(list, i)
-                                    }
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   ))
                 )}
               </>
+            ) : (
+              <div className="list-detail-page">
+                <div className="list-detail-header">
+                  <button 
+                    className="back-btn"
+                    onClick={() => {
+                      setSelectedList(null);
+                      setShowListMap(false);
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <h2 className="list-detail-title">{selectedList}</h2>
+                  <div className="view-toggle-list-detail">
+                    <button
+                      className={!showListMap ? "active" : ""}
+                      onClick={() => setShowListMap(false)}
+                    >
+                      List
+                    </button>
+                    <button
+                      className={showListMap ? "active" : ""}
+                      onClick={() => setShowListMap(true)}
+                    >
+                      Map
+                    </button>
+                  </div>
+                </div>
+                
+                {showListMap ? (
+                  <MapView places={savedPlaces[selectedList] || []} />
+                ) : (
+                  <div className="saved-list-places">
+                    {savedPlaces[selectedList]?.map((p, i) => (
+                      <div key={i} className="place-card">
+                        {p.photo_url && (
+                          <img
+                            src={p.photo_url}
+                            alt={p.name}
+                            className="place-photo"
+                          />
+                        )}
+                        <div className="place-info">
+                          <h4>{p.name}</h4>
+                          {p.summary && (
+                            <p className="description">{p.summary}</p>
+                          )}
+                          {p.vibe_tags && p.vibe_tags.length > 0 && (
+                            <p className="vibe-line">
+                              Vibes: {p.vibe_tags.join(", ")}
+                            </p>
+                          )}
+                          {p.other_videos && p.other_videos.length > 0 && (
+                            <div className="other-videos-note">
+                              <details className="tiktok-dropdown">
+                                <summary className="tiktok-dropdown-summary">
+                                  <strong>📹 From TikTok{p.other_videos.length > 1 ? 's' : ''} ({p.other_videos.length})</strong>
+                                </summary>
+                                <div className="other-videos-list">
+                                  {p.other_videos.map((vid, vidIdx) => (
+                                    <div key={vidIdx} className="other-video-item">
+                                      {vid.username && (
+                                        <span className="other-video-username">@{vid.username}</span>
+                                      )}
+                                      <a
+                                        href={vid.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="other-video-link"
+                                      >
+                                        {vid.summary || "this video"}
+                                      </a>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            </div>
+                          )}
+                          <div className="button-row">
+                            {p.maps_url && (
+                              <a
+                                href={p.maps_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="action-btn"
+                              >
+                                Open in Maps
+                              </a>
+                            )}
+                            {p.video_url && (
+                              <a
+                                href={p.video_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="action-btn"
+                              >
+                                View on TikTok
+                              </a>
+                            )}
+                            <button
+                              className="action-btn remove"
+                              onClick={() => {
+                                handleRemoveFromList(selectedList, i);
+                                if (savedPlaces[selectedList]?.length === 1) {
+                                  setSelectedList(null);
+                                }
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
