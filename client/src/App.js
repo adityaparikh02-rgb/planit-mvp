@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid } from "lucide-react";
+import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Cocktail, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
 import MapView from "./components/MapView";
@@ -433,35 +433,47 @@ function App() {
         {activeTab === "home" && (
           <>
             <div className="app-header">
-              <PlanItLogo size={50} showText={false} />
+              <div className="logo-glow-wrapper">
+                <PlanItLogo size={40} showText={false} />
+              </div>
               <h1 className="app-title">PlanIt</h1>
             </div>
             {!viewingHistory && (
             <div className="input-section">
+              <Search size={20} className="search-icon" />
               <input
                 type="text"
                 placeholder="Paste TikTok video URL..."
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && videoUrl) {
+                    handleExtract();
+                  }
+                }}
               />
-              <button onClick={() => handleExtract()}>Extract</button>
+              <button onClick={() => handleExtract()} className="extract-pill-btn">
+                <Sparkles size={16} />
+                Extract
+              </button>
             </div>
             )}
             {viewingHistory && (
               <div className="history-view-header">
                 <button onClick={handleNewSearch} className="back-to-search-btn">
-                  ＋ New Search
+                  <Plus size={16} style={{ marginRight: '6px', verticalAlign: 'middle' }} />
+                  New Search
                 </button>
               </div>
             )}
             {loadingStep && (
               <div className="loading-container">
                 <p className="loading">
-                  {loadingStep.includes("Analyzing") && "🔍 "}
-                  {loadingStep.includes("Downloading") && "📥 "}
-                  {loadingStep.includes("Transcribing") && "🎤 "}
-                  {loadingStep.includes("Extracting") && "✨ "}
-                  {loadingStep.includes("Enriching") && "🌟 "}
+                  {loadingStep.includes("Analyzing") && <Search size={16} className="loading-icon" />}
+                  {loadingStep.includes("Downloading") && <Loader2 size={16} className="loading-icon spin" />}
+                  {loadingStep.includes("Transcribing") && <Loader2 size={16} className="loading-icon spin" />}
+                  {loadingStep.includes("Extracting") && <Sparkles size={16} className="loading-icon" />}
+                  {loadingStep.includes("Enriching") && <Sparkles size={16} className="loading-icon" />}
                   {loadingStep}
                 </p>
                 {abortController && (
@@ -469,12 +481,13 @@ function App() {
                     onClick={handleStopAnalyzing}
                     className="stop-analyzing-btn"
                   >
-                    ⏹️ Stop Analyzing
+                    <X size={16} className="stop-icon" />
+                    Stop Analyzing
                   </button>
                 )}
               </div>
             )}
-            {error && <p className="error">⚠️ {error}</p>}
+            {error && <p className="error"><X size={16} className="error-icon" />{error}</p>}
 
             {result && (
               <div className="results-container">
@@ -482,18 +495,23 @@ function App() {
                   <h2 className="summary-title">
                     {(() => {
                       const title = (result.summary_title || result.context_summary || "TikTok Venues").replace(/(^"|"$)/g, "");
-                      // Add contextual emoji based on title content
-                      let emoji = "📍";
-                      if (title.toLowerCase().includes("pizza") || title.toLowerCase().includes("pizzeria")) emoji = "🍕";
-                      else if (title.toLowerCase().includes("coffee") || title.toLowerCase().includes("cafe") || title.toLowerCase().includes("café")) emoji = "☕";
-                      else if (title.toLowerCase().includes("bar") || title.toLowerCase().includes("cocktail")) emoji = "🍸";
-                      else if (title.toLowerCase().includes("restaurant") || title.toLowerCase().includes("dining")) emoji = "🍽️";
-                      else if (title.toLowerCase().includes("rooftop") || title.toLowerCase().includes("roof")) emoji = "🏙️";
-                      else if (title.toLowerCase().includes("brunch")) emoji = "🥐";
-                      else if (title.toLowerCase().includes("hidden") || title.toLowerCase().includes("secret")) emoji = "🔍";
-                      else if (title.toLowerCase().includes("top") || title.toLowerCase().includes("best")) emoji = "⭐";
-                      else if (title.toLowerCase().includes("date") || title.toLowerCase().includes("romantic")) emoji = "💕";
-                      return `${emoji} ${title}`;
+                      // Add contextual icon based on title content
+                      let Icon = MapPin;
+                      if (title.toLowerCase().includes("pizza") || title.toLowerCase().includes("pizzeria")) Icon = Pizza;
+                      else if (title.toLowerCase().includes("coffee") || title.toLowerCase().includes("cafe") || title.toLowerCase().includes("café")) Icon = Coffee;
+                      else if (title.toLowerCase().includes("bar") || title.toLowerCase().includes("cocktail")) Icon = Cocktail;
+                      else if (title.toLowerCase().includes("restaurant") || title.toLowerCase().includes("dining")) Icon = UtensilsCrossed;
+                      else if (title.toLowerCase().includes("rooftop") || title.toLowerCase().includes("roof")) Icon = Building2;
+                      else if (title.toLowerCase().includes("brunch")) Icon = Croissant;
+                      else if (title.toLowerCase().includes("hidden") || title.toLowerCase().includes("secret")) Icon = Eye;
+                      else if (title.toLowerCase().includes("top") || title.toLowerCase().includes("best")) Icon = Award;
+                      else if (title.toLowerCase().includes("date") || title.toLowerCase().includes("romantic")) Icon = Heart;
+                      return (
+                        <span className="summary-title-content">
+                          <Icon size={20} className="summary-icon" />
+                          {title}
+                        </span>
+                      );
                     })()}
                   </h2>
                 )}
@@ -512,7 +530,7 @@ function App() {
 
                 {result.places_extracted?.length === 0 && (
                   <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
-                    <p>🔍 No venues found in this video.</p>
+                    <p><Search size={18} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle' }} />No venues found in this video.</p>
                     <p style={{ fontSize: "0.9rem", marginTop: "10px" }}>
                       {result.warning || "The video might not mention specific venue names, or they couldn't be extracted."}
                     </p>
@@ -736,7 +754,7 @@ function App() {
                       <strong className="hist-title">{h.title}</strong>
                       <span className="hist-time">{h.time}</span>
                     </div>
-                    <div className="hist-arrow">→</div>
+                    <ChevronRight size={20} className="hist-arrow" />
                   </div>
                 ))}
               </div>
@@ -749,7 +767,10 @@ function App() {
           <div className="saved-page">
             {!selectedList ? (
               <>
-                <h2 className="saved-header">Your Saved Lists</h2>
+                <div className="saved-header-wrapper">
+                  <MapPin size={24} className="saved-header-icon" />
+                  <h2 className="saved-header">Your Saved Lists</h2>
+                </div>
                 {Object.keys(savedPlaces).length === 0 ? (
                   <div className="empty-state">
                     <p className="empty-text">No saved places yet</p>
@@ -832,7 +853,8 @@ function App() {
                       setShowListMap(false);
                     }}
                   >
-                    ← Back
+                    <ChevronRight size={18} className="back-icon" style={{ transform: 'rotate(180deg)' }} />
+                    Back
                   </button>
                   <div className="list-detail-center">
                     {editingListName === selectedList ? (
@@ -1059,6 +1081,7 @@ function App() {
           onClick={() => setActiveTab("history")}
         >
           <Grid size={22} />
+          <span className="nav-btn-label">History</span>
         </button>
         <button
           className={`nav-btn center-btn ${activeTab === "home" ? "active" : ""}`}
@@ -1067,13 +1090,14 @@ function App() {
             setActiveTab("home");
           }}
         >
-          ＋
+          <Plus size={20} />
         </button>
         <button
           className={`nav-btn ${activeTab === "saved" ? "active" : ""}`}
           onClick={() => setActiveTab("saved")}
         >
-          ⭐
+          <Star size={22} />
+          <span className="nav-btn-label">Saved</span>
         </button>
       </div>
     </div>
