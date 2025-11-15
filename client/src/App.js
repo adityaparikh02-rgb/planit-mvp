@@ -206,9 +206,10 @@ function App() {
         "Untitled";
 
       // Save to history (localStorage only)
+      const now = typeof Date !== 'undefined' ? new Date() : { toLocaleTimeString: () => new Date().toLocaleTimeString() };
       const newHistoryItem = {
             title,
-            time: new Date().toLocaleTimeString([], {
+            time: now.toLocaleTimeString([], {
               hour: "2-digit",
               minute: "2-digit",
             }),
