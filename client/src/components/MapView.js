@@ -1,8 +1,21 @@
-import React, { useMemo, useRef, useEffect, useState } from "react";
+import React, { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
 import "./MapView.css";
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
+
+// Bottom sheet states
+const PANEL_STATES = {
+  COLLAPSED: 'collapsed',   // 20-25% height
+  HALF: 'half',             // 50% height
+  FULL: 'full'               // 100% height
+};
+
+const PANEL_HEIGHTS = {
+  [PANEL_STATES.COLLAPSED]: 0.25,  // 25% of viewport
+  [PANEL_STATES.HALF]: 0.5,        // 50% of viewport
+  [PANEL_STATES.FULL]: 0.95         // 95% of viewport (leaving space for status bar)
+};
 
 const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList, isInList, onClose }) => {
   // Filter places that have addresses or can be geocoded
@@ -19,22 +32,77 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const [mapZoom, setMapZoom] = useState(13);
   const [showListMenu, setShowListMenu] = useState(null);
-  const [panelHeight, setPanelHeight] = useState(300); // Height of bottom panel in pixels
+  const [panelState, setPanelState] = useState(PANEL_STATES.HALF);
+  const [panelHeight, setPanelHeight] = useState(() => 
+    typeof window !== 'undefined' ? window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.HALF] : 300
+  );
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
   const [dragStartHeight, setDragStartHeight] = useState(0);
+  const [dragVelocity, setDragVelocity] = useState(0);
   const [expandedPlace, setExpandedPlace] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [mapDimmed, setMapDimmed] = useState(false);
   const panelRef = useRef(null);
   const cardRefs = useRef({});
   const mapRef = useRef(null);
+  const lastDragY = useRef(0);
+  const lastDragTime = useRef(0);
+  const scrollTimeoutRef = useRef(null);
+  const hoverTimeoutRef = useRef(null);
+
+  // Calculate panel height from state
+  const getPanelHeightFromState = (state) => {
+    return window.innerHeight * PANEL_HEIGHTS[state];
+  };
+
+  // Snap to nearest panel state
+  const snapToState = useCallback((currentHeight, velocity = 0) => {
+    const viewportHeight = window.innerHeight;
+    const collapsedHeight = viewportHeight * PANEL_HEIGHTS[PANEL_STATES.COLLAPSED];
+    const halfHeight = viewportHeight * PANEL_HEIGHTS[PANEL_STATES.HALF];
+    const fullHeight = viewportHeight * PANEL_HEIGHTS[PANEL_STATES.FULL];
+
+    // If velocity is high, snap to next state
+    if (Math.abs(velocity) > 0.5) {
+      if (velocity < 0 && currentHeight < halfHeight) {
+        // Dragging up fast - go to full
+        return PANEL_STATES.FULL;
+      } else if (velocity < 0 && currentHeight < fullHeight) {
+        // Dragging up fast - go to full
+        return PANEL_STATES.FULL;
+      } else if (velocity > 0 && currentHeight > halfHeight) {
+        // Dragging down fast - go to collapsed
+        return PANEL_STATES.COLLAPSED;
+      } else if (velocity > 0 && currentHeight > collapsedHeight) {
+        // Dragging down fast - go to half
+        return PANEL_STATES.HALF;
+      }
+    }
+
+    // Normal snapping based on position
+    const distances = {
+      [PANEL_STATES.COLLAPSED]: Math.abs(currentHeight - collapsedHeight),
+      [PANEL_STATES.HALF]: Math.abs(currentHeight - halfHeight),
+      [PANEL_STATES.FULL]: Math.abs(currentHeight - fullHeight),
+    };
+
+    const nearestState = Object.keys(distances).reduce((a, b) => 
+      distances[a] < distances[b] ? a : b
+    );
+
+    return nearestState;
+  }, []);
 
   // Geocode places using Google Geocoding API and calculate center
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY || placesWithLocation.length === 0) {
-      // Reset positions if no places
       setPlacePositions({});
+      setIsLoading(false);
       return;
     }
+
+    setIsLoading(true);
 
     const geocodePlace = async (place) => {
       const query = place.address || `${place.name} NYC`;
@@ -50,7 +118,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       } catch (error) {
         console.error(`Failed to geocode ${place.name}:`, error);
       }
-      // Fallback to default center with slight offset
       return {
         lat: defaultCenter.lat + (Math.random() - 0.5) * 0.05,
         lng: defaultCenter.lng + (Math.random() - 0.5) * 0.05,
@@ -64,20 +131,17 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       }
       setPlacePositions(positions);
 
-      // Calculate center of all places
       const positionsArray = Object.values(positions);
       if (positionsArray.length > 0) {
         const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
         const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
         
-        // Calculate bounds to determine appropriate zoom
         const lats = positionsArray.map(pos => pos.lat);
         const lngs = positionsArray.map(pos => pos.lng);
         const latDiff = Math.max(...lats) - Math.min(...lats);
         const lngDiff = Math.max(...lngs) - Math.min(...lngs);
         const maxDiff = Math.max(latDiff, lngDiff);
         
-        // Adjust zoom based on spread of places
         let zoom = 13;
         if (maxDiff > 0.1) zoom = 11;
         else if (maxDiff > 0.05) zoom = 12;
@@ -88,36 +152,62 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         setMapCenter({ lat: avgLat, lng: avgLng });
         setMapZoom(zoom);
       }
+      setIsLoading(false);
     };
 
     geocodeAll();
   }, [placesWithLocation, GOOGLE_MAPS_API_KEY, defaultCenter]);
 
-  // Handle panel dragging
+  // Handle panel dragging with velocity detection
   const handleDragStart = (clientY) => {
     setIsDragging(true);
     setDragStartY(clientY);
     setDragStartHeight(panelHeight);
+    lastDragY.current = clientY;
+    lastDragTime.current = Date.now();
+    setDragVelocity(0);
   };
 
-  const handleDragMove = (clientY) => {
-    const deltaY = dragStartY - clientY; // Inverted: dragging up increases height
-    const newHeight = Math.max(200, Math.min(window.innerHeight - 100, dragStartHeight + deltaY));
+  const handleDragMove = useCallback((clientY) => {
+    const deltaY = dragStartY - clientY;
+    const newHeight = Math.max(
+      window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.COLLAPSED],
+      Math.min(window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.FULL], dragStartHeight + deltaY)
+    );
     setPanelHeight(newHeight);
-  };
 
-  const handleDragEnd = () => {
+    // Calculate velocity
+    const now = Date.now();
+    const timeDelta = now - lastDragTime.current;
+    if (timeDelta > 0) {
+      const yDelta = clientY - lastDragY.current;
+      const velocity = yDelta / timeDelta;
+      setDragVelocity(velocity);
+    }
+    lastDragY.current = clientY;
+    lastDragTime.current = now;
+  }, [dragStartY, dragStartHeight]);
+
+  const handleDragEnd = useCallback(() => {
     setIsDragging(false);
-  };
+    const snappedState = snapToState(panelHeight, dragVelocity);
+    setPanelState(snappedState);
+    const targetHeight = getPanelHeightFromState(snappedState);
+    setPanelHeight(targetHeight);
+    setMapDimmed(snappedState === PANEL_STATES.FULL);
+    setDragVelocity(0);
+  }, [panelHeight, dragVelocity, snapToState]);
 
   const handleMouseDown = (e) => {
     handleDragStart(e.clientY);
     e.preventDefault();
+    e.stopPropagation();
   };
 
   const handleTouchStart = (e) => {
     handleDragStart(e.touches[0].clientY);
     e.preventDefault();
+    e.stopPropagation();
   };
 
   useEffect(() => {
@@ -150,26 +240,77 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [isDragging, dragStartY, dragStartHeight, panelHeight]);
+  }, [isDragging, handleDragMove, handleDragEnd]);
 
-  // Center map on place when selected
+  // Debounced hover handler for list items
+  const handleCardHover = useCallback((place) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredPlace(place);
+      // Don't auto-center map on hover - just highlight pin
+    }, 100);
+  }, []);
+
+  const handleCardLeave = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    setHoveredPlace(null);
+  }, []);
+
+  // Smooth map centering when place is selected
+  const centerMapOnPlace = useCallback((place, position) => {
+    if (!mapRef.current || !position) return;
+    
+    try {
+      // Smooth pan with easing
+      mapRef.current.panTo({
+        lat: position.lat,
+        lng: position.lng
+      });
+    } catch (error) {
+      console.error('Error panning map:', error);
+    }
+  }, []);
+
+  // Center map on place when selected (with smooth animation)
   useEffect(() => {
-    if (selectedPlace && placePositions[selectedPlace.name] && mapRef.current) {
+    if (selectedPlace && placePositions[selectedPlace.name]) {
       const position = placePositions[selectedPlace.name];
-      try {
-        mapRef.current.panTo(position);
-      } catch (error) {
-        console.error('Error panning map:', error);
-      }
-      // Scroll card into view with a slight delay to ensure DOM is ready
+      centerMapOnPlace(selectedPlace, position);
+      
+      // Smooth scroll to card
       setTimeout(() => {
         const cardElement = cardRefs.current[selectedPlace.name];
         if (cardElement) {
           cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-      }, 100);
+      }, 150);
     }
-  }, [selectedPlace, placePositions]);
+  }, [selectedPlace, placePositions, centerMapOnPlace]);
+
+  // Update map dimming based on panel state
+  useEffect(() => {
+    setMapDimmed(panelState === PANEL_STATES.FULL);
+  }, [panelState]);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (!isDragging) {
+        const newHeight = getPanelHeightFromState(panelState);
+        setPanelHeight(newHeight);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [panelState, isDragging]);
+
+  const mapHeight = `calc(100vh - ${panelHeight}px)`;
 
   const mapOptions = {
     zoom: mapZoom,
@@ -177,7 +318,13 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     mapTypeControl: false,
     streetViewControl: false,
     fullscreenControl: true,
-    backgroundColor: '#0a0a0f', // Set background color to match container
+    backgroundColor: '#0a0a0f',
+    gestureHandling: 'greedy', // Allow map gestures even when over other elements
+    disableDefaultUI: false,
+    zoomControl: true,
+    zoomControlOptions: {
+      position: window.google?.maps?.ControlPosition?.RIGHT_BOTTOM || 11
+    },
     styles: [
       {
         featureType: "all",
@@ -267,9 +414,10 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     ]
   };
 
-  // Custom marker icon with number
-  const createMarkerIcon = (index, isSelected, isHovered) => {
-    const size = isSelected ? 40 : isHovered ? 36 : 32;
+  // Custom marker icon with smooth animations
+  const createMarkerIcon = useCallback((index, isSelected, isHovered) => {
+    const baseSize = 32;
+    const size = isSelected ? 44 : isHovered ? 38 : baseSize;
     const color = isSelected ? '#6366f1' : isHovered ? '#8da0ff' : '#fff';
     
     let anchor;
@@ -288,17 +436,17 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       fillColor: color,
       fillOpacity: 1,
       strokeColor: '#1a1a26',
-      strokeWeight: 2,
-      scale: size / 32,
+      strokeWeight: isSelected ? 3 : 2,
+      scale: size / baseSize,
       anchor: anchor,
       label: {
         text: String(index + 1),
         color: '#1a1a26',
-        fontSize: '12px',
+        fontSize: isSelected ? '14px' : '12px',
         fontWeight: 'bold',
       }
     };
-  };
+  }, []);
 
   // If no API key, show a message
   if (!GOOGLE_MAPS_API_KEY) {
@@ -311,8 +459,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       </div>
     );
   }
-
-  const mapHeight = `calc(100vh - ${panelHeight}px)`;
 
   return (
     <div className="map-dual-pane-container">
@@ -327,8 +473,11 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         </button>
       )}
       
-      {/* Map Section */}
-      <div className="map-section" style={{ height: mapHeight, minHeight: '200px' }}>
+      {/* Map Section with dimming overlay */}
+      <div 
+        className={`map-section ${mapDimmed ? 'dimmed' : ''}`} 
+        style={{ height: mapHeight, minHeight: '200px' }}
+      >
         <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} loadingElement={
           <div style={{ 
             height: '100%', 
@@ -344,15 +493,15 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
             </div>
           </div>
         }>
-          <GoogleMap
+        <GoogleMap
             mapContainerStyle={{
               width: "100%",
               height: mapHeight,
               minHeight: "200px",
             }}
-            options={mapOptions}
-            center={mapCenter}
-            zoom={mapZoom}
+          options={mapOptions}
+          center={mapCenter}
+          zoom={mapZoom}
             onLoad={(map) => {
               mapRef.current = map;
               console.log('Map loaded successfully');
@@ -360,19 +509,22 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
             onError={(error) => {
               console.error('Map error:', error);
             }}
-          >
-            {placesWithLocation.map((place, index) => {
-              const position = placePositions[place.name] || {
-                lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
-                lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
-              };
+            onDragStart={() => {
+              // Prevent list scrolling when dragging map
+            }}
+        >
+          {placesWithLocation.map((place, index) => {
+            const position = placePositions[place.name] || {
+              lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
+              lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
+            };
               const isSelected = selectedPlace?.name === place.name;
               const isHovered = hoveredPlace?.name === place.name;
-              
-              return (
-                <Marker
-                  key={index}
-                  position={position}
+            
+            return (
+              <Marker
+                  key={`${place.name}-${index}`}
+                position={position}
                   onClick={() => {
                     setSelectedPlace(place);
                     setHoveredPlace(null);
@@ -380,10 +532,12 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                   onMouseOver={() => setHoveredPlace(place)}
                   onMouseOut={() => setHoveredPlace(null)}
                   icon={createMarkerIcon(index, isSelected, isHovered)}
-                  title={place.name}
-                />
-              );
-            })}
+                title={place.name}
+                  zIndex={isSelected ? 1000 : isHovered ? 500 : index}
+                  animation={isSelected ? window.google?.maps?.Animation?.BOUNCE : null}
+              />
+            );
+          })}
           </GoogleMap>
         </LoadScript>
       </div>
@@ -391,10 +545,10 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       {/* Draggable Bottom Panel */}
       <div 
         ref={panelRef}
-        className="map-bottom-panel"
+        className={`map-bottom-panel ${panelState}`}
         style={{ 
           height: `${panelHeight}px`,
-          transition: isDragging ? 'none' : 'height 0.3s ease',
+          transition: isDragging ? 'none' : 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
         {/* Drag Handle */}
@@ -411,178 +565,193 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
           <h3 className="panel-title">
             {placesWithLocation.length} {placesWithLocation.length === 1 ? 'Place' : 'Places'}
           </h3>
+          {panelState === PANEL_STATES.COLLAPSED && (
+            <div className="panel-preview">
+              {placesWithLocation.slice(0, 3).map((place, idx) => (
+                <span key={idx} className="preview-badge">{idx + 1}</span>
+              ))}
+              {placesWithLocation.length > 3 && (
+                <span className="preview-more">+{placesWithLocation.length - 3}</span>
+                )}
+              </div>
+          )}
         </div>
 
         {/* Scrollable List */}
-        <div className="panel-list-container">
-          {placesWithLocation.length === 0 ? (
+        <div className="panel-list-container" onWheel={(e) => e.stopPropagation()}>
+          {isLoading ? (
+            <div className="panel-list">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="map-place-card skeleton">
+                  <div className="skeleton-photo"></div>
+                  <div className="skeleton-content">
+                    <div className="skeleton-line" style={{ width: '60%' }}></div>
+                    <div className="skeleton-line" style={{ width: '80%' }}></div>
+                    <div className="skeleton-line" style={{ width: '40%' }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : placesWithLocation.length === 0 ? (
             <div className="panel-empty-state">
               <p>No places to display on the map.</p>
             </div>
           ) : (
             <div className="panel-list">
               {placesWithLocation.map((place, index) => {
-              const isSelected = selectedPlace?.name === place.name;
-              const isExpanded = expandedPlace?.name === place.name;
-              
-              return (
-                <div
-                  key={index}
-                  ref={(el) => {
-                    if (el) cardRefs.current[place.name] = el;
-                  }}
-                  className={`map-place-card ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
-                  onMouseEnter={() => {
-                    setHoveredPlace(place);
-                    if (placePositions[place.name] && mapRef.current) {
-                      try {
-                        mapRef.current.panTo(placePositions[place.name]);
-                      } catch (error) {
-                        console.error('Error panning map on hover:', error);
-                      }
-                    }
-                  }}
-                  onMouseLeave={() => setHoveredPlace(null)}
-                  onTouchStart={() => {
-                    // On mobile, treat touch as selection
-                    setSelectedPlace(place);
-                    setExpandedPlace(expandedPlace?.name === place.name ? null : place);
-                  }}
-                  onClick={() => {
-                    setSelectedPlace(place);
-                    setExpandedPlace(isExpanded ? null : place);
-                  }}
-                >
-                  {/* Card Number Badge */}
-                  <div className="card-number-badge">{index + 1}</div>
+                const isSelected = selectedPlace?.name === place.name;
+                const isExpanded = expandedPlace?.name === place.name;
+                
+                return (
+                  <div
+                    key={`${place.name}-${index}`}
+                    ref={(el) => {
+                      if (el) cardRefs.current[place.name] = el;
+                    }}
+                    className={`map-place-card ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
+                    onMouseEnter={() => handleCardHover(place)}
+                    onMouseLeave={handleCardLeave}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      setSelectedPlace(place);
+                      setExpandedPlace(isExpanded ? null : place);
+                    }}
+                    onClick={() => {
+                      setSelectedPlace(place);
+                      setExpandedPlace(isExpanded ? null : place);
+                    }}
+                  >
+                    {/* Card Number Badge */}
+                    <div className="card-number-badge">{index + 1}</div>
 
-                  {/* Photo */}
-                  {place.photo_url && (
-                    <div className="card-photo-wrapper">
-                      <img 
-                        src={place.photo_url} 
-                        alt={place.name}
-                        className="card-photo"
-                      />
-                    </div>
-                  )}
+                    {/* Photo */}
+              {place.photo_url && (
+                      <div className="card-photo-wrapper">
+                <img 
+                  src={place.photo_url} 
+                  alt={place.name}
+                          className="card-photo"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
 
-                  {/* Card Content */}
-                  <div className="card-content">
-                    <div className="card-header">
-                      <h4 className="card-name">{place.name}</h4>
-                      <button
-                        className="card-menu-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowListMenu(showListMenu === place.name ? null : place.name);
-                        }}
-                      >
-                        ⋯
-                      </button>
-                      {showListMenu === place.name && (
-                        <div className="card-menu-popup" onClick={(e) => e.stopPropagation()}>
-                          {Object.keys(savedPlaces).length > 0 ? (
-                            Object.keys(savedPlaces).map((list, idx) => {
-                              const inList = isInList ? isInList(list, place) : false;
-                              return (
-                                <button
-                                  key={idx}
-                                  onClick={() => {
-                                    if (togglePlaceInList) {
-                                      togglePlaceInList(list, place);
-                                    }
-                                    setShowListMenu(null);
-                                  }}
-                                  className={`card-list-toggle ${inList ? 'selected' : ''}`}
-                                >
-                                  <span className={`card-circle ${inList ? 'filled' : ''}`}>
-                                    {inList ? '✓' : ''}
-                                  </span>
-                                  {list}
-                                </button>
-                              );
-                            })
-                          ) : (
-                            <p className="card-empty-list">No lists yet</p>
-                          )}
-                          <button
-                            className="card-add-list-btn"
-                            onClick={() => {
-                              if (handleAddNewList) {
-                                handleAddNewList();
-                              }
-                              setShowListMenu(null);
-                            }}
-                          >
-                            ➕ Add to New List
-                          </button>
+                    {/* Card Content */}
+                    <div className="card-content">
+                      <div className="card-header">
+                        <h4 className="card-name">{place.name}</h4>
+                        <button
+                          className="card-menu-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowListMenu(showListMenu === place.name ? null : place.name);
+                          }}
+                        >
+                          ⋯
+                        </button>
+                        {showListMenu === place.name && (
+                          <div className="card-menu-popup" onClick={(e) => e.stopPropagation()}>
+                            {Object.keys(savedPlaces).length > 0 ? (
+                              Object.keys(savedPlaces).map((list, idx) => {
+                                const inList = isInList ? isInList(list, place) : false;
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => {
+                                      if (togglePlaceInList) {
+                                        togglePlaceInList(list, place);
+                                      }
+                                      setShowListMenu(null);
+                                    }}
+                                    className={`card-list-toggle ${inList ? 'selected' : ''}`}
+                                  >
+                                    <span className={`card-circle ${inList ? 'filled' : ''}`}>
+                                      {inList ? '✓' : ''}
+                                    </span>
+                                    {list}
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <p className="card-empty-list">No lists yet</p>
+                            )}
+                            <button
+                              className="card-add-list-btn"
+                              onClick={() => {
+                                if (handleAddNewList) {
+                                  handleAddNewList();
+                                }
+                                setShowListMenu(null);
+                              }}
+                            >
+                              ➕ Add to New List
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                {place.address && (
+                        <p className="card-address">📍 {place.address}</p>
+                      )}
+
+                      {place.vibe_tags && place.vibe_tags.length > 0 && (
+                        <div className="card-vibes">
+                          {place.vibe_tags.slice(0, 3).map((tag, idx) => (
+                            <span key={idx} className="card-vibe-chip">{tag}</span>
+                          ))}
                         </div>
                       )}
-                    </div>
 
-                    {place.address && (
-                      <p className="card-address">📍 {place.address}</p>
-                    )}
-
-                    {place.vibe_tags && place.vibe_tags.length > 0 && (
-                      <div className="card-vibes">
-                        {place.vibe_tags.slice(0, 3).map((tag, idx) => (
-                          <span key={idx} className="card-vibe-chip">{tag}</span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Expanded Content */}
-                    {isExpanded && (
-                      <div className="card-expanded-content">
-                        {place.summary && (
-                          <p className="card-summary">{place.summary}</p>
-                        )}
-                        {place.must_try && (
-                          <p className="card-must-try">
-                            <strong>
-                              {place.must_try_field === "highlights" ? "✨ Highlights:" :
-                               place.must_try_field === "features" ? "🎯 Features:" :
-                               "🍴 Must Try:"}
-                            </strong> {place.must_try}
-                          </p>
-                        )}
-                        {place.when_to_go && (
-                          <p className="card-when">
-                            <strong>🕐 When to Go:</strong> {place.when_to_go}
-                          </p>
-                        )}
-                        <div className="card-actions">
-                          {place.maps_url && (
-                            <a
-                              href={place.maps_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="card-action-btn"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              🗺️ Maps
-                            </a>
+                      {/* Expanded Content */}
+                      {isExpanded && (
+                        <div className="card-expanded-content">
+                {place.summary && (
+                            <p className="card-summary">{place.summary}</p>
                           )}
-                          {place.video_url && (
-                            <a
-                              href={place.video_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="card-action-btn"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              📹 TikTok
-                            </a>
+                          {place.must_try && (
+                            <p className="card-must-try">
+                              <strong>
+                                {place.must_try_field === "highlights" ? "✨ Highlights:" :
+                                 place.must_try_field === "features" ? "🎯 Features:" :
+                                 "🍴 Must Try:"}
+                              </strong> {place.must_try}
+                            </p>
                           )}
+                          {place.when_to_go && (
+                            <p className="card-when">
+                              <strong>🕐 When to Go:</strong> {place.when_to_go}
+                            </p>
+                          )}
+                          <div className="card-actions">
+                            {place.maps_url && (
+                              <a
+                                href={place.maps_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="card-action-btn"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                🗺️ Maps
+                              </a>
+                            )}
+                            {place.video_url && (
+                              <a
+                                href={place.video_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="card-action-btn"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                📹 TikTok
+                              </a>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                )}
+              </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
             </div>
           )}
         </div>
