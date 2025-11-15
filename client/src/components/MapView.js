@@ -4,7 +4,7 @@ import "./MapView.css";
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 
-const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList, isInList }) => {
+const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList, isInList, onClose }) => {
   // Filter places that have addresses or can be geocoded
   const placesWithLocation = useMemo(() => {
     return places.filter(p => p.address || p.maps_url || p.name);
@@ -177,6 +177,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     mapTypeControl: false,
     streetViewControl: false,
     fullscreenControl: true,
+    backgroundColor: '#0a0a0f', // Set background color to match container
     styles: [
       {
         featureType: "all",
@@ -315,9 +316,34 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
   return (
     <div className="map-dual-pane-container">
+      {/* Close Button */}
+      {onClose && (
+        <button 
+          className="map-close-btn"
+          onClick={onClose}
+          aria-label="Close map view"
+        >
+          ✕
+        </button>
+      )}
+      
       {/* Map Section */}
       <div className="map-section" style={{ height: mapHeight, minHeight: '200px' }}>
-        <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} loadingElement={<div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>Loading map...</div>}>
+        <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} loadingElement={
+          <div style={{ 
+            height: '100%', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            color: '#fff',
+            background: '#0a0a0f'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', marginBottom: '12px' }}>🗺️</div>
+              <div>Loading map...</div>
+            </div>
+          </div>
+        }>
           <GoogleMap
             mapContainerStyle={{
               width: "100%",

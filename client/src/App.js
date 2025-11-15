@@ -547,6 +547,7 @@ function App() {
                     togglePlaceInList={togglePlaceInList}
                     handleAddNewList={handleAddNewList}
                     isInList={isInList}
+                    onClose={() => setViewMode("list")}
                   />
                 )}
                 {result.places_extracted && result.places_extracted.length > 0 && viewMode !== "map" && (
@@ -891,6 +892,7 @@ function App() {
                     togglePlaceInList={togglePlaceInList}
                     handleAddNewList={handleAddNewList}
                     isInList={isInList}
+                    onClose={() => setShowListMap(false)}
                   />
                 ) : (
                   <div className="saved-list-places">
