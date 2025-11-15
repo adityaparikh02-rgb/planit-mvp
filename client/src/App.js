@@ -177,13 +177,14 @@ function App() {
 
       // attach TikTok URL to every place and deduplicate
       const placesArray = data.places_extracted || [];
-      const placesMap = new Map();
+      // Use a plain object for deduplication to avoid Map constructor issues
+      const placesMap = {};
       placesArray.forEach((p) => {
         if (p && p.name) {
-          placesMap.set(p.name, { ...p, video_url: data.video_url });
+          placesMap[p.name] = { ...p, video_url: data.video_url };
         }
       });
-      const uniquePlaces = Array.from(placesMap.values());
+      const uniquePlaces = Object.values(placesMap);
       const cleanData = { ...data, places_extracted: uniquePlaces };
 
       console.log("💾 Setting result:", cleanData);
@@ -836,6 +837,7 @@ function App() {
                             <span className="count">
                               {places.length} place{places.length !== 1 ? "s" : ""}
                             </span>
+                            <ChevronRight size={18} className="hist-arrow" />
                           </>
                         )}
                       </div>

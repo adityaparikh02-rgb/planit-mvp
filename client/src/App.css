@@ -1032,13 +1032,18 @@
 
 /* Premium Frosted List Cards */
 .saved-list-card {
-  background: rgba(255, 255, 255, 0.06);
+  padding: var(--spacing-md) var(--spacing-lg);
   border-radius: 24px;
-  overflow: hidden;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   backdrop-filter: blur(20px) saturate(180%);
   position: relative;
+  overflow: hidden;
   box-shadow: 
     0 4px 16px rgba(0, 0, 0, 0.2),
     0 0 0 1px rgba(255, 255, 255, 0.05) inset;
@@ -1051,40 +1056,36 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  background: linear-gradient(135deg, rgba(63, 71, 255, 0.05), rgba(126, 134, 255, 0.02));
   opacity: 0;
   transition: opacity 0.3s ease;
-  pointer-events: none;
 }
 
 .saved-list-card:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(63, 71, 255, 0.4);
-  transform: translateY(-4px);
-  box-shadow: 
-    0 12px 32px rgba(0, 0, 0, 0.3),
-    0 0 0 1px rgba(63, 71, 255, 0.2) inset,
-    0 0 40px var(--indigo-glow-soft);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(63, 71, 255, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(63, 71, 255, 0.15), 0 0 0 1px rgba(63, 71, 255, 0.1);
 }
 
 .saved-list-card:hover::before {
   opacity: 1;
 }
 
+.saved-list-card:active {
+  transform: translateY(0);
+}
+
 .saved-list-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-md) var(--spacing-lg);
+  width: 100%;
   cursor: pointer;
   background: transparent;
   border-bottom: none;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.saved-list-header:hover {
-  background: transparent;
-  transform: none;
+  flex: 1;
 }
 
 .saved-list-header h3 {
