@@ -1809,10 +1809,10 @@
   position: absolute;
   top: 10px;
   right: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: none;
-  border-radius: 50%;
-  color: #ddd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  color: rgba(255, 255, 255, 0.5);
   font-size: 20px;
   cursor: pointer;
   width: 36px;
@@ -1820,13 +1820,42 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.25s ease;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 10;
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 
+    0 4px 16px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  position: relative;
+  overflow: hidden;
+}
+
+.menu-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(63, 71, 255, 0.05), rgba(126, 134, 255, 0.02));
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
 .menu-btn:hover {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(63, 71, 255, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(63, 71, 255, 0.15), 0 0 0 1px rgba(63, 71, 255, 0.1);
+}
+
+.menu-btn:hover::before {
+  opacity: 1;
+}
+
+.menu-btn:active {
+  transform: translateY(0);
 }
 
 .menu-popup {
