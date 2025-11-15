@@ -313,41 +313,89 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     }
   }, [selectedPlace, placePositions, centerMapOnPlace]);
   
-  // Center map on all places when they're loaded
+  // Center map on all places when they're loaded - show bounds/area
   useEffect(() => {
     if (mapLoaded && mapRef.current && Object.keys(placePositions).length > 0) {
       const positionsArray = Object.values(placePositions);
-      const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
-      const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
       
-      const lats = positionsArray.map(pos => pos.lat);
-      const lngs = positionsArray.map(pos => pos.lng);
-      const latDiff = Math.max(...lats) - Math.min(...lats);
-      const lngDiff = Math.max(...lngs) - Math.min(...lngs);
-      const maxDiff = Math.max(latDiff, lngDiff);
-      
-      let zoom = 13;
-      if (maxDiff > 0.1) zoom = 11;
-      else if (maxDiff > 0.05) zoom = 12;
-      else if (maxDiff > 0.02) zoom = 13;
-      else if (maxDiff > 0.01) zoom = 14;
-      else zoom = 15;
-      
-      // Update state
-      setMapCenter({ lat: avgLat, lng: avgLng });
-      setMapZoom(zoom);
-      
-      // Pan map
-      setTimeout(() => {
-        if (mapRef.current && mapRef.current.panTo) {
-          try {
-            mapRef.current.panTo({ lat: avgLat, lng: avgLng });
-            mapRef.current.setZoom(zoom);
-          } catch (error) {
-            console.error('Error centering map:', error);
+      if (positionsArray.length === 1) {
+        // Single place - center on it with zoom 15
+        const pos = positionsArray[0];
+        setMapCenter({ lat: pos.lat, lng: pos.lng });
+        setMapZoom(15);
+        setTimeout(() => {
+          if (mapRef.current && mapRef.current.panTo) {
+            try {
+              mapRef.current.panTo({ lat: pos.lat, lng: pos.lng });
+              mapRef.current.setZoom(15);
+            } catch (error) {
+              console.error('Error centering map:', error);
+            }
           }
-        }
-      }, 500);
+        }, 500);
+      } else {
+        // Multiple places - fit bounds to show all places
+        const lats = positionsArray.map(pos => pos.lat);
+        const lngs = positionsArray.map(pos => pos.lng);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        
+        const bounds = {
+          north: maxLat,
+          south: minLat,
+          east: maxLng,
+          west: minLng
+        };
+        
+        const avgLat = (minLat + maxLat) / 2;
+        const avgLng = (minLng + maxLng) / 2;
+        
+        // Calculate appropriate zoom
+        const latDiff = maxLat - minLat;
+        const lngDiff = maxLng - minLng;
+        const maxDiff = Math.max(latDiff, lngDiff);
+        
+        let zoom = 13;
+        if (maxDiff > 0.1) zoom = 10;
+        else if (maxDiff > 0.05) zoom = 11;
+        else if (maxDiff > 0.02) zoom = 12;
+        else if (maxDiff > 0.01) zoom = 13;
+        else if (maxDiff > 0.005) zoom = 14;
+        else zoom = 15;
+        
+        // Update state
+        setMapCenter({ lat: avgLat, lng: avgLng });
+        setMapZoom(zoom);
+        
+        // Fit bounds to show all places
+        setTimeout(() => {
+          if (mapRef.current && window.google && window.google.maps) {
+            try {
+              const googleBounds = new window.google.maps.LatLngBounds();
+              positionsArray.forEach(pos => {
+                googleBounds.extend(new window.google.maps.LatLng(pos.lat, pos.lng));
+              });
+              
+              // Add padding to bounds
+              mapRef.current.fitBounds(googleBounds, {
+                top: 50,
+                right: 50,
+                bottom: panelHeight + 50,
+                left: 50
+              });
+            } catch (error) {
+              console.error('Error fitting bounds:', error);
+              // Fallback to center and zoom
+              if (mapRef.current.panTo) {
+                mapRef.current.panTo({ lat: avgLat, lng: avgLng });
+                mapRef.current.setZoom(zoom);
+              }
+            }
+          }
+        }, 500);
+      }
     } else if (mapLoaded && mapRef.current && Object.keys(placePositions).length === 0) {
       // No places - center on default location
       setTimeout(() => {
