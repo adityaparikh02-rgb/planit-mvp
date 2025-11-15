@@ -175,15 +175,15 @@ function App() {
         video_url: data.video_url
       });
 
-      // attach TikTok URL to every place
-      const uniquePlaces = [
-        ...new Map(
-          (data.places_extracted || []).map((p) => [
-            p.name,
-            { ...p, video_url: data.video_url },
-          ])
-        ).values(),
-      ];
+      // attach TikTok URL to every place and deduplicate
+      const placesArray = data.places_extracted || [];
+      const placesMap = new Map();
+      placesArray.forEach((p) => {
+        if (p && p.name) {
+          placesMap.set(p.name, { ...p, video_url: data.video_url });
+        }
+      });
+      const uniquePlaces = Array.from(placesMap.values());
       const cleanData = { ...data, places_extracted: uniquePlaces };
 
       console.log("💾 Setting result:", cleanData);

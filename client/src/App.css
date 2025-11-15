@@ -318,7 +318,7 @@
 /* Input bar - Apple-style frosted search bar */
 .input-section {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   width: 100%;
   max-width: 600px;
   margin: 0 auto var(--spacing-lg);
@@ -380,16 +380,19 @@
   font-family: inherit;
   outline: none;
   font-weight: 400;
+  align-self: stretch;
 }
 
 .extract-pill-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  margin-right: 4px;
   margin: 4px;
   border-radius: 20px;
   padding: 0 var(--spacing-md) !important;
+  height: auto;
+  align-self: stretch;
 }
 
 .input-section input::placeholder {
@@ -409,6 +412,10 @@
   position: relative;
   overflow: hidden;
   box-shadow: 0 4px 16px var(--indigo-glow-soft);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .input-section button::before {
