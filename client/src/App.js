@@ -27,7 +27,8 @@ function App() {
   const [selectedList, setSelectedList] = useState(null); // For saved list detail view
   const [showListMap, setShowListMap] = useState(false); // For map view in list detail
   const [editingListName, setEditingListName] = useState(null); // For editing list names
-  const [editingListValue, setEditingListValue] = useState(""); // Temporary value while editing
+  const [editingListValue, setEditingListValue] = useState("");
+  const [expandedSavedPlaceIndex, setExpandedSavedPlaceIndex] = useState(null); // For expanded place details in saved lists
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -748,9 +749,12 @@ function App() {
           <div className="saved-page">
             {!selectedList ? (
               <>
-                <h2 className="saved-header">⭐ Your Saved Lists</h2>
+                <h2 className="saved-header">Your Saved Lists</h2>
                 {Object.keys(savedPlaces).length === 0 ? (
-                  <p className="empty">💾 No saved places yet.</p>
+                  <div className="empty-state">
+                    <p className="empty-text">No saved places yet</p>
+                    <p className="empty-subtext">Start saving venues to create your lists</p>
+                  </div>
                 ) : (
                   Object.entries(savedPlaces).map(([list, places], idx) => (
                     <div key={idx} className="saved-list-card">
@@ -830,64 +834,66 @@ function App() {
                   >
                     ← Back
                   </button>
-                  {editingListName === selectedList ? (
-                    <div className="list-detail-title-edit">
-                      <input
-                        type="text"
-                        value={editingListValue}
-                        onChange={(e) => setEditingListValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleSaveEditList(selectedList, e);
-                          } else if (e.key === "Escape") {
-                            handleCancelEditList(e);
-                          }
-                        }}
-                        className="list-name-input-large"
-                        autoFocus
-                      />
+                  <div className="list-detail-center">
+                    {editingListName === selectedList ? (
+                      <div className="list-detail-title-edit">
+                        <input
+                          type="text"
+                          value={editingListValue}
+                          onChange={(e) => setEditingListValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleSaveEditList(selectedList, e);
+                            } else if (e.key === "Escape") {
+                              handleCancelEditList(e);
+                            }
+                          }}
+                          className="list-name-input-large"
+                          autoFocus
+                        />
+                        <button
+                          className="save-edit-btn"
+                          onClick={(e) => handleSaveEditList(selectedList, e)}
+                          title="Save"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          className="cancel-edit-btn"
+                          onClick={(e) => handleCancelEditList(e)}
+                          title="Cancel"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="list-detail-title-wrapper">
+                        <h2 className="list-detail-title">{selectedList}</h2>
+                        <button
+                          className="edit-list-btn-detail"
+                          onClick={(e) => handleStartEditList(selectedList, e)}
+                          title="Rename list"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M11.333 2.667a.667.667 0 0 1 .943 0l1.334 1.334a.667.667 0 0 1 0 .943L12.276 6.22 9.78 3.724l1.334-1.334a.667.667 0 0 1 .22-.723zM8.667 5.333L3.333 10.667v2.667h2.667l5.333-5.334L8.667 5.333z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                    <div className="view-toggle-list-detail">
                       <button
-                        className="save-edit-btn"
-                        onClick={(e) => handleSaveEditList(selectedList, e)}
-                        title="Save"
+                        className={!showListMap ? "active" : ""}
+                        onClick={() => setShowListMap(false)}
                       >
-                        ✓
+                        List
                       </button>
                       <button
-                        className="cancel-edit-btn"
-                        onClick={(e) => handleCancelEditList(e)}
-                        title="Cancel"
+                        className={showListMap ? "active" : ""}
+                        onClick={() => setShowListMap(true)}
                       >
-                        ✕
+                        Map
                       </button>
                     </div>
-                  ) : (
-                    <div className="list-detail-title-wrapper">
-                      <h2 className="list-detail-title">{selectedList}</h2>
-                      <button
-                        className="edit-list-btn-detail"
-                        onClick={(e) => handleStartEditList(selectedList, e)}
-                        title="Rename list"
-                      >
-                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M11.333 2.667a.667.667 0 0 1 .943 0l1.334 1.334a.667.667 0 0 1 0 .943L12.276 6.22 9.78 3.724l1.334-1.334a.667.667 0 0 1 .22-.723zM8.667 5.333L3.333 10.667v2.667h2.667l5.333-5.334L8.667 5.333z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                  <div className="view-toggle-list-detail">
-                    <button
-                      className={!showListMap ? "active" : ""}
-                      onClick={() => setShowListMap(false)}
-                    >
-                      List
-                    </button>
-                    <button
-                      className={showListMap ? "active" : ""}
-                      onClick={() => setShowListMap(true)}
-                    >
-                      Map
-                    </button>
                   </div>
                 </div>
                 
@@ -902,87 +908,142 @@ function App() {
                   />
                 ) : (
                   <div className="saved-list-places">
-                    {savedPlaces[selectedList]?.map((p, i) => (
-                      <div key={i} className="place-card">
-                        {p.photo_url && (
-                          <img
-                            src={p.photo_url}
-                            alt={p.name}
-                            className="place-photo"
-                          />
-                        )}
-                        <div className="place-info">
-                          <h4>{p.name}</h4>
-                          {p.summary && (
-                            <p className="description">{p.summary}</p>
+                    {savedPlaces[selectedList]?.map((p, i) => {
+                      const isExpanded = expandedSavedPlaceIndex === i;
+                      // Get first sentence or first 120 characters as one-line summary
+                      const oneLineSummary = p.summary 
+                        ? (p.summary.split('.')[0].trim() || p.summary.slice(0, 120)).replace(/\.$/, '')
+                        : null;
+                      
+                      return (
+                        <div key={i} className="place-card">
+                          {p.photo_url && (
+                            <img
+                              src={p.photo_url}
+                              alt={p.name}
+                              className="place-photo"
+                            />
                           )}
-                          {p.vibe_tags && p.vibe_tags.length > 0 && (
-                            <p className="vibe-line">
-                              Vibes: {p.vibe_tags.join(", ")}
-                            </p>
-                          )}
-                          {p.other_videos && p.other_videos.length > 0 && (
-                            <div className="other-videos-note">
-                              <details className="tiktok-dropdown">
-                                <summary className="tiktok-dropdown-summary">
-                                  <strong>📹 From TikTok{p.other_videos.length > 1 ? 's' : ''} ({p.other_videos.length})</strong>
-                                </summary>
-                                <div className="other-videos-list">
-                                  {p.other_videos.map((vid, vidIdx) => (
-                                    <div key={vidIdx} className="other-video-item">
-                                      {vid.username && (
-                                        <span className="other-video-username">@{vid.username}</span>
-                                      )}
-                                      <a
-                                        href={vid.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="other-video-link"
-                                      >
-                                        {vid.summary || "this video"}
-                                      </a>
-                                    </div>
+                          <div className="place-info">
+                            <h4>{p.name}</h4>
+                            {oneLineSummary && (
+                              <p className="description">{oneLineSummary}</p>
+                            )}
+                            {p.vibe_tags && p.vibe_tags.length > 0 && (
+                              <div className="vibe-section">
+                                <div className="vibe-tags">
+                                  {p.vibe_tags.map((tag, idx) => (
+                                    <span key={idx} className="vibe-chip">
+                                      {tag}
+                                    </span>
                                   ))}
                                 </div>
-                              </details>
+                              </div>
+                            )}
+                            
+                            {/* Show More/Less Toggle */}
+                            {(p.summary?.length > (oneLineSummary?.length || 0) || p.must_try || p.when_to_go || p.vibe || p.other_videos?.length > 0) && (
+                              <button
+                                className="show-more-btn"
+                                onClick={() => setExpandedSavedPlaceIndex(isExpanded ? null : i)}
+                              >
+                                {isExpanded ? "Show Less" : "Show More"}
+                              </button>
+                            )}
+                            
+                            {/* Expanded Content */}
+                            {isExpanded && (
+                              <div className="expanded-content">
+                                {p.summary && p.summary !== oneLineSummary && (
+                                  <p className="description full-summary">{p.summary}</p>
+                                )}
+                                <div className="meta">
+                                  {p.must_try && (
+                                    <p>
+                                      <strong>
+                                        {p.must_try_field === "highlights" ? "✨ Highlights:" :
+                                         p.must_try_field === "features" ? "🎯 Features:" :
+                                         "🍴 Must Try:"}
+                                      </strong> {p.must_try}
+                                    </p>
+                                  )}
+                                  {p.when_to_go && (
+                                    <p>
+                                      <strong>🕐 When to Go:</strong> {p.when_to_go}
+                                    </p>
+                                  )}
+                                  {p.vibe && (
+                                    <p>
+                                      <strong>💫 Vibe:</strong> {p.vibe}
+                                    </p>
+                                  )}
+                                </div>
+                                {p.other_videos && p.other_videos.length > 0 && (
+                                  <div className="other-videos-note">
+                                    <details className="tiktok-dropdown">
+                                      <summary className="tiktok-dropdown-summary">
+                                        <strong>📹 From TikTok{p.other_videos.length > 1 ? 's' : ''} ({p.other_videos.length})</strong>
+                                      </summary>
+                                      <div className="other-videos-list">
+                                        {p.other_videos.map((vid, vidIdx) => (
+                                          <div key={vidIdx} className="other-video-item">
+                                            {vid.username && (
+                                              <span className="other-video-username">@{vid.username}</span>
+                                            )}
+                                            <a
+                                              href={vid.url}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="other-video-link"
+                                            >
+                                              {vid.summary || "this video"}
+                                            </a>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </details>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            <div className="button-row">
+                              {p.maps_url && (
+                                <a
+                                  href={p.maps_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="action-btn"
+                                >
+                                  Open in Maps
+                                </a>
+                              )}
+                              {p.video_url && (
+                                <a
+                                  href={p.video_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="action-btn"
+                                >
+                                  View on TikTok
+                                </a>
+                              )}
+                              <button
+                                className="action-btn remove"
+                                onClick={() => {
+                                  handleRemoveFromList(selectedList, i);
+                                  if (savedPlaces[selectedList]?.length === 1) {
+                                    setSelectedList(null);
+                                  }
+                                }}
+                              >
+                                Remove
+                              </button>
                             </div>
-                          )}
-                          <div className="button-row">
-                            {p.maps_url && (
-                              <a
-                                href={p.maps_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="action-btn"
-                              >
-                                Open in Maps
-                              </a>
-                            )}
-                            {p.video_url && (
-                              <a
-                                href={p.video_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="action-btn"
-                              >
-                                View on TikTok
-                              </a>
-                            )}
-                            <button
-                              className="action-btn remove"
-                              onClick={() => {
-                                handleRemoveFromList(selectedList, i);
-                                if (savedPlaces[selectedList]?.length === 1) {
-                                  setSelectedList(null);
-                                }
-                              }}
-                            >
-                              Remove
-                            </button>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

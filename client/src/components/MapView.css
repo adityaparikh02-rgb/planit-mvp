@@ -47,8 +47,21 @@
   width: 100%;
   position: relative;
   flex-shrink: 0;
-  transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  transition: height 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.2s ease;
   min-height: 200px;
+  background: #0a0a0f;
+}
+
+.map-section > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 200px !important;
+}
+
+.map-section > div > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 200px !important;
 }
 
 .map-section.dimmed {

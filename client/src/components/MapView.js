@@ -30,7 +30,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   const [hoveredPlace, setHoveredPlace] = useState(null);
   const [placePositions, setPlacePositions] = useState({});
   const [mapCenter, setMapCenter] = useState(defaultCenter);
-  const [mapZoom, setMapZoom] = useState(13);
+  const [mapZoom, setMapZoom] = useState(12);
   const [showListMenu, setShowListMenu] = useState(null);
   const [panelState, setPanelState] = useState(PANEL_STATES.HALF);
   const [panelHeight, setPanelHeight] = useState(() => 
@@ -43,6 +43,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   const [expandedPlace, setExpandedPlace] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [mapDimmed, setMapDimmed] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
   const panelRef = useRef(null);
   const cardRefs = useRef({});
   const mapRef = useRef(null);
@@ -96,9 +97,18 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
   // Geocode places using Google Geocoding API and calculate center
   useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || placesWithLocation.length === 0) {
+    if (!GOOGLE_MAPS_API_KEY) {
       setPlacePositions({});
       setIsLoading(false);
+      return;
+    }
+    
+    if (placesWithLocation.length === 0) {
+      setPlacePositions({});
+      setIsLoading(false);
+      // Keep map centered on default location
+      setMapCenter(defaultCenter);
+      setMapZoom(12);
       return;
     }
 
@@ -151,6 +161,14 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
         setMapCenter({ lat: avgLat, lng: avgLng });
         setMapZoom(zoom);
+        
+        // Center map once it's loaded
+        if (mapRef.current) {
+          setTimeout(() => {
+            mapRef.current.panTo({ lat: avgLat, lng: avgLng });
+            mapRef.current.setZoom(zoom);
+          }, 100);
+        }
       }
       setIsLoading(false);
     };
@@ -278,7 +296,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
   // Center map on place when selected (with smooth animation)
   useEffect(() => {
-    if (selectedPlace && placePositions[selectedPlace.name]) {
+    if (selectedPlace && placePositions[selectedPlace.name] && mapRef.current) {
       const position = placePositions[selectedPlace.name];
       centerMapOnPlace(selectedPlace, position);
       
@@ -291,6 +309,56 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       }, 150);
     }
   }, [selectedPlace, placePositions, centerMapOnPlace]);
+  
+  // Center map on all places when they're loaded
+  useEffect(() => {
+    if (mapLoaded && mapRef.current && Object.keys(placePositions).length > 0) {
+      const positionsArray = Object.values(placePositions);
+      const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
+      const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
+      
+      const lats = positionsArray.map(pos => pos.lat);
+      const lngs = positionsArray.map(pos => pos.lng);
+      const latDiff = Math.max(...lats) - Math.min(...lats);
+      const lngDiff = Math.max(...lngs) - Math.min(...lngs);
+      const maxDiff = Math.max(latDiff, lngDiff);
+      
+      let zoom = 13;
+      if (maxDiff > 0.1) zoom = 11;
+      else if (maxDiff > 0.05) zoom = 12;
+      else if (maxDiff > 0.02) zoom = 13;
+      else if (maxDiff > 0.01) zoom = 14;
+      else zoom = 15;
+      
+      // Update state
+      setMapCenter({ lat: avgLat, lng: avgLng });
+      setMapZoom(zoom);
+      
+      // Pan map
+      setTimeout(() => {
+        if (mapRef.current && mapRef.current.panTo) {
+          try {
+            mapRef.current.panTo({ lat: avgLat, lng: avgLng });
+            mapRef.current.setZoom(zoom);
+          } catch (error) {
+            console.error('Error centering map:', error);
+          }
+        }
+      }, 500);
+    } else if (mapLoaded && mapRef.current && Object.keys(placePositions).length === 0) {
+      // No places - center on default location
+      setTimeout(() => {
+        if (mapRef.current && mapRef.current.panTo) {
+          try {
+            mapRef.current.panTo(defaultCenter);
+            mapRef.current.setZoom(12);
+          } catch (error) {
+            console.error('Error centering map on default:', error);
+          }
+        }
+      }, 300);
+    }
+  }, [mapLoaded, placePositions]);
 
   // Update map dimming based on panel state
   useEffect(() => {
@@ -310,7 +378,9 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     return () => window.removeEventListener('resize', handleResize);
   }, [panelState, isDragging]);
 
-  const mapHeight = `calc(100vh - ${panelHeight}px)`;
+  const mapHeight = typeof window !== 'undefined' 
+    ? `calc(100vh - ${panelHeight}px)` 
+    : '100vh';
 
   const mapOptions = {
     zoom: mapZoom,
@@ -325,6 +395,9 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     zoomControlOptions: {
       position: window.google?.maps?.ControlPosition?.RIGHT_BOTTOM || 11
     },
+    // Ensure map always renders
+    minZoom: 10,
+    maxZoom: 18,
     styles: [
       {
         featureType: "all",
@@ -504,13 +577,41 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
           zoom={mapZoom}
             onLoad={(map) => {
               mapRef.current = map;
+              setMapLoaded(true);
               console.log('Map loaded successfully');
+              
+              // Always ensure map is visible - center on default if no places yet
+              if (Object.keys(placePositions).length === 0) {
+                // Center on default location (NYC) if no places geocoded yet
+                setTimeout(() => {
+                  if (map && map.panTo) {
+                    map.panTo(defaultCenter);
+                    map.setZoom(12);
+                  }
+                }, 100);
+              } else {
+                // Center map on places once loaded
+                const positionsArray = Object.values(placePositions);
+                const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
+                const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
+                
+                setTimeout(() => {
+                  if (map && map.panTo) {
+                    map.panTo({ lat: avgLat, lng: avgLng });
+                  }
+                }, 200);
+              }
             }}
             onError={(error) => {
               console.error('Map error:', error);
+              setIsLoading(false);
             }}
             onDragStart={() => {
               // Prevent list scrolling when dragging map
+            }}
+            onIdle={() => {
+              // Map is ready and rendered
+              setIsLoading(false);
             }}
         >
           {placesWithLocation.map((place, index) => {
@@ -546,10 +647,10 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       <div 
         ref={panelRef}
         className={`map-bottom-panel ${panelState}`}
-        style={{ 
-          height: `${panelHeight}px`,
-          transition: isDragging ? 'none' : 'height 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
+          style={{ 
+            height: `${panelHeight}px`,
+            transition: isDragging ? 'none' : 'height 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+          }}
       >
         {/* Drag Handle */}
         <div 
@@ -579,7 +680,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
         {/* Scrollable List */}
         <div className="panel-list-container" onWheel={(e) => e.stopPropagation()}>
-          {isLoading ? (
+          {isLoading && Object.keys(placePositions).length === 0 ? (
             <div className="panel-list">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="map-place-card skeleton">
