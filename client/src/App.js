@@ -206,7 +206,9 @@ function App() {
         "Untitled";
 
       // Save to history (localStorage only)
-      const now = typeof Date !== 'undefined' ? new Date() : { toLocaleTimeString: () => new Date().toLocaleTimeString() };
+      // Use Date constructor directly to avoid minification issues
+      const DateCtor = window.Date;
+      const now = new DateCtor();
       const newHistoryItem = {
             title,
             time: now.toLocaleTimeString([], {
