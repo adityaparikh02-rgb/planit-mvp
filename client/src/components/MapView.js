@@ -33,9 +33,12 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   const [mapZoom, setMapZoom] = useState(12);
   const [showListMenu, setShowListMenu] = useState(null);
   const [panelState, setPanelState] = useState(PANEL_STATES.HALF);
-  const [panelHeight, setPanelHeight] = useState(() => 
-    typeof window !== 'undefined' ? window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.HALF] : 300
-  );
+  const [panelHeight, setPanelHeight] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.HALF];
+    }
+    return 400; // Default fallback
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
   const [dragStartHeight, setDragStartHeight] = useState(0);
@@ -378,9 +381,9 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     return () => window.removeEventListener('resize', handleResize);
   }, [panelState, isDragging]);
 
-  const mapHeight = typeof window !== 'undefined' 
+  const mapHeight = typeof window !== 'undefined' && panelHeight > 0
     ? `calc(100vh - ${panelHeight}px)` 
-    : '100vh';
+    : '60vh';
 
   const mapOptions = {
     zoom: mapZoom,
@@ -549,7 +552,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       {/* Map Section with dimming overlay */}
       <div 
         className={`map-section ${mapDimmed ? 'dimmed' : ''}`} 
-        style={{ height: mapHeight, minHeight: '200px' }}
+        style={{ height: mapHeight, minHeight: '300px' }}
       >
         <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} loadingElement={
           <div style={{ 
@@ -570,7 +573,8 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
             mapContainerStyle={{
               width: "100%",
               height: mapHeight,
-              minHeight: "200px",
+              minHeight: "300px",
+              flex: 1,
             }}
           options={mapOptions}
           center={mapCenter}
@@ -578,6 +582,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
             onLoad={(map) => {
               mapRef.current = map;
               setMapLoaded(true);
+              setIsLoading(false);
               console.log('Map loaded successfully');
               
               // Always ensure map is visible - center on default if no places yet
@@ -585,8 +590,12 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                 // Center on default location (NYC) if no places geocoded yet
                 setTimeout(() => {
                   if (map && map.panTo) {
-                    map.panTo(defaultCenter);
-                    map.setZoom(12);
+                    try {
+                      map.panTo(defaultCenter);
+                      map.setZoom(12);
+                    } catch (error) {
+                      console.error('Error centering map:', error);
+                    }
                   }
                 }, 100);
               } else {
@@ -597,7 +606,11 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                 
                 setTimeout(() => {
                   if (map && map.panTo) {
-                    map.panTo({ lat: avgLat, lng: avgLng });
+                    try {
+                      map.panTo({ lat: avgLat, lng: avgLng });
+                    } catch (error) {
+                      console.error('Error centering map on places:', error);
+                    }
                   }
                 }, 200);
               }
