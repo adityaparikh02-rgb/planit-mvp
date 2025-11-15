@@ -1543,15 +1543,15 @@
   }
 
   .center-btn {
-    height: 52px;
-    width: 52px;
-    font-size: 22px;
-    transform: translateY(-6px);
+    height: 48px;
+    width: 48px;
+    font-size: 20px;
+    transform: translateY(0);
   }
 
   .center-btn:hover,
   .center-btn.active {
-    transform: translateY(-8px) scale(1.05);
+    transform: translateY(-2px) scale(1.05);
   }
 
   .nav-btn {
