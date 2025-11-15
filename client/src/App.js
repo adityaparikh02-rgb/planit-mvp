@@ -943,7 +943,12 @@ function App() {
                         : null;
                       
                       return (
-                        <div key={i} className="place-card">
+                        <div 
+                          key={i} 
+                          className="place-card"
+                          onClick={() => setExpandedSavedPlaceIndex(isExpanded ? null : i)}
+                          style={{ cursor: 'pointer' }}
+                        >
                           {p.photo_url && (
                             <img
                               src={p.photo_url}
