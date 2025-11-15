@@ -238,13 +238,13 @@ function App() {
       // Better error messages for connection issues
       if (err.name === "AbortError") {
         errorMessage = "Request timed out. Video processing is taking too long. The video might be too large or the backend is overloaded.";
-      } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+      } else if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError") || err.message.includes("Network request failed")) {
         // Mobile-specific error message
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
         if (isMobile) {
-          errorMessage = `Cannot connect to backend. Make sure you're on WiFi or have good mobile data. API URL: ${API_BASE}`;
+          errorMessage = `Cannot connect to backend. The backend may be sleeping (Render free tier). Try again in a few seconds. API URL: ${API_BASE}`;
         } else {
-          errorMessage = `Cannot connect to backend at ${API_BASE}. Check if the backend is running and REACT_APP_API_URL is set correctly. Current API URL: ${API_BASE}`;
+          errorMessage = `Cannot connect to backend at ${API_BASE}. The backend may be sleeping (Render free tier) or down. Try again in a few seconds. If the problem persists, check the Render dashboard.`;
         }
       } else if (err.message.includes("CORS")) {
         errorMessage = "CORS error: Backend is not allowing requests from this origin.";
