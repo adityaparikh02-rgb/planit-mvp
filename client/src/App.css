@@ -1104,7 +1104,19 @@
   font-size: 0.85rem;
   font-weight: 500;
   font-family: inherit;
-  margin-left: var(--spacing-xs);
+  margin-left: auto;
+  margin-right: var(--spacing-xs);
+}
+
+.saved-list-card .hist-arrow {
+  color: rgba(255, 255, 255, 0.4);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.saved-list-card:hover .hist-arrow {
+  color: #7E86FF;
+  transform: translateX(4px);
 }
 
 /* List name wrapper for edit button */
