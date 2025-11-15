@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useEffect, useState } from "react";
 import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
 import "./MapView.css";
 
@@ -13,14 +13,23 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   // Default center (NYC)
   const defaultCenter = { lat: 40.7128, lng: -73.9352 };
 
-  const [selectedPlace, setSelectedPlace] = React.useState(null);
-  const [placePositions, setPlacePositions] = React.useState({});
-  const [mapCenter, setMapCenter] = React.useState(defaultCenter);
-  const [mapZoom, setMapZoom] = React.useState(13);
-  const [showListMenu, setShowListMenu] = React.useState(false);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [hoveredPlace, setHoveredPlace] = useState(null);
+  const [placePositions, setPlacePositions] = useState({});
+  const [mapCenter, setMapCenter] = useState(defaultCenter);
+  const [mapZoom, setMapZoom] = useState(13);
+  const [showListMenu, setShowListMenu] = useState(null);
+  const [panelHeight, setPanelHeight] = useState(300); // Height of bottom panel in pixels
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartY, setDragStartY] = useState(0);
+  const [dragStartHeight, setDragStartHeight] = useState(0);
+  const [expandedPlace, setExpandedPlace] = useState(null);
+  const panelRef = useRef(null);
+  const cardRefs = useRef({});
+  const mapRef = useRef(null);
 
   // Geocode places using Google Geocoding API and calculate center
-  React.useEffect(() => {
+  useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY || placesWithLocation.length === 0) return;
 
     const geocodePlace = async (place) => {
@@ -80,23 +89,62 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     geocodeAll();
   }, [placesWithLocation, GOOGLE_MAPS_API_KEY]);
 
+  // Handle panel dragging
+  const handleMouseDown = (e) => {
+    setIsDragging(true);
+    setDragStartY(e.clientY);
+    setDragStartHeight(panelHeight);
+    e.preventDefault();
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    const deltaY = dragStartY - e.clientY; // Inverted: dragging up increases height
+    const newHeight = Math.max(200, Math.min(window.innerHeight - 100, dragStartHeight + deltaY));
+    setPanelHeight(newHeight);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, dragStartY, dragStartHeight]);
+
+  // Center map on place when selected
+  useEffect(() => {
+    if (selectedPlace && placePositions[selectedPlace.name] && mapRef.current) {
+      const position = placePositions[selectedPlace.name];
+      mapRef.current.panTo(position);
+      // Scroll card into view
+      const cardElement = cardRefs.current[selectedPlace.name];
+      if (cardElement) {
+        cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [selectedPlace, placePositions]);
+
   const mapContainerStyle = {
     width: "100%",
-    height: "600px",
-    borderRadius: "14px",
-    marginTop: "20px",
-    border: "1px solid rgba(255, 255, 255, 0.1)",
-    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
+    height: `calc(100vh - ${panelHeight}px)`,
+    transition: isDragging ? 'none' : 'height 0.3s ease',
   };
 
   const mapOptions = {
     zoom: mapZoom,
     center: mapCenter,
-    mapTypeControl: false, // Disable satellite/terrain view toggle
+    mapTypeControl: false,
     streetViewControl: false,
     fullscreenControl: true,
     styles: [
-      // Dark mode styling to match app theme
       {
         featureType: "all",
         elementType: "geometry",
@@ -185,6 +233,31 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     ]
   };
 
+  // Custom marker icon with number
+  const createMarkerIcon = (index, isSelected, isHovered) => {
+    const size = isSelected ? 40 : isHovered ? 36 : 32;
+    const color = isSelected ? '#6366f1' : isHovered ? '#8da0ff' : '#fff';
+    const anchor = window.google && window.google.maps ? 
+      new window.google.maps.Point(0, -10) : 
+      { x: 0, y: -10 };
+    
+    return {
+      path: 'M 0,0 C -2,-20 -10,-22 -10,-30 A 10,10 0 1,1 10,-30 C 10,-22 2,-20 0,0 z',
+      fillColor: color,
+      fillOpacity: 1,
+      strokeColor: '#1a1a26',
+      strokeWeight: 2,
+      scale: size / 32,
+      anchor: anchor,
+      label: {
+        text: String(index + 1),
+        color: '#1a1a26',
+        fontSize: '12px',
+        fontWeight: 'bold',
+      }
+    };
+  };
+
   // If no API key, show a message
   if (!GOOGLE_MAPS_API_KEY) {
     return (
@@ -198,208 +271,227 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   }
 
   return (
-    <div style={{ marginTop: "20px" }}>
-      <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY}>
-        <GoogleMap
-          mapContainerStyle={mapContainerStyle}
-          options={mapOptions}
-          center={mapCenter}
-          zoom={mapZoom}
-        >
-          {placesWithLocation.map((place, index) => {
-            const position = placePositions[place.name] || {
-              lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
-              lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
-            };
-            
-            return (
-              <Marker
-                key={index}
-                position={position}
-                onClick={() => setSelectedPlace(place)}
-                title={place.name}
-              />
-            );
-          })}
-
-        </GoogleMap>
-      </LoadScript>
-      
-      {/* Dark glossy modal for place details */}
-      {selectedPlace && (
-        <div className="map-place-modal-overlay" onClick={() => {
-          setSelectedPlace(null);
-          setShowListMenu(false);
-        }}>
-          <div className="map-place-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="map-modal-close" onClick={() => {
-              setSelectedPlace(null);
-              setShowListMenu(false);
-            }}>
-              ✕
-            </button>
-            
-            {selectedPlace.photo_url && (
-              <div className="map-modal-photo-wrapper">
-                <img 
-                  src={selectedPlace.photo_url} 
-                  alt={selectedPlace.name}
-                  className="map-modal-photo"
+    <div className="map-dual-pane-container">
+      {/* Map Section */}
+      <div className="map-section" style={{ height: `calc(100vh - ${panelHeight}px)` }}>
+        <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY}>
+          <GoogleMap
+            mapContainerStyle={mapContainerStyle}
+            options={mapOptions}
+            center={mapCenter}
+            zoom={mapZoom}
+            onLoad={(map) => {
+              mapRef.current = map;
+            }}
+          >
+            {placesWithLocation.map((place, index) => {
+              const position = placePositions[place.name] || {
+                lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
+                lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
+              };
+              const isSelected = selectedPlace?.name === place.name;
+              const isHovered = hoveredPlace?.name === place.name;
+              
+              return (
+                <Marker
+                  key={index}
+                  position={position}
+                  onClick={() => {
+                    setSelectedPlace(place);
+                    setHoveredPlace(null);
+                  }}
+                  onMouseOver={() => setHoveredPlace(place)}
+                  onMouseOut={() => setHoveredPlace(null)}
+                  icon={createMarkerIcon(index, isSelected, isHovered)}
+                  title={place.name}
                 />
-              </div>
-            )}
-            
-            <div className="map-modal-content">
-              <div className="map-modal-header">
-                <h2 className="map-modal-title">{selectedPlace.name}</h2>
-                <button
-                  className="map-modal-menu-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowListMenu(!showListMenu);
+              );
+            })}
+          </GoogleMap>
+        </LoadScript>
+      </div>
+
+      {/* Draggable Bottom Panel */}
+      <div 
+        ref={panelRef}
+        className="map-bottom-panel"
+        style={{ 
+          height: `${panelHeight}px`,
+          transition: isDragging ? 'none' : 'height 0.3s ease',
+        }}
+      >
+        {/* Drag Handle */}
+        <div 
+          className="panel-drag-handle"
+          onMouseDown={handleMouseDown}
+        >
+          <div className="drag-handle-bar"></div>
+        </div>
+
+        {/* Panel Header */}
+        <div className="panel-header">
+          <h3 className="panel-title">
+            {placesWithLocation.length} {placesWithLocation.length === 1 ? 'Place' : 'Places'}
+          </h3>
+        </div>
+
+        {/* Scrollable List */}
+        <div className="panel-list-container">
+          <div className="panel-list">
+            {placesWithLocation.map((place, index) => {
+              const isSelected = selectedPlace?.name === place.name;
+              const isExpanded = expandedPlace?.name === place.name;
+              
+              return (
+                <div
+                  key={index}
+                  ref={(el) => {
+                    if (el) cardRefs.current[place.name] = el;
+                  }}
+                  className={`map-place-card ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
+                  onMouseEnter={() => {
+                    setHoveredPlace(place);
+                    if (placePositions[place.name] && mapRef.current) {
+                      mapRef.current.panTo(placePositions[place.name]);
+                    }
+                  }}
+                  onMouseLeave={() => setHoveredPlace(null)}
+                  onClick={() => {
+                    setSelectedPlace(place);
+                    setExpandedPlace(isExpanded ? null : place);
                   }}
                 >
-                  ⋯
-                </button>
-                {showListMenu && (
-                  <div className="map-modal-menu-popup" onClick={(e) => e.stopPropagation()}>
-                    {Object.keys(savedPlaces).length > 0 ? (
-                      Object.keys(savedPlaces).map((list, idx) => {
-                        const selected = isInList ? isInList(list, selectedPlace) : false;
-                        return (
+                  {/* Card Number Badge */}
+                  <div className="card-number-badge">{index + 1}</div>
+
+                  {/* Photo */}
+                  {place.photo_url && (
+                    <div className="card-photo-wrapper">
+                      <img 
+                        src={place.photo_url} 
+                        alt={place.name}
+                        className="card-photo"
+                      />
+                    </div>
+                  )}
+
+                  {/* Card Content */}
+                  <div className="card-content">
+                    <div className="card-header">
+                      <h4 className="card-name">{place.name}</h4>
+                      <button
+                        className="card-menu-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowListMenu(showListMenu === place.name ? null : place.name);
+                        }}
+                      >
+                        ⋯
+                      </button>
+                      {showListMenu === place.name && (
+                        <div className="card-menu-popup" onClick={(e) => e.stopPropagation()}>
+                          {Object.keys(savedPlaces).length > 0 ? (
+                            Object.keys(savedPlaces).map((list, idx) => {
+                              const inList = isInList ? isInList(list, place) : false;
+                              return (
+                                <button
+                                  key={idx}
+                                  onClick={() => {
+                                    if (togglePlaceInList) {
+                                      togglePlaceInList(list, place);
+                                    }
+                                    setShowListMenu(null);
+                                  }}
+                                  className={`card-list-toggle ${inList ? 'selected' : ''}`}
+                                >
+                                  <span className={`card-circle ${inList ? 'filled' : ''}`}>
+                                    {inList ? '✓' : ''}
+                                  </span>
+                                  {list}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <p className="card-empty-list">No lists yet</p>
+                          )}
                           <button
-                            key={idx}
+                            className="card-add-list-btn"
                             onClick={() => {
-                              if (togglePlaceInList) {
-                                togglePlaceInList(list, selectedPlace);
+                              if (handleAddNewList) {
+                                handleAddNewList();
                               }
-                              setShowListMenu(false);
+                              setShowListMenu(null);
                             }}
-                            className={`map-modal-list-toggle ${selected ? "selected" : ""}`}
                           >
-                            <span className={`map-modal-circle ${selected ? "filled" : ""}`}>
-                              {selected ? "✓" : ""}
-                            </span>
-                            {list}
+                            ➕ Add to New List
                           </button>
-                        );
-                      })
-                    ) : (
-                      <p className="map-modal-empty-list">No lists yet</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {place.address && (
+                      <p className="card-address">📍 {place.address}</p>
                     )}
-                    <button
-                      className="map-modal-add-list-btn"
-                      onClick={() => {
-                        if (handleAddNewList) {
-                          handleAddNewList();
-                        }
-                        setShowListMenu(false);
-                      }}
-                    >
-                      ➕ Add to New List
-                    </button>
-                  </div>
-                )}
-              </div>
-              
-              {selectedPlace.summary && (
-                <p className="map-modal-summary">{selectedPlace.summary}</p>
-              )}
-              
-              {selectedPlace.address && (
-                <p className="map-modal-address">📍 {selectedPlace.address}</p>
-              )}
-              
-              {selectedPlace.vibe_tags && selectedPlace.vibe_tags.length > 0 && (
-                <div className="map-modal-vibes">
-                  <strong>Vibes:</strong>
-                  <div className="map-modal-vibe-tags">
-                    {selectedPlace.vibe_tags.map((tag, idx) => (
-                      <span key={idx} className="map-modal-vibe-chip">{tag}</span>
-                    ))}
+
+                    {place.vibe_tags && place.vibe_tags.length > 0 && (
+                      <div className="card-vibes">
+                        {place.vibe_tags.slice(0, 3).map((tag, idx) => (
+                          <span key={idx} className="card-vibe-chip">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Expanded Content */}
+                    {isExpanded && (
+                      <div className="card-expanded-content">
+                        {place.summary && (
+                          <p className="card-summary">{place.summary}</p>
+                        )}
+                        {place.must_try && (
+                          <p className="card-must-try">
+                            <strong>
+                              {place.must_try_field === "highlights" ? "✨ Highlights:" :
+                               place.must_try_field === "features" ? "🎯 Features:" :
+                               "🍴 Must Try:"}
+                            </strong> {place.must_try}
+                          </p>
+                        )}
+                        {place.when_to_go && (
+                          <p className="card-when">
+                            <strong>🕐 When to Go:</strong> {place.when_to_go}
+                          </p>
+                        )}
+                        <div className="card-actions">
+                          {place.maps_url && (
+                            <a
+                              href={place.maps_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="card-action-btn"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              🗺️ Maps
+                            </a>
+                          )}
+                          {place.video_url && (
+                            <a
+                              href={place.video_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="card-action-btn"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              📹 TikTok
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              )}
-              
-              {selectedPlace.must_try && (
-                <p className="map-modal-must-try">
-                  <strong>
-                    {selectedPlace.must_try_field === "highlights" ? "✨ Highlights:" :
-                     selectedPlace.must_try_field === "features" ? "🎯 Features:" :
-                     "🍴 Must Try:"}
-                  </strong> {selectedPlace.must_try}
-                </p>
-              )}
-              
-              {selectedPlace.when_to_go && (
-                <p className="map-modal-when">
-                  <strong>🕐 When to Go:</strong> {selectedPlace.when_to_go}
-                </p>
-              )}
-              
-              {selectedPlace.vibe && (
-                <p className="map-modal-vibe">
-                  <strong>💫 Vibe:</strong> {selectedPlace.vibe}
-                </p>
-              )}
-              
-              <div className="map-modal-actions">
-                {selectedPlace.maps_url && (
-                  <a
-                    href={selectedPlace.maps_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="map-modal-action-btn"
-                  >
-                    🗺️ Open in Maps
-                  </a>
-                )}
-                {selectedPlace.video_url && (
-                  <a
-                    href={selectedPlace.video_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="map-modal-action-btn"
-                  >
-                    📹 View on TikTok
-                  </a>
-                )}
-              </div>
-            </div>
+              );
+            })}
           </div>
-        </div>
-      )}
-      
-      {/* List of places below map */}
-      <div className="map-places-list">
-        <h3 className="map-places-title">
-          Places on Map ({placesWithLocation.length})
-        </h3>
-        <div className="map-places-grid">
-          {placesWithLocation.map((place, index) => (
-            <div
-              key={index}
-              className={`map-place-card ${selectedPlace?.name === place.name ? "selected" : ""}`}
-              onClick={() => setSelectedPlace(place)}
-            >
-              {place.photo_url && (
-                <img 
-                  src={place.photo_url} 
-                  alt={place.name}
-                  className="map-place-photo"
-                />
-              )}
-              <div style={{ padding: "16px" }}>
-                <h4 className="map-place-name">{place.name}</h4>
-                {place.address && (
-                  <p className="map-place-address">{place.address}</p>
-                )}
-                {place.summary && (
-                  <p className="map-place-summary">{place.summary.substring(0, 80)}...</p>
-                )}
-              </div>
-            </div>
-          ))}
         </div>
       </div>
     </div>
@@ -407,4 +499,3 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 };
 
 export default MapView;
-

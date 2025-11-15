@@ -1,219 +1,245 @@
-/* Map View Styles - Matching App Design */
+/* Google Maps Style Dual-Pane Layout */
 
-.map-places-list {
-  margin-top: 30px;
-}
-
-.map-places-title {
-  font-size: 1.4rem;
-  font-weight: 700;
-  margin-bottom: 20px;
-  color: #fff;
-  text-align: center;
-}
-
-.map-places-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-}
-
-.map-place-card {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
-  padding: 0;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.map-dual-pane-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0f;
   overflow: hidden;
 }
 
-.map-place-photo {
+/* Map Section */
+.map-section {
   width: 100%;
-  height: 150px;
-  object-fit: cover;
+  position: relative;
+  flex-shrink: 0;
+  transition: height 0.3s ease;
+}
+
+.map-section > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Bottom Panel */
+.map-bottom-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(180deg, rgba(18, 18, 26, 0.98) 0%, rgba(26, 26, 38, 0.98) 100%);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  min-height: 200px;
+  max-height: calc(100vh - 100px);
+}
+
+/* Drag Handle */
+.panel-drag-handle {
+  width: 100%;
+  padding: 12px 0;
+  cursor: grab;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.panel-drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-handle-bar {
+  width: 40px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+
+.panel-drag-handle:hover .drag-handle-bar {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Panel Header */
+.panel-header {
+  padding: 0 20px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Scrollable List Container */
+.panel-list-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.panel-list-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.panel-list-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.panel-list-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.panel-list-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Place Card */
+.map-place-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .map-place-card:hover {
   background: rgba(255, 255, 255, 0.08);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
   border-color: rgba(99, 102, 241, 0.3);
 }
 
 .map-place-card.selected {
   background: rgba(99, 102, 241, 0.15);
   border-color: #6366f1;
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
 }
 
-.map-place-name {
-  margin: 0 0 8px 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: #fff;
+.map-place-card.expanded {
+  background: rgba(99, 102, 241, 0.1);
 }
 
-.map-place-address {
-  margin: 0 0 6px 0;
-  font-size: 0.85rem;
-  color: #aab1c6;
-  line-height: 1.4;
-}
-
-.map-place-summary {
-  margin: 8px 0 0 0;
-  font-size: 0.9rem;
-  color: #cfcfcf;
-  line-height: 1.5;
-}
-
-/* Map container styling */
-.map-container {
-  border-radius: 14px;
-  overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* Dark Glossy Modal for Place Details */
-.map-place-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.map-place-modal {
-  background: linear-gradient(135deg, rgba(26, 26, 38, 0.98), rgba(18, 18, 26, 0.98));
-  border-radius: 20px;
-  max-width: 500px;
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5),
-              0 0 0 1px rgba(255, 255, 255, 0.1),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  position: relative;
-  animation: slideUp 0.3s ease;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-@keyframes slideUp {
-  from {
-    transform: translateY(20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-.map-modal-close {
+/* Card Number Badge */
+.card-number-badge {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 24px;
-  width: 36px;
-  height: 36px;
+  top: 12px;
+  left: 12px;
+  width: 28px;
+  height: 28px;
+  background: rgba(26, 26, 38, 0.95);
+  backdrop-filter: blur(10px);
   border-radius: 50%;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  z-index: 10;
-  backdrop-filter: blur(10px);
-}
-
-.map-modal-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  font-size: 0.85rem;
+  font-weight: 700;
   color: #fff;
-  transform: scale(1.1);
+  z-index: 10;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-.map-modal-photo-wrapper {
+.map-place-card.selected .card-number-badge {
+  background: #6366f1;
+  border-color: #8da0ff;
+}
+
+/* Photo */
+.card-photo-wrapper {
   width: 100%;
-  height: 250px;
+  height: 180px;
   overflow: hidden;
-  border-radius: 20px 20px 0 0;
   position: relative;
 }
 
-.map-modal-photo {
+.card-photo {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.3s ease;
 }
 
-.map-modal-content {
-  padding: 24px;
+.map-place-card:hover .card-photo {
+  transform: scale(1.05);
 }
 
-.map-modal-header {
+/* Card Content */
+.card-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 16px;
+  gap: 12px;
   position: relative;
 }
 
-.map-modal-title {
+.card-name {
   margin: 0;
-  font-size: 1.8rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: #fff;
   flex: 1;
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
-.map-modal-menu-btn {
+.card-menu-btn {
   background: rgba(255, 255, 255, 0.1);
   border: none;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 20px;
-  width: 36px;
-  height: 36px;
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  margin-left: 12px;
   flex-shrink: 0;
 }
 
-.map-modal-menu-btn:hover {
+.card-menu-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
   transform: scale(1.1);
 }
 
-.map-modal-menu-popup {
+.card-menu-popup {
   position: absolute;
   top: 100%;
   right: 0;
@@ -230,7 +256,18 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.map-modal-list-toggle {
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-list-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -246,16 +283,16 @@
   text-align: left;
 }
 
-.map-modal-list-toggle:hover {
+.card-list-toggle:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.map-modal-list-toggle.selected {
+.card-list-toggle.selected {
   background: rgba(99, 102, 241, 0.2);
   color: #fff;
 }
 
-.map-modal-circle {
+.card-circle {
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -268,13 +305,13 @@
   transition: all 0.2s ease;
 }
 
-.map-modal-circle.filled {
+.card-circle.filled {
   background: #6366f1;
   border-color: #6366f1;
   color: #fff;
 }
 
-.map-modal-empty-list {
+.card-empty-list {
   padding: 12px;
   color: rgba(255, 255, 255, 0.5);
   font-size: 0.9rem;
@@ -282,7 +319,7 @@
   margin: 0;
 }
 
-.map-modal-add-list-btn {
+.card-add-list-btn {
   width: 100%;
   padding: 10px 12px;
   background: rgba(99, 102, 241, 0.2);
@@ -296,94 +333,133 @@
   transition: all 0.2s ease;
 }
 
-.map-modal-add-list-btn:hover {
+.card-add-list-btn:hover {
   background: rgba(99, 102, 241, 0.3);
   border-color: #6366f1;
   color: #fff;
 }
 
-.map-modal-summary {
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.95rem;
-  line-height: 1.6;
-  margin: 0 0 16px 0;
-}
-
-.map-modal-address {
+.card-address {
+  margin: 0;
+  font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.7);
-  font-size: 0.9rem;
-  margin: 0 0 16px 0;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
-.map-modal-vibes {
-  margin-bottom: 16px;
-}
-
-.map-modal-vibes strong {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 0.9rem;
-  display: block;
-  margin-bottom: 8px;
-}
-
-.map-modal-vibe-tags {
+.card-vibes {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  margin-top: 4px;
 }
 
-.map-modal-vibe-chip {
+.card-vibe-chip {
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.9);
-  border-radius: 20px;
-  padding: 4px 12px;
-  font-size: 0.8rem;
+  border-radius: 12px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.map-modal-must-try,
-.map-modal-when,
-.map-modal-vibe {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.9rem;
+/* Expanded Content */
+.card-expanded-content {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}
+
+.card-summary {
   margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.6;
+}
+
+.card-must-try,
+.card-when {
+  margin: 0 0 8px 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
   line-height: 1.5;
 }
 
-.map-modal-must-try strong,
-.map-modal-when strong,
-.map-modal-vibe strong {
+.card-must-try strong,
+.card-when strong {
   color: rgba(255, 255, 255, 0.95);
 }
 
-.map-modal-actions {
+.card-actions {
   display: flex;
-  gap: 12px;
-  margin-top: 20px;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
-.map-modal-action-btn {
+.card-action-btn {
   flex: 1;
-  min-width: 140px;
-  padding: 12px 20px;
+  padding: 10px 16px;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
   text-decoration: none;
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 600;
   text-align: center;
   transition: all 0.2s ease;
   display: inline-block;
 }
 
-.map-modal-action-btn:hover {
+.card-action-btn:hover {
   background: rgba(99, 102, 241, 0.3);
   border-color: #6366f1;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
 }
 
+/* Responsive Mobile */
+@media (max-width: 768px) {
+  .map-bottom-panel {
+    max-height: calc(100vh - 60px);
+  }
+
+  .panel-list-container {
+    padding: 12px 16px;
+  }
+
+  .card-photo-wrapper {
+    height: 150px;
+  }
+
+  .card-content {
+    padding: 12px;
+  }
+
+  .card-name {
+    font-size: 1rem;
+  }
+}
+
+/* Touch support for mobile dragging */
+@media (hover: none) and (pointer: coarse) {
+  .panel-drag-handle {
+    padding: 16px 0;
+  }
+
+  .drag-handle-bar {
+    width: 50px;
+    height: 5px;
+  }
+}

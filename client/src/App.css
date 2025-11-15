@@ -614,15 +614,21 @@
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 0.9rem;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 6px;
   border-radius: 4px;
   opacity: 0;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.edit-list-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 .saved-list-header:hover .edit-list-btn {
@@ -703,12 +709,19 @@
   background: rgba(255, 255, 255, 0.1);
   border: none;
   color: rgba(255, 255, 255, 0.7);
-  font-size: 1rem;
   cursor: pointer;
   padding: 8px 12px;
   border-radius: 6px;
   transition: all 0.2s ease;
   opacity: 0.7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-list-btn-detail svg {
+  width: 18px;
+  height: 18px;
 }
 
 .edit-list-btn-detail:hover {

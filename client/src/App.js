@@ -796,7 +796,9 @@ function App() {
                                 onClick={(e) => handleStartEditList(list, e)}
                                 title="Rename list"
                               >
-                                ✏️
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M11.333 2.667a.667.667 0 0 1 .943 0l1.334 1.334a.667.667 0 0 1 0 .943L12.276 6.22 9.78 3.724l1.334-1.334a.667.667 0 0 1 .22-.723zM8.667 5.333L3.333 10.667v2.667h2.667l5.333-5.334L8.667 5.333z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
                               </button>
                             </div>
                             <span className="count">
@@ -860,7 +862,9 @@ function App() {
                         onClick={(e) => handleStartEditList(selectedList, e)}
                         title="Rename list"
                       >
-                        ✏️
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M11.333 2.667a.667.667 0 0 1 .943 0l1.334 1.334a.667.667 0 0 1 0 .943L12.276 6.22 9.78 3.724l1.334-1.334a.667.667 0 0 1 .22-.723zM8.667 5.333L3.333 10.667v2.667h2.667l5.333-5.334L8.667 5.333z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
                       </button>
                     </div>
                   )}
