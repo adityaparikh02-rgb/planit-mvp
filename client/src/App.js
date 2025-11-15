@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Cocktail, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart } from "lucide-react";
+import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
 import MapView from "./components/MapView";
@@ -499,7 +499,7 @@ function App() {
                       let Icon = MapPin;
                       if (title.toLowerCase().includes("pizza") || title.toLowerCase().includes("pizzeria")) Icon = Pizza;
                       else if (title.toLowerCase().includes("coffee") || title.toLowerCase().includes("cafe") || title.toLowerCase().includes("café")) Icon = Coffee;
-                      else if (title.toLowerCase().includes("bar") || title.toLowerCase().includes("cocktail")) Icon = Cocktail;
+                      else if (title.toLowerCase().includes("bar") || title.toLowerCase().includes("cocktail")) Icon = Wine;
                       else if (title.toLowerCase().includes("restaurant") || title.toLowerCase().includes("dining")) Icon = UtensilsCrossed;
                       else if (title.toLowerCase().includes("rooftop") || title.toLowerCase().includes("roof")) Icon = Building2;
                       else if (title.toLowerCase().includes("brunch")) Icon = Croissant;
