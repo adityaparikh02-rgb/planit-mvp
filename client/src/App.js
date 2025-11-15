@@ -121,12 +121,39 @@ function App() {
       setAbortController(controller); // Store controller for cancel button
       const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 minutes
       
-      const res = await fetch(`${API_BASE}/api/extract`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ video_url: url }),
-        signal: controller.signal,
-      });
+      // Retry logic for connection errors (common with Render free tier sleeping)
+      let res;
+      let retries = 2;
+      let lastError;
+      
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          if (attempt > 0) {
+            console.log(`🔄 Retry attempt ${attempt} of ${retries}...`);
+            setLoadingStep(`Connecting to backend... (attempt ${attempt + 1})`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between retries
+          }
+          
+          res = await fetch(`${API_BASE}/api/extract`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ video_url: url }),
+            signal: controller.signal,
+          });
+          break; // Success, exit retry loop
+        } catch (fetchError) {
+          lastError = fetchError;
+          // If it's a connection error and we have retries left, retry
+          if (attempt < retries && (fetchError.message.includes("Failed to fetch") || fetchError.message.includes("NetworkError") || fetchError.name === "TypeError")) {
+            continue; // Retry
+          }
+          throw fetchError; // Re-throw if no retries left or different error
+        }
+      }
+      
+      if (!res) {
+        throw lastError || new Error("Failed to fetch");
+      }
       
       clearTimeout(timeoutId);
       setAbortController(null); // Clear controller after request completes
