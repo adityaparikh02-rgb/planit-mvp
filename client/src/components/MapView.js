@@ -30,7 +30,11 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
   // Geocode places using Google Geocoding API and calculate center
   useEffect(() => {
-    if (!GOOGLE_MAPS_API_KEY || placesWithLocation.length === 0) return;
+    if (!GOOGLE_MAPS_API_KEY || placesWithLocation.length === 0) {
+      // Reset positions if no places
+      setPlacePositions({});
+      return;
+    }
 
     const geocodePlace = async (place) => {
       const query = place.address || `${place.name} NYC`;
@@ -87,56 +91,85 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     };
 
     geocodeAll();
-  }, [placesWithLocation, GOOGLE_MAPS_API_KEY]);
+  }, [placesWithLocation, GOOGLE_MAPS_API_KEY, defaultCenter]);
 
   // Handle panel dragging
-  const handleMouseDown = (e) => {
+  const handleDragStart = (clientY) => {
     setIsDragging(true);
-    setDragStartY(e.clientY);
+    setDragStartY(clientY);
     setDragStartHeight(panelHeight);
-    e.preventDefault();
   };
 
-  const handleMouseMove = (e) => {
-    if (!isDragging) return;
-    const deltaY = dragStartY - e.clientY; // Inverted: dragging up increases height
+  const handleDragMove = (clientY) => {
+    const deltaY = dragStartY - clientY; // Inverted: dragging up increases height
     const newHeight = Math.max(200, Math.min(window.innerHeight - 100, dragStartHeight + deltaY));
     setPanelHeight(newHeight);
   };
 
-  const handleMouseUp = () => {
+  const handleDragEnd = () => {
     setIsDragging(false);
   };
 
+  const handleMouseDown = (e) => {
+    handleDragStart(e.clientY);
+    e.preventDefault();
+  };
+
+  const handleTouchStart = (e) => {
+    handleDragStart(e.touches[0].clientY);
+    e.preventDefault();
+  };
+
   useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isDragging, dragStartY, dragStartHeight]);
+    if (!isDragging) return;
+
+    const handleMouseMove = (e) => {
+      handleDragMove(e.clientY);
+    };
+
+    const handleMouseUp = () => {
+      handleDragEnd();
+    };
+
+    const handleTouchMove = (e) => {
+      handleDragMove(e.touches[0].clientY);
+    };
+
+    const handleTouchEnd = () => {
+      handleDragEnd();
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [isDragging, dragStartY, dragStartHeight, panelHeight]);
 
   // Center map on place when selected
   useEffect(() => {
     if (selectedPlace && placePositions[selectedPlace.name] && mapRef.current) {
       const position = placePositions[selectedPlace.name];
-      mapRef.current.panTo(position);
-      // Scroll card into view
-      const cardElement = cardRefs.current[selectedPlace.name];
-      if (cardElement) {
-        cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      try {
+        mapRef.current.panTo(position);
+      } catch (error) {
+        console.error('Error panning map:', error);
       }
+      // Scroll card into view with a slight delay to ensure DOM is ready
+      setTimeout(() => {
+        const cardElement = cardRefs.current[selectedPlace.name];
+        if (cardElement) {
+          cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
     }
   }, [selectedPlace, placePositions]);
-
-  const mapContainerStyle = {
-    width: "100%",
-    height: `calc(100vh - ${panelHeight}px)`,
-    transition: isDragging ? 'none' : 'height 0.3s ease',
-  };
 
   const mapOptions = {
     zoom: mapZoom,
@@ -237,9 +270,17 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   const createMarkerIcon = (index, isSelected, isHovered) => {
     const size = isSelected ? 40 : isHovered ? 36 : 32;
     const color = isSelected ? '#6366f1' : isHovered ? '#8da0ff' : '#fff';
-    const anchor = window.google && window.google.maps ? 
-      new window.google.maps.Point(0, -10) : 
-      { x: 0, y: -10 };
+    
+    let anchor;
+    try {
+      if (window.google && window.google.maps && window.google.maps.Point) {
+        anchor = new window.google.maps.Point(0, -10);
+      } else {
+        anchor = { x: 0, y: -10 };
+      }
+    } catch (error) {
+      anchor = { x: 0, y: -10 };
+    }
     
     return {
       path: 'M 0,0 C -2,-20 -10,-22 -10,-30 A 10,10 0 1,1 10,-30 C 10,-22 2,-20 0,0 z',
@@ -270,18 +311,28 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     );
   }
 
+  const mapHeight = `calc(100vh - ${panelHeight}px)`;
+
   return (
     <div className="map-dual-pane-container">
       {/* Map Section */}
-      <div className="map-section" style={{ height: `calc(100vh - ${panelHeight}px)` }}>
-        <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY}>
+      <div className="map-section" style={{ height: mapHeight, minHeight: '200px' }}>
+        <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} loadingElement={<div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>Loading map...</div>}>
           <GoogleMap
-            mapContainerStyle={mapContainerStyle}
+            mapContainerStyle={{
+              width: "100%",
+              height: mapHeight,
+              minHeight: "200px",
+            }}
             options={mapOptions}
             center={mapCenter}
             zoom={mapZoom}
             onLoad={(map) => {
               mapRef.current = map;
+              console.log('Map loaded successfully');
+            }}
+            onError={(error) => {
+              console.error('Map error:', error);
             }}
           >
             {placesWithLocation.map((place, index) => {
@@ -324,6 +375,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         <div 
           className="panel-drag-handle"
           onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
         >
           <div className="drag-handle-bar"></div>
         </div>
@@ -337,8 +389,13 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
         {/* Scrollable List */}
         <div className="panel-list-container">
-          <div className="panel-list">
-            {placesWithLocation.map((place, index) => {
+          {placesWithLocation.length === 0 ? (
+            <div className="panel-empty-state">
+              <p>No places to display on the map.</p>
+            </div>
+          ) : (
+            <div className="panel-list">
+              {placesWithLocation.map((place, index) => {
               const isSelected = selectedPlace?.name === place.name;
               const isExpanded = expandedPlace?.name === place.name;
               
@@ -352,10 +409,19 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                   onMouseEnter={() => {
                     setHoveredPlace(place);
                     if (placePositions[place.name] && mapRef.current) {
-                      mapRef.current.panTo(placePositions[place.name]);
+                      try {
+                        mapRef.current.panTo(placePositions[place.name]);
+                      } catch (error) {
+                        console.error('Error panning map on hover:', error);
+                      }
                     }
                   }}
                   onMouseLeave={() => setHoveredPlace(null)}
+                  onTouchStart={() => {
+                    // On mobile, treat touch as selection
+                    setSelectedPlace(place);
+                    setExpandedPlace(expandedPlace?.name === place.name ? null : place);
+                  }}
                   onClick={() => {
                     setSelectedPlace(place);
                     setExpandedPlace(isExpanded ? null : place);
@@ -491,7 +557,8 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                 </div>
               );
             })}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

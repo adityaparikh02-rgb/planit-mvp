@@ -10,6 +10,7 @@
   flex-direction: column;
   background: #0a0a0f;
   overflow: hidden;
+  z-index: 1000;
 }
 
 /* Map Section */
@@ -18,9 +19,16 @@
   position: relative;
   flex-shrink: 0;
   transition: height 0.3s ease;
+  min-height: 200px;
 }
 
 .map-section > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Ensure Google Maps container is visible */
+.map-section > div > div {
   width: 100% !important;
   height: 100% !important;
 }
@@ -452,10 +460,23 @@
   }
 }
 
+/* Empty State */
+.panel-empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.panel-empty-state p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
 /* Touch support for mobile dragging */
 @media (hover: none) and (pointer: coarse) {
   .panel-drag-handle {
     padding: 16px 0;
+    touch-action: none;
   }
 
   .drag-handle-bar {
