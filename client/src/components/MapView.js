@@ -1,10 +1,10 @@
 import React, { useMemo } from "react";
-import { GoogleMap, LoadScript, Marker, InfoWindow } from "@react-google-maps/api";
+import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
 import "./MapView.css";
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 
-const MapView = ({ places }) => {
+const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList, isInList }) => {
   // Filter places that have addresses or can be geocoded
   const placesWithLocation = useMemo(() => {
     return places.filter(p => p.address || p.maps_url || p.name);
@@ -17,6 +17,7 @@ const MapView = ({ places }) => {
   const [placePositions, setPlacePositions] = React.useState({});
   const [mapCenter, setMapCenter] = React.useState(defaultCenter);
   const [mapZoom, setMapZoom] = React.useState(13);
+  const [showListMenu, setShowListMenu] = React.useState(false);
 
   // Geocode places using Google Geocoding API and calculate center
   React.useEffect(() => {
@@ -221,43 +222,153 @@ const MapView = ({ places }) => {
             );
           })}
 
-          {selectedPlace && placePositions[selectedPlace.name] && (
-            <InfoWindow
-              position={placePositions[selectedPlace.name]}
-              onCloseClick={() => setSelectedPlace(null)}
-            >
-              <div className="map-info-window">
-                {selectedPlace.photo_url && (
-                  <img 
-                    src={selectedPlace.photo_url} 
-                    alt={selectedPlace.name}
-                    className="map-info-photo"
-                  />
+        </GoogleMap>
+      </LoadScript>
+      
+      {/* Dark glossy modal for place details */}
+      {selectedPlace && (
+        <div className="map-place-modal-overlay" onClick={() => {
+          setSelectedPlace(null);
+          setShowListMenu(false);
+        }}>
+          <div className="map-place-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="map-modal-close" onClick={() => {
+              setSelectedPlace(null);
+              setShowListMenu(false);
+            }}>
+              ✕
+            </button>
+            
+            {selectedPlace.photo_url && (
+              <div className="map-modal-photo-wrapper">
+                <img 
+                  src={selectedPlace.photo_url} 
+                  alt={selectedPlace.name}
+                  className="map-modal-photo"
+                />
+              </div>
+            )}
+            
+            <div className="map-modal-content">
+              <div className="map-modal-header">
+                <h2 className="map-modal-title">{selectedPlace.name}</h2>
+                <button
+                  className="map-modal-menu-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowListMenu(!showListMenu);
+                  }}
+                >
+                  ⋯
+                </button>
+                {showListMenu && (
+                  <div className="map-modal-menu-popup" onClick={(e) => e.stopPropagation()}>
+                    {Object.keys(savedPlaces).length > 0 ? (
+                      Object.keys(savedPlaces).map((list, idx) => {
+                        const selected = isInList ? isInList(list, selectedPlace) : false;
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => {
+                              if (togglePlaceInList) {
+                                togglePlaceInList(list, selectedPlace);
+                              }
+                              setShowListMenu(false);
+                            }}
+                            className={`map-modal-list-toggle ${selected ? "selected" : ""}`}
+                          >
+                            <span className={`map-modal-circle ${selected ? "filled" : ""}`}>
+                              {selected ? "✓" : ""}
+                            </span>
+                            {list}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="map-modal-empty-list">No lists yet</p>
+                    )}
+                    <button
+                      className="map-modal-add-list-btn"
+                      onClick={() => {
+                        if (handleAddNewList) {
+                          handleAddNewList();
+                        }
+                        setShowListMenu(false);
+                      }}
+                    >
+                      ➕ Add to New List
+                    </button>
+                  </div>
                 )}
-                <h3 className="map-info-title">{selectedPlace.name}</h3>
-                {selectedPlace.summary && (
-                  <p className="map-info-summary">
-                    {selectedPlace.summary.substring(0, 100)}...
-                  </p>
-                )}
-                {selectedPlace.address && (
-                  <p className="map-info-address">{selectedPlace.address}</p>
-                )}
+              </div>
+              
+              {selectedPlace.summary && (
+                <p className="map-modal-summary">{selectedPlace.summary}</p>
+              )}
+              
+              {selectedPlace.address && (
+                <p className="map-modal-address">📍 {selectedPlace.address}</p>
+              )}
+              
+              {selectedPlace.vibe_tags && selectedPlace.vibe_tags.length > 0 && (
+                <div className="map-modal-vibes">
+                  <strong>Vibes:</strong>
+                  <div className="map-modal-vibe-tags">
+                    {selectedPlace.vibe_tags.map((tag, idx) => (
+                      <span key={idx} className="map-modal-vibe-chip">{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {selectedPlace.must_try && (
+                <p className="map-modal-must-try">
+                  <strong>
+                    {selectedPlace.must_try_field === "highlights" ? "✨ Highlights:" :
+                     selectedPlace.must_try_field === "features" ? "🎯 Features:" :
+                     "🍴 Must Try:"}
+                  </strong> {selectedPlace.must_try}
+                </p>
+              )}
+              
+              {selectedPlace.when_to_go && (
+                <p className="map-modal-when">
+                  <strong>🕐 When to Go:</strong> {selectedPlace.when_to_go}
+                </p>
+              )}
+              
+              {selectedPlace.vibe && (
+                <p className="map-modal-vibe">
+                  <strong>💫 Vibe:</strong> {selectedPlace.vibe}
+                </p>
+              )}
+              
+              <div className="map-modal-actions">
                 {selectedPlace.maps_url && (
                   <a
                     href={selectedPlace.maps_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="map-info-link"
+                    className="map-modal-action-btn"
                   >
-                    Open in Maps
+                    🗺️ Open in Maps
+                  </a>
+                )}
+                {selectedPlace.video_url && (
+                  <a
+                    href={selectedPlace.video_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="map-modal-action-btn"
+                  >
+                    📹 View on TikTok
                   </a>
                 )}
               </div>
-            </InfoWindow>
-          )}
-        </GoogleMap>
-      </LoadScript>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* List of places below map */}
       <div className="map-places-list">

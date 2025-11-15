@@ -555,10 +555,18 @@
 }
 
 .saved-list-card {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
   overflow: hidden;
-  transition: all 0.25s ease;
+  transition: all 0.2s ease;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.saved-list-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .saved-list-header {
@@ -567,24 +575,172 @@
   align-items: center;
   padding: 14px 18px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.07);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  transition: all 0.25s ease;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+  border-radius: 8px;
 }
 
 .saved-list-header:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(2px);
 }
 
 .saved-list-header h3 {
   margin: 0;
   font-size: 1.1rem;
   color: #fff;
+  font-weight: 600;
+  flex: 1;
 }
 
 .saved-list-header .count {
-  color: #bbb;
+  color: #b3b3b3;
+  font-size: 0.85rem;
+  font-weight: 400;
+  margin-left: 12px;
+}
+
+/* List name wrapper for edit button */
+.list-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+/* Edit list button - Spotify style */
+.edit-list-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 0.9rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.saved-list-header:hover .edit-list-btn {
+  opacity: 1;
+}
+
+.edit-list-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.1);
+}
+
+/* Inline editing styles */
+.list-name-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.list-name-input {
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(99, 102, 241, 0.5);
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: #fff;
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-family: inherit;
+  flex: 1;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.list-name-input:focus {
+  border-color: #6366f1;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.save-edit-btn,
+.cancel-edit-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  font-weight: 600;
+}
+
+.save-edit-btn:hover {
+  background: #1db954;
+  transform: scale(1.05);
+}
+
+.cancel-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.05);
+}
+
+/* List detail title editing */
+.list-detail-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.list-detail-title {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.edit-list-btn-detail {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  opacity: 0.7;
+}
+
+.edit-list-btn-detail:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  transform: scale(1.05);
+}
+
+.list-detail-title-edit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.list-name-input-large {
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(99, 102, 241, 0.5);
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-family: inherit;
+  flex: 1;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.list-name-input-large:focus {
+  border-color: #6366f1;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .saved-list-places {

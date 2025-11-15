@@ -26,6 +26,8 @@ function App() {
   const [viewingHistory, setViewingHistory] = useState(false);
   const [selectedList, setSelectedList] = useState(null); // For saved list detail view
   const [showListMap, setShowListMap] = useState(false); // For map view in list detail
+  const [editingListName, setEditingListName] = useState(null); // For editing list names
+  const [editingListValue, setEditingListValue] = useState(""); // Temporary value while editing
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -365,6 +367,58 @@ function App() {
   const isInList = (listName, place) =>
     (savedPlaces[listName] || []).some((p) => p.name === place.name);
 
+  const handleRenameList = (oldName, newName) => {
+    if (!newName || !newName.trim() || newName === oldName) {
+      setEditingListName(null);
+      return;
+    }
+    
+    const trimmedName = newName.trim();
+    
+    // Check if new name already exists
+    if (savedPlaces[trimmedName] && trimmedName !== oldName) {
+      alert(`A list named "${trimmedName}" already exists.`);
+      return;
+    }
+    
+    // Rename the list
+    const updated = { ...savedPlaces };
+    updated[trimmedName] = updated[oldName];
+    delete updated[oldName];
+    
+    // Update selectedList if it was the renamed list
+    if (selectedList === oldName) {
+      setSelectedList(trimmedName);
+    }
+    
+    setSavedPlaces(updated);
+    setEditingListName(null);
+    
+    // Save to localStorage
+    try {
+      localStorage.setItem("planit_saved_places", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save to localStorage:", e);
+    }
+  };
+
+  const handleStartEditList = (listName, e) => {
+    e.stopPropagation(); // Prevent opening the list
+    setEditingListName(listName);
+    setEditingListValue(listName);
+  };
+
+  const handleSaveEditList = (oldName, e) => {
+    e.stopPropagation();
+    handleRenameList(oldName, editingListValue);
+  };
+
+  const handleCancelEditList = (e) => {
+    e.stopPropagation();
+    setEditingListName(null);
+    setEditingListValue("");
+  };
+
   const toggleShowMore = (index) => {
     setExpandedIndex(expandedIndex === index ? null : index);
   };
@@ -487,7 +541,13 @@ function App() {
                 )}
 
                 {result.places_extracted && result.places_extracted.length > 0 && viewMode === "map" && (
-                  <MapView places={result.places_extracted} />
+                  <MapView 
+                    places={result.places_extracted}
+                    savedPlaces={savedPlaces}
+                    togglePlaceInList={togglePlaceInList}
+                    handleAddNewList={handleAddNewList}
+                    isInList={isInList}
+                  />
                 )}
                 {result.places_extracted && result.places_extracted.length > 0 && viewMode !== "map" && (
                   <div
@@ -689,12 +749,61 @@ function App() {
                     <div key={idx} className="saved-list-card">
                       <div
                         className="saved-list-header"
-                        onClick={() => setSelectedList(list)}
+                        onClick={() => {
+                          if (editingListName !== list) {
+                            setSelectedList(list);
+                          }
+                        }}
                       >
-                        <h3>{list}</h3>
-                        <span className="count">
-                          {places.length} place{places.length !== 1 ? "s" : ""}
-                        </span>
+                        {editingListName === list ? (
+                          <div className="list-name-edit">
+                            <input
+                              type="text"
+                              value={editingListValue}
+                              onChange={(e) => setEditingListValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveEditList(list, e);
+                                } else if (e.key === "Escape") {
+                                  handleCancelEditList(e);
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="list-name-input"
+                              autoFocus
+                            />
+                            <button
+                              className="save-edit-btn"
+                              onClick={(e) => handleSaveEditList(list, e)}
+                              title="Save"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              className="cancel-edit-btn"
+                              onClick={(e) => handleCancelEditList(e)}
+                              title="Cancel"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="list-name-wrapper">
+                              <h3>{list}</h3>
+                              <button
+                                className="edit-list-btn"
+                                onClick={(e) => handleStartEditList(list, e)}
+                                title="Rename list"
+                              >
+                                ✏️
+                              </button>
+                            </div>
+                            <span className="count">
+                              {places.length} place{places.length !== 1 ? "s" : ""}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))
@@ -712,7 +821,49 @@ function App() {
                   >
                     ← Back
                   </button>
-                  <h2 className="list-detail-title">{selectedList}</h2>
+                  {editingListName === selectedList ? (
+                    <div className="list-detail-title-edit">
+                      <input
+                        type="text"
+                        value={editingListValue}
+                        onChange={(e) => setEditingListValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleSaveEditList(selectedList, e);
+                          } else if (e.key === "Escape") {
+                            handleCancelEditList(e);
+                          }
+                        }}
+                        className="list-name-input-large"
+                        autoFocus
+                      />
+                      <button
+                        className="save-edit-btn"
+                        onClick={(e) => handleSaveEditList(selectedList, e)}
+                        title="Save"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        className="cancel-edit-btn"
+                        onClick={(e) => handleCancelEditList(e)}
+                        title="Cancel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="list-detail-title-wrapper">
+                      <h2 className="list-detail-title">{selectedList}</h2>
+                      <button
+                        className="edit-list-btn-detail"
+                        onClick={(e) => handleStartEditList(selectedList, e)}
+                        title="Rename list"
+                      >
+                        ✏️
+                      </button>
+                    </div>
+                  )}
                   <div className="view-toggle-list-detail">
                     <button
                       className={!showListMap ? "active" : ""}
@@ -730,7 +881,13 @@ function App() {
                 </div>
                 
                 {showListMap ? (
-                  <MapView places={savedPlaces[selectedList] || []} />
+                  <MapView 
+                    places={savedPlaces[selectedList] || []}
+                    savedPlaces={savedPlaces}
+                    togglePlaceInList={togglePlaceInList}
+                    handleAddNewList={handleAddNewList}
+                    isInList={isInList}
+                  />
                 ) : (
                   <div className="saved-list-places">
                     {savedPlaces[selectedList]?.map((p, i) => (

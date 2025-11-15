@@ -542,7 +542,23 @@ def robust_tiktok_extractor(url):
     
     # --- STEP 3: Playwright fallback (delegated to existing extract_photo_post) ---
     print("🎭 Falling back to Playwright dynamic scraping…")
-    result["source"] = "playwright"
+    try:
+        # Delegate to extract_photo_post which has full Playwright implementation
+        photo_data = extract_photo_post(url)
+        if photo_data and photo_data.get("photos"):
+            result["photo_urls"] = photo_data["photos"]
+            result["caption"] = photo_data.get("caption", "").strip()
+            result["source"] = "playwright"
+            print(f"✅ Playwright fallback succeeded: {len(result['photo_urls'])} photos")
+            return result
+        else:
+            print("⚠️ Playwright fallback returned no photos")
+    except Exception as e:
+        print(f"⚠️ Playwright fallback error: {e}")
+        import traceback
+        print(traceback.format_exc())
+    
+    result["source"] = "playwright_failed"
     return result
 
 # SnapTik fallback (kept as backup but not used by default)
@@ -3005,6 +3021,8 @@ def extract_api():
         # Use robust extractor (API16 -> SnapTik -> Playwright)
         media = robust_tiktok_extractor(clean_url)
         
+        print(f"📊 Robust extractor result: source={media.get('source')}, photos={len(media.get('photo_urls', []))}, caption_len={len(media.get('caption', ''))}")
+        
         if media.get("photo_urls"):
             photo_urls = media["photo_urls"]
             caption = media.get("caption", "").strip()
@@ -3012,19 +3030,44 @@ def extract_api():
             print(f"✅ Robust extractor succeeded via {media['source']}: {len(photo_urls)} photos")
         else:
             # Fallback to existing extract_photo_post if robust extractor didn't find photos
-            print("⚠️ Robust extractor returned no photos - trying extract_photo_post...")
-            photo_data = extract_photo_post(clean_url)
-            
-            if photo_data and photo_data.get("photos"):
-                photo_urls = photo_data["photos"]
-                caption = photo_data.get("caption", "").strip()
-                print(f"✅ extract_photo_post succeeded: {len(photo_urls)} photos")
-            else:
-                print("⚠️ All extraction methods failed - returning error")
+            print(f"⚠️ Robust extractor returned no photos (source: {media.get('source')}) - trying extract_photo_post as final fallback...")
+            try:
+                photo_data = extract_photo_post(clean_url)
+                
+                if photo_data and photo_data.get("photos"):
+                    photo_urls = photo_data["photos"]
+                    caption = photo_data.get("caption", "").strip()
+                    print(f"✅ extract_photo_post succeeded: {len(photo_urls)} photos")
+                else:
+                    print("⚠️ extract_photo_post also returned no photos")
+                    # Check if we at least got a caption
+                    if photo_data and photo_data.get("caption"):
+                        caption = photo_data.get("caption", "").strip()
+                        print(f"📝 Got caption from extract_photo_post but no photos: {caption[:100]}...")
+                        # Return error but include caption info
+                        return jsonify({
+                            "error": "Photo extraction failed",
+                            "message": f"Unable to extract photos from the TikTok photo post. Found caption ({len(caption)} chars) but no images. The post may be private, deleted, or the URL may be invalid.",
+                            "video_url": url,
+                            "caption_found": True,
+                        }), 200
+                    else:
+                        print("⚠️ All extraction methods failed - no photos and no caption")
+                        return jsonify({
+                            "error": "Photo extraction failed",
+                            "message": "Unable to extract photos or caption from the TikTok photo post. The post may be private, deleted, or the URL may be invalid. Please verify the URL is correct and the post is publicly accessible.",
+                            "video_url": url,
+                            "extraction_source": media.get("source", "unknown"),
+                        }), 200
+            except Exception as e:
+                print(f"❌ extract_photo_post exception: {e}")
+                import traceback
+                print(traceback.format_exc())
                 return jsonify({
                     "error": "Photo extraction failed",
-                    "message": "Unable to extract photos from the TikTok photo post. The post may be private or the URL may be invalid.",
+                    "message": f"Error during photo extraction: {str(e)}. The post may be private or the URL may be invalid.",
                     "video_url": url,
+                    "extraction_source": media.get("source", "unknown"),
                 }), 200
         
         if photo_urls:
