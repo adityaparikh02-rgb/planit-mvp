@@ -717,9 +717,12 @@ function App() {
         {/* HISTORY */}
         {activeTab === "history" && (
           <div className="history-page">
-            <h2>📜 Extraction History</h2>
+            <h2 className="history-header">Extraction History</h2>
             {history.length === 0 ? (
-              <p className="empty">📭 No extractions yet.</p>
+              <div className="empty-state">
+                <p className="empty-text">No extractions yet</p>
+                <p className="empty-subtext">Start by extracting venues from a TikTok video</p>
+              </div>
             ) : (
               <div className="history-scroll">
                 {history.map((h, i) => (
@@ -728,8 +731,11 @@ function App() {
                     className="hist-item"
                     onClick={() => handleHistoryClick(h)}
                   >
-                    <strong>📍 {h.title}</strong>
-                    <span className="time">🕐 {h.time}</span>
+                    <div className="hist-content">
+                      <strong className="hist-title">{h.title}</strong>
+                      <span className="hist-time">{h.time}</span>
+                    </div>
+                    <div className="hist-arrow">→</div>
                   </div>
                 ))}
               </div>
