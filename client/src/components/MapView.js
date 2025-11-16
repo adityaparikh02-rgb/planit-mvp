@@ -4,19 +4,6 @@ import "./MapView.css";
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 
-// Bottom sheet states
-const PANEL_STATES = {
-  COLLAPSED: 'collapsed',   // 20-25% height
-  HALF: 'half',             // 50% height
-  FULL: 'full'               // 100% height
-};
-
-const PANEL_HEIGHTS = {
-  [PANEL_STATES.COLLAPSED]: 0.25,  // 25% of viewport
-  [PANEL_STATES.HALF]: 0.5,        // 50% of viewport
-  [PANEL_STATES.FULL]: 0.95         // 95% of viewport (leaving space for status bar)
-};
-
 const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList, isInList, onClose }) => {
   // Filter places that have addresses or can be geocoded
   const placesWithLocation = useMemo(() => {
@@ -27,76 +14,14 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   const defaultCenter = { lat: 40.7128, lng: -73.9352 };
 
   const [selectedPlace, setSelectedPlace] = useState(null);
-  const [hoveredPlace, setHoveredPlace] = useState(null);
   const [placePositions, setPlacePositions] = useState({});
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const [mapZoom, setMapZoom] = useState(12);
   const [showListMenu, setShowListMenu] = useState(null);
-  const [panelState, setPanelState] = useState(PANEL_STATES.HALF);
-  const [panelHeight, setPanelHeight] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.HALF];
-    }
-    return 400; // Default fallback
-  });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStartY, setDragStartY] = useState(0);
-  const [dragStartHeight, setDragStartHeight] = useState(0);
-  const [dragVelocity, setDragVelocity] = useState(0);
   const [expandedPlace, setExpandedPlace] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [mapDimmed, setMapDimmed] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const panelRef = useRef(null);
-  const cardRefs = useRef({});
   const mapRef = useRef(null);
-  const lastDragY = useRef(0);
-  const lastDragTime = useRef(0);
-  const scrollTimeoutRef = useRef(null);
-  const hoverTimeoutRef = useRef(null);
-
-  // Calculate panel height from state
-  const getPanelHeightFromState = (state) => {
-    return window.innerHeight * PANEL_HEIGHTS[state];
-  };
-
-  // Snap to nearest panel state
-  const snapToState = useCallback((currentHeight, velocity = 0) => {
-    const viewportHeight = window.innerHeight;
-    const collapsedHeight = viewportHeight * PANEL_HEIGHTS[PANEL_STATES.COLLAPSED];
-    const halfHeight = viewportHeight * PANEL_HEIGHTS[PANEL_STATES.HALF];
-    const fullHeight = viewportHeight * PANEL_HEIGHTS[PANEL_STATES.FULL];
-
-    // If velocity is high, snap to next state
-    if (Math.abs(velocity) > 0.5) {
-      if (velocity < 0 && currentHeight < halfHeight) {
-        // Dragging up fast - go to full
-        return PANEL_STATES.FULL;
-      } else if (velocity < 0 && currentHeight < fullHeight) {
-        // Dragging up fast - go to full
-        return PANEL_STATES.FULL;
-      } else if (velocity > 0 && currentHeight > halfHeight) {
-        // Dragging down fast - go to collapsed
-        return PANEL_STATES.COLLAPSED;
-      } else if (velocity > 0 && currentHeight > collapsedHeight) {
-        // Dragging down fast - go to half
-        return PANEL_STATES.HALF;
-      }
-    }
-
-    // Normal snapping based on position
-    const distances = {
-      [PANEL_STATES.COLLAPSED]: Math.abs(currentHeight - collapsedHeight),
-      [PANEL_STATES.HALF]: Math.abs(currentHeight - halfHeight),
-      [PANEL_STATES.FULL]: Math.abs(currentHeight - fullHeight),
-    };
-
-    const nearestState = Object.keys(distances).reduce((a, b) => 
-      distances[a] < distances[b] ? a : b
-    );
-
-    return nearestState;
-  }, []);
 
   // Geocode places using Google Geocoding API and calculate center
   useEffect(() => {
@@ -109,7 +34,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     if (placesWithLocation.length === 0) {
       setPlacePositions({});
       setIsLoading(false);
-      // Keep map centered on default location
       setMapCenter(defaultCenter);
       setMapZoom(12);
       return;
@@ -179,147 +103,12 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     geocodeAll();
   }, [placesWithLocation, GOOGLE_MAPS_API_KEY, defaultCenter]);
 
-  // Handle panel dragging with velocity detection
-  const handleDragStart = (clientY) => {
-    setIsDragging(true);
-    setDragStartY(clientY);
-    setDragStartHeight(panelHeight);
-    lastDragY.current = clientY;
-    lastDragTime.current = Date.now();
-    setDragVelocity(0);
-  };
-
-  const handleDragMove = useCallback((clientY) => {
-    const deltaY = dragStartY - clientY;
-    const newHeight = Math.max(
-      window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.COLLAPSED],
-      Math.min(window.innerHeight * PANEL_HEIGHTS[PANEL_STATES.FULL], dragStartHeight + deltaY)
-    );
-    setPanelHeight(newHeight);
-
-    // Calculate velocity
-    const now = Date.now();
-    const timeDelta = now - lastDragTime.current;
-    if (timeDelta > 0) {
-      const yDelta = clientY - lastDragY.current;
-      const velocity = yDelta / timeDelta;
-      setDragVelocity(velocity);
-    }
-    lastDragY.current = clientY;
-    lastDragTime.current = now;
-  }, [dragStartY, dragStartHeight]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-    const snappedState = snapToState(panelHeight, dragVelocity);
-    setPanelState(snappedState);
-    const targetHeight = getPanelHeightFromState(snappedState);
-    setPanelHeight(targetHeight);
-    setMapDimmed(snappedState === PANEL_STATES.FULL);
-    setDragVelocity(0);
-  }, [panelHeight, dragVelocity, snapToState]);
-
-  const handleMouseDown = (e) => {
-    handleDragStart(e.clientY);
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleTouchStart = (e) => {
-    handleDragStart(e.touches[0].clientY);
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e) => {
-      handleDragMove(e.clientY);
-    };
-
-    const handleMouseUp = () => {
-      handleDragEnd();
-    };
-
-    const handleTouchMove = (e) => {
-      handleDragMove(e.touches[0].clientY);
-    };
-
-    const handleTouchEnd = () => {
-      handleDragEnd();
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleTouchEnd);
-    
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [isDragging, handleDragMove, handleDragEnd]);
-
-  // Debounced hover handler for list items
-  const handleCardHover = useCallback((place) => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredPlace(place);
-      // Don't auto-center map on hover - just highlight pin
-    }, 100);
-  }, []);
-
-  const handleCardLeave = useCallback(() => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    setHoveredPlace(null);
-  }, []);
-
-  // Smooth map centering when place is selected
-  const centerMapOnPlace = useCallback((place, position) => {
-    if (!mapRef.current || !position) return;
-    
-    try {
-      // Smooth pan with easing
-      mapRef.current.panTo({
-        lat: position.lat,
-        lng: position.lng
-      });
-    } catch (error) {
-      console.error('Error panning map:', error);
-    }
-  }, []);
-
-  // Center map on place when selected (with smooth animation)
-  useEffect(() => {
-    if (selectedPlace && placePositions[selectedPlace.name] && mapRef.current) {
-      const position = placePositions[selectedPlace.name];
-      centerMapOnPlace(selectedPlace, position);
-      
-      // Smooth scroll to card
-      setTimeout(() => {
-        const cardElement = cardRefs.current[selectedPlace.name];
-        if (cardElement) {
-          cardElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 150);
-    }
-  }, [selectedPlace, placePositions, centerMapOnPlace]);
-  
-  // Center map on all places when they're loaded - show bounds/area
+  // Center map on all places when they're loaded
   useEffect(() => {
     if (mapLoaded && mapRef.current && Object.keys(placePositions).length > 0) {
       const positionsArray = Object.values(placePositions);
       
       if (positionsArray.length === 1) {
-        // Single place - center on it with zoom 15
         const pos = positionsArray[0];
         setMapCenter({ lat: pos.lat, lng: pos.lng });
         setMapZoom(15);
@@ -334,7 +123,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
           }
         }, 500);
       } else {
-        // Multiple places - fit bounds to show all places
         const lats = positionsArray.map(pos => pos.lat);
         const lngs = positionsArray.map(pos => pos.lng);
         const minLat = Math.min(...lats);
@@ -342,17 +130,9 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         const minLng = Math.min(...lngs);
         const maxLng = Math.max(...lngs);
         
-        const bounds = {
-          north: maxLat,
-          south: minLat,
-          east: maxLng,
-          west: minLng
-        };
-        
         const avgLat = (minLat + maxLat) / 2;
         const avgLng = (minLng + maxLng) / 2;
         
-        // Calculate appropriate zoom
         const latDiff = maxLat - minLat;
         const lngDiff = maxLng - minLng;
         const maxDiff = Math.max(latDiff, lngDiff);
@@ -365,11 +145,9 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         else if (maxDiff > 0.005) zoom = 14;
         else zoom = 15;
         
-        // Update state
         setMapCenter({ lat: avgLat, lng: avgLng });
         setMapZoom(zoom);
         
-        // Fit bounds to show all places
         setTimeout(() => {
           if (mapRef.current && window.google && window.google.maps) {
             try {
@@ -378,16 +156,14 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                 googleBounds.extend(new window.google.maps.LatLng(pos.lat, pos.lng));
               });
               
-              // Add padding to bounds
               mapRef.current.fitBounds(googleBounds, {
                 top: 50,
                 right: 50,
-                bottom: panelHeight + 50,
+                bottom: 50,
                 left: 50
               });
             } catch (error) {
               console.error('Error fitting bounds:', error);
-              // Fallback to center and zoom
               if (mapRef.current.panTo) {
                 mapRef.current.panTo({ lat: avgLat, lng: avgLng });
                 mapRef.current.setZoom(zoom);
@@ -397,7 +173,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         }, 500);
       }
     } else if (mapLoaded && mapRef.current && Object.keys(placePositions).length === 0) {
-      // No places - center on default location
       setTimeout(() => {
         if (mapRef.current && mapRef.current.panTo) {
           try {
@@ -409,29 +184,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         }
       }, 300);
     }
-  }, [mapLoaded, placePositions]);
-
-  // Update map dimming based on panel state
-  useEffect(() => {
-    setMapDimmed(panelState === PANEL_STATES.FULL);
-  }, [panelState]);
-
-  // Handle window resize
-  useEffect(() => {
-    const handleResize = () => {
-      if (!isDragging) {
-        const newHeight = getPanelHeightFromState(panelState);
-        setPanelHeight(newHeight);
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [panelState, isDragging]);
-
-  const mapHeight = typeof window !== 'undefined' && panelHeight > 0
-    ? `calc(100vh - ${panelHeight}px)` 
-    : '60vh';
+  }, [mapLoaded, placePositions, defaultCenter]);
 
   const mapOptions = {
     zoom: mapZoom,
@@ -440,13 +193,12 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     streetViewControl: false,
     fullscreenControl: true,
     backgroundColor: '#0a0a0f',
-    gestureHandling: 'greedy', // Allow map gestures even when over other elements
+    gestureHandling: 'greedy',
     disableDefaultUI: false,
     zoomControl: true,
     zoomControlOptions: {
       position: window.google?.maps?.ControlPosition?.RIGHT_BOTTOM || 11
     },
-    // Ensure map always renders
     minZoom: 10,
     maxZoom: 18,
     styles: [
@@ -538,11 +290,11 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     ]
   };
 
-  // Custom marker icon with smooth animations
-  const createMarkerIcon = useCallback((index, isSelected, isHovered) => {
+  // Custom marker icon
+  const createMarkerIcon = useCallback((index, isSelected) => {
     const baseSize = 32;
-    const size = isSelected ? 44 : isHovered ? 38 : baseSize;
-    const color = isSelected ? '#6366f1' : isHovered ? '#8da0ff' : '#fff';
+    const size = isSelected ? 44 : baseSize;
+    const color = isSelected ? '#6366f1' : '#fff';
     
     let anchor;
     try {
@@ -572,6 +324,21 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     };
   }, []);
 
+  // Center map on place when selected
+  useEffect(() => {
+    if (selectedPlace && placePositions[selectedPlace.name] && mapRef.current) {
+      const position = placePositions[selectedPlace.name];
+      try {
+        mapRef.current.panTo({
+          lat: position.lat,
+          lng: position.lng
+        });
+      } catch (error) {
+        console.error('Error panning map:', error);
+      }
+    }
+  }, [selectedPlace, placePositions]);
+
   // If no API key, show a message
   if (!GOOGLE_MAPS_API_KEY) {
     return (
@@ -585,7 +352,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   }
 
   return (
-    <div className="map-dual-pane-container">
+    <div className="map-simple-container">
       {/* Close Button */}
       {onClose && (
         <button 
@@ -597,11 +364,8 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         </button>
       )}
       
-      {/* Map Section with dimming overlay */}
-      <div 
-        className={`map-section ${mapDimmed ? 'dimmed' : ''}`} 
-        style={{ height: mapHeight, minHeight: '300px' }}
-      >
+      {/* Map Section */}
+      <div className="map-section-simple">
         <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} loadingElement={
           <div style={{ 
             height: '100%', 
@@ -620,9 +384,8 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         <GoogleMap
             mapContainerStyle={{
               width: "100%",
-              height: mapHeight,
-              minHeight: "300px",
-              flex: 1,
+              height: "100%",
+              minHeight: "400px",
             }}
           options={mapOptions}
           center={mapCenter}
@@ -631,11 +394,8 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
               mapRef.current = map;
               setMapLoaded(true);
               setIsLoading(false);
-              console.log('Map loaded successfully');
               
-              // Always ensure map is visible - center on default if no places yet
               if (Object.keys(placePositions).length === 0) {
-                // Center on default location (NYC) if no places geocoded yet
                 setTimeout(() => {
                   if (map && map.panTo) {
                     try {
@@ -647,7 +407,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                   }
                 }, 100);
               } else {
-                // Center map on places once loaded
                 const positionsArray = Object.values(placePositions);
                 const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
                 const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
@@ -667,11 +426,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
               console.error('Map error:', error);
               setIsLoading(false);
             }}
-            onDragStart={() => {
-              // Prevent list scrolling when dragging map
-            }}
             onIdle={() => {
-              // Map is ready and rendered
               setIsLoading(false);
             }}
         >
@@ -681,7 +436,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
               lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
             };
               const isSelected = selectedPlace?.name === place.name;
-              const isHovered = hoveredPlace?.name === place.name;
             
             return (
               <Marker
@@ -689,13 +443,10 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                 position={position}
                   onClick={() => {
                     setSelectedPlace(place);
-                    setHoveredPlace(null);
                   }}
-                  onMouseOver={() => setHoveredPlace(place)}
-                  onMouseOut={() => setHoveredPlace(null)}
-                  icon={createMarkerIcon(index, isSelected, isHovered)}
+                  icon={createMarkerIcon(index, isSelected)}
                 title={place.name}
-                  zIndex={isSelected ? 1000 : isHovered ? 500 : index}
+                  zIndex={isSelected ? 1000 : index}
                   animation={isSelected ? window.google?.maps?.Animation?.BOUNCE : null}
               />
             );
@@ -704,62 +455,30 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         </LoadScript>
       </div>
 
-      {/* Draggable Bottom Panel */}
-      <div 
-        ref={panelRef}
-        className={`map-bottom-panel ${panelState}`}
-          style={{ 
-            height: `${panelHeight}px`,
-            transition: isDragging ? 'none' : 'height 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-          }}
-      >
-        {/* Drag Handle */}
-        <div 
-          className="panel-drag-handle"
-          onMouseDown={handleMouseDown}
-          onTouchStart={handleTouchStart}
-        >
-          <div className="drag-handle-bar"></div>
+      {/* Simple List Below Map */}
+      <div className="map-list-simple">
+        <div className="map-list-header">
+          <h3>{placesWithLocation.length} {placesWithLocation.length === 1 ? 'Place' : 'Places'}</h3>
         </div>
-
-        {/* Panel Header */}
-        <div className="panel-header">
-          <h3 className="panel-title">
-            {placesWithLocation.length} {placesWithLocation.length === 1 ? 'Place' : 'Places'}
-          </h3>
-          {panelState === PANEL_STATES.COLLAPSED && (
-            <div className="panel-preview">
-              {placesWithLocation.slice(0, 3).map((place, idx) => (
-                <span key={idx} className="preview-badge">{idx + 1}</span>
-              ))}
-              {placesWithLocation.length > 3 && (
-                <span className="preview-more">+{placesWithLocation.length - 3}</span>
-                )}
-              </div>
-          )}
-        </div>
-
-        {/* Scrollable List */}
-        <div className="panel-list-container" onWheel={(e) => e.stopPropagation()}>
+        <div className="map-list-content">
           {isLoading && Object.keys(placePositions).length === 0 ? (
-            <div className="panel-list">
+            <div className="map-list-items">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="map-place-card skeleton">
+                <div key={i} className="map-place-card-simple skeleton">
                   <div className="skeleton-photo"></div>
                   <div className="skeleton-content">
                     <div className="skeleton-line" style={{ width: '60%' }}></div>
                     <div className="skeleton-line" style={{ width: '80%' }}></div>
-                    <div className="skeleton-line" style={{ width: '40%' }}></div>
                   </div>
                 </div>
               ))}
             </div>
           ) : placesWithLocation.length === 0 ? (
-            <div className="panel-empty-state">
+            <div className="map-list-empty">
               <p>No places to display on the map.</p>
             </div>
           ) : (
-            <div className="panel-list">
+            <div className="map-list-items">
               {placesWithLocation.map((place, index) => {
                 const isSelected = selectedPlace?.name === place.name;
                 const isExpanded = expandedPlace?.name === place.name;
@@ -767,43 +486,33 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                 return (
                   <div
                     key={`${place.name}-${index}`}
-                    ref={(el) => {
-                      if (el) cardRefs.current[place.name] = el;
-                    }}
-                    className={`map-place-card ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
-                    onMouseEnter={() => handleCardHover(place)}
-                    onMouseLeave={handleCardLeave}
-                    onTouchStart={(e) => {
-                      e.stopPropagation();
-                      setSelectedPlace(place);
-                      setExpandedPlace(isExpanded ? null : place);
-                    }}
+                    className={`map-place-card-simple ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
                     onClick={() => {
                       setSelectedPlace(place);
                       setExpandedPlace(isExpanded ? null : place);
                     }}
                   >
                     {/* Card Number Badge */}
-                    <div className="card-number-badge">{index + 1}</div>
+                    <div className="card-number-badge-simple">{index + 1}</div>
 
                     {/* Photo */}
               {place.photo_url && (
-                      <div className="card-photo-wrapper">
+                      <div className="card-photo-wrapper-simple">
                 <img 
                   src={place.photo_url} 
                   alt={place.name}
-                          className="card-photo"
+                          className="card-photo-simple"
                           loading="lazy"
                         />
                       </div>
                     )}
 
                     {/* Card Content */}
-                    <div className="card-content">
-                      <div className="card-header">
-                        <h4 className="card-name">{place.name}</h4>
+                    <div className="card-content-simple">
+                      <div className="card-header-simple">
+                        <h4 className="card-name-simple">{place.name}</h4>
                         <button
-                          className="card-menu-btn"
+                          className="card-menu-btn-simple"
                           onClick={(e) => {
                             e.stopPropagation();
                             setShowListMenu(showListMenu === place.name ? null : place.name);
@@ -812,7 +521,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                           ⋯
                         </button>
                         {showListMenu === place.name && (
-                          <div className="card-menu-popup" onClick={(e) => e.stopPropagation()}>
+                          <div className="card-menu-popup-simple" onClick={(e) => e.stopPropagation()}>
                             {Object.keys(savedPlaces).length > 0 ? (
                               Object.keys(savedPlaces).map((list, idx) => {
                                 const inList = isInList ? isInList(list, place) : false;
@@ -825,9 +534,9 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                                       }
                                       setShowListMenu(null);
                                     }}
-                                    className={`card-list-toggle ${inList ? 'selected' : ''}`}
+                                    className={`card-list-toggle-simple ${inList ? 'selected' : ''}`}
                                   >
-                                    <span className={`card-circle ${inList ? 'filled' : ''}`}>
+                                    <span className={`card-circle-simple ${inList ? 'filled' : ''}`}>
                                       {inList ? '✓' : ''}
                                     </span>
                                     {list}
@@ -835,10 +544,10 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                                 );
                               })
                             ) : (
-                              <p className="card-empty-list">No lists yet</p>
+                              <p className="card-empty-list-simple">No lists yet</p>
                             )}
                             <button
-                              className="card-add-list-btn"
+                              className="card-add-list-btn-simple"
                               onClick={() => {
                                 if (handleAddNewList) {
                                   handleAddNewList();
@@ -853,25 +562,25 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                       </div>
 
                 {place.address && (
-                        <p className="card-address">📍 {place.address}</p>
+                        <p className="card-address-simple">📍 {place.address}</p>
                       )}
 
                       {place.vibe_tags && place.vibe_tags.length > 0 && (
-                        <div className="card-vibes">
+                        <div className="card-vibes-simple">
                           {place.vibe_tags.slice(0, 3).map((tag, idx) => (
-                            <span key={idx} className="card-vibe-chip">{tag}</span>
+                            <span key={idx} className="card-vibe-chip-simple">{tag}</span>
                           ))}
                         </div>
                       )}
 
                       {/* Expanded Content */}
                       {isExpanded && (
-                        <div className="card-expanded-content">
+                        <div className="card-expanded-content-simple">
                 {place.summary && (
-                            <p className="card-summary">{place.summary}</p>
+                            <p className="card-summary-simple">{place.summary}</p>
                           )}
                           {place.must_try && (
-                            <p className="card-must-try">
+                            <p className="card-must-try-simple">
                               <strong>
                                 {place.must_try_field === "highlights" ? "✨ Highlights:" :
                                  place.must_try_field === "features" ? "🎯 Features:" :
@@ -880,17 +589,17 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                             </p>
                           )}
                           {place.when_to_go && (
-                            <p className="card-when">
+                            <p className="card-when-simple">
                               <strong>🕐 When to Go:</strong> {place.when_to_go}
                             </p>
                           )}
-                          <div className="card-actions">
+                          <div className="card-actions-simple">
                             {place.maps_url && (
                               <a
                                 href={place.maps_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="card-action-btn"
+                                className="card-action-btn-simple"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 🗺️ Maps
@@ -901,7 +610,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
                                 href={place.video_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="card-action-btn"
+                                className="card-action-btn-simple"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 📹 TikTok

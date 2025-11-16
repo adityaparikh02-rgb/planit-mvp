@@ -808,10 +808,11 @@ function App() {
                     <p className="empty-subtext">Start saving venues to create your lists</p>
                   </div>
                 ) : (
-                  Object.entries(savedPlaces).map(([list, places], idx) => (
-                    <div key={idx} className="saved-list-card">
-                      <div
-                        className="saved-list-header"
+                  <div className="history-scroll">
+                    {Object.entries(savedPlaces).map(([list, places], idx) => (
+                      <div 
+                        key={idx} 
+                        className="hist-item"
                         onClick={() => {
                           if (editingListName !== list) {
                             setSelectedList(list);
@@ -819,7 +820,7 @@ function App() {
                         }}
                       >
                         {editingListName === list ? (
-                          <div className="list-name-edit">
+                          <div className="list-name-edit" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="text"
                               value={editingListValue}
@@ -852,27 +853,32 @@ function App() {
                           </div>
                         ) : (
                           <>
-                            <div className="list-name-wrapper">
-                              <h3>{list}</h3>
-                              <button
-                                className="edit-list-btn"
-                                onClick={(e) => handleStartEditList(list, e)}
-                                title="Rename list"
-                              >
-                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M11.333 2.667a.667.667 0 0 1 .943 0l1.334 1.334a.667.667 0 0 1 0 .943L12.276 6.22 9.78 3.724l1.334-1.334a.667.667 0 0 1 .22-.723zM8.667 5.333L3.333 10.667v2.667h2.667l5.333-5.334L8.667 5.333z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </button>
+                            <div className="hist-content">
+                              <div className="list-name-wrapper">
+                                <strong className="hist-title">{list}</strong>
+                                <button
+                                  className="edit-list-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditList(list, e);
+                                  }}
+                                  title="Rename list"
+                                >
+                                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M11.333 2.667a.667.667 0 0 1 .943 0l1.334 1.334a.667.667 0 0 1 0 .943L12.276 6.22 9.78 3.724l1.334-1.334a.667.667 0 0 1 .22-.723zM8.667 5.333L3.333 10.667v2.667h2.667l5.333-5.334L8.667 5.333z" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                </button>
+                              </div>
+                              <span className="hist-time">
+                                {places.length} place{places.length !== 1 ? "s" : ""}
+                              </span>
                             </div>
-                            <span className="count">
-                              {places.length} place{places.length !== 1 ? "s" : ""}
-                            </span>
-                            <ChevronRight size={18} className="hist-arrow" />
+                            <ChevronRight size={20} className="hist-arrow" />
                           </>
                         )}
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </>
             ) : (

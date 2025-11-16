@@ -1,6 +1,6 @@
-/* Google Maps Style Dual-Pane Layout */
+/* Simple Map View Layout */
 
-.map-dual-pane-container {
+.map-simple-container {
   position: fixed;
   top: 0;
   left: 0;
@@ -43,184 +43,102 @@
 }
 
 /* Map Section */
-.map-section {
+.map-section-simple {
   width: 100%;
-  position: relative;
+  height: 50vh;
+  min-height: 400px;
   flex-shrink: 0;
-  transition: height 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.2s ease;
-  min-height: 300px;
   background: #0a0a0f;
-  display: flex;
-  flex-direction: column;
+  position: relative;
 }
 
-.map-section > div {
+.map-section-simple > div {
   width: 100% !important;
   height: 100% !important;
-  min-height: 300px !important;
+  min-height: 400px !important;
+}
+
+.map-section-simple > div > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 400px !important;
+}
+
+.map-section-simple > div > div > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 400px !important;
+}
+
+/* Simple List Below Map */
+.map-list-simple {
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-
-.map-section > div > div {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 300px !important;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.map-section > div > div > div {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 300px !important;
-  flex: 1;
-}
-
-.map-section.dimmed {
-  opacity: 0.6;
-}
-
-/* Bottom Panel - 3 States */
-.map-bottom-panel {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(180deg, rgba(18, 18, 26, 0.98) 0%, rgba(26, 26, 38, 0.98) 100%);
+  background: rgba(18, 18, 26, 0.98);
   backdrop-filter: blur(20px);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3), 0 -8px 32px rgba(0, 0, 0, 0.2);
-  display: flex;
-  flex-direction: column;
-  z-index: 100;
-  border-radius: 24px 24px 0 0;
   overflow: hidden;
 }
 
-.map-bottom-panel.collapsed {
-  border-radius: 24px 24px 0 0;
-}
-
-.map-bottom-panel.half {
-  border-radius: 24px 24px 0 0;
-}
-
-.map-bottom-panel.full {
-  border-radius: 0;
-}
-
-/* Drag Handle */
-.panel-drag-handle {
-  width: 100%;
-  padding: 12px 0;
-  cursor: grab;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex-shrink: 0;
-  user-select: none;
-  touch-action: none;
-}
-
-.panel-drag-handle:active {
-  cursor: grabbing;
-}
-
-.drag-handle-bar {
-  width: 40px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
-  transition: background 0.2s ease, width 0.2s ease;
-}
-
-.panel-drag-handle:hover .drag-handle-bar {
-  background: rgba(255, 255, 255, 0.5);
-  width: 50px;
-}
-
-/* Panel Header */
-.panel-header {
-  padding: 0 20px 12px;
+.map-list-header {
+  padding: 20px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
 }
 
-.panel-title {
+.map-list-header h3 {
   margin: 0;
   font-size: 1.2rem;
   font-weight: 700;
   color: #fff;
 }
 
-.panel-preview {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.preview-badge {
-  width: 24px;
-  height: 24px;
-  background: rgba(99, 102, 241, 0.3);
-  border: 1px solid rgba(99, 102, 241, 0.5);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: #8da0ff;
-}
-
-.preview-more {
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.6);
-  font-weight: 600;
-}
-
-/* Scrollable List Container */
-.panel-list-container {
+.map-list-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px 20px;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain; /* Prevent scroll chaining */
 }
 
-.panel-list-container::-webkit-scrollbar {
+.map-list-content::-webkit-scrollbar {
   width: 8px;
 }
 
-.panel-list-container::-webkit-scrollbar-track {
+.map-list-content::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
 }
 
-.panel-list-container::-webkit-scrollbar-thumb {
+.map-list-content::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
 }
 
-.panel-list-container::-webkit-scrollbar-thumb:hover {
+.map-list-content::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
-.panel-list {
+.map-list-items {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
+.map-list-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.map-list-empty p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
 /* Place Card */
-.map-place-card {
+.map-place-card-simple {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 16px;
   overflow: hidden;
@@ -230,57 +148,27 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  opacity: 0;
-  animation: fadeInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.map-place-card:nth-child(1) { animation-delay: 0.05s; }
-.map-place-card:nth-child(2) { animation-delay: 0.1s; }
-.map-place-card:nth-child(3) { animation-delay: 0.15s; }
-.map-place-card:nth-child(4) { animation-delay: 0.2s; }
-.map-place-card:nth-child(5) { animation-delay: 0.25s; }
-
-.map-place-card:hover {
+.map-place-card-simple:hover {
   background: rgba(255, 255, 255, 0.08);
   transform: translateY(-2px);
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.2);
   border-color: rgba(99, 102, 241, 0.3);
 }
 
-.map-place-card.selected {
+.map-place-card-simple.selected {
   background: rgba(99, 102, 241, 0.15);
   border-color: #6366f1;
   box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4), 0 0 0 4px rgba(99, 102, 241, 0.1);
-  transform: translateY(-2px);
-  animation: selectedPulse 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes selectedPulse {
-  0%, 100% {
-    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4), 0 0 0 4px rgba(99, 102, 241, 0.1);
-  }
-  50% {
-    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.6), 0 0 0 8px rgba(99, 102, 241, 0.2);
-  }
-}
-
-.map-place-card.expanded {
+.map-place-card-simple.expanded {
   background: rgba(99, 102, 241, 0.1);
 }
 
 /* Card Number Badge */
-.card-number-badge {
+.card-number-badge-simple {
   position: absolute;
   top: 12px;
   left: 12px;
@@ -298,47 +186,42 @@
   z-index: 10;
   border: 2px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.map-place-card.selected .card-number-badge {
+.map-place-card-simple.selected .card-number-badge-simple {
   background: #6366f1;
   border-color: #8da0ff;
   transform: scale(1.1);
 }
 
-.map-place-card:hover .card-number-badge {
-  transform: scale(1.05);
-}
-
 /* Photo */
-.card-photo-wrapper {
+.card-photo-wrapper-simple {
   width: 100%;
   height: 180px;
   overflow: hidden;
   position: relative;
 }
 
-.card-photo {
+.card-photo-simple {
   width: 100%;
   height: 100%;
   object-fit: cover;
   transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.map-place-card:hover .card-photo {
+.map-place-card-simple:hover .card-photo-simple {
   transform: scale(1.05);
 }
 
 /* Card Content */
-.card-content {
+.card-content-simple {
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.card-header {
+.card-header-simple {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -346,7 +229,7 @@
   position: relative;
 }
 
-.card-name {
+.card-name-simple {
   margin: 0;
   font-size: 1.1rem;
   font-weight: 700;
@@ -355,7 +238,7 @@
   line-height: 1.3;
 }
 
-.card-menu-btn {
+.card-menu-btn-simple {
   background: rgba(255, 255, 255, 0.1);
   border: none;
   color: rgba(255, 255, 255, 0.8);
@@ -371,13 +254,13 @@
   flex-shrink: 0;
 }
 
-.card-menu-btn:hover {
+.card-menu-btn-simple:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
   transform: scale(1.1);
 }
 
-.card-menu-popup {
+.card-menu-popup-simple {
   position: absolute;
   top: 100%;
   right: 0;
@@ -405,7 +288,7 @@
   }
 }
 
-.card-list-toggle {
+.card-list-toggle-simple {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -421,16 +304,16 @@
   text-align: left;
 }
 
-.card-list-toggle:hover {
+.card-list-toggle-simple:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.card-list-toggle.selected {
+.card-list-toggle-simple.selected {
   background: rgba(99, 102, 241, 0.2);
   color: #fff;
 }
 
-.card-circle {
+.card-circle-simple {
   width: 20px;
   height: 20px;
   border-radius: 50%;
@@ -443,13 +326,13 @@
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.card-circle.filled {
+.card-circle-simple.filled {
   background: #6366f1;
   border-color: #6366f1;
   color: #fff;
 }
 
-.card-empty-list {
+.card-empty-list-simple {
   padding: 12px;
   color: rgba(255, 255, 255, 0.5);
   font-size: 0.9rem;
@@ -457,7 +340,7 @@
   margin: 0;
 }
 
-.card-add-list-btn {
+.card-add-list-btn-simple {
   width: 100%;
   padding: 10px 12px;
   background: rgba(99, 102, 241, 0.2);
@@ -471,27 +354,27 @@
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.card-add-list-btn:hover {
+.card-add-list-btn-simple:hover {
   background: rgba(99, 102, 241, 0.3);
   border-color: #6366f1;
   color: #fff;
 }
 
-.card-address {
+.card-address-simple {
   margin: 0;
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.7);
   line-height: 1.4;
 }
 
-.card-vibes {
+.card-vibes-simple {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 4px;
 }
 
-.card-vibe-chip {
+.card-vibe-chip-simple {
   background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.9);
   border-radius: 12px;
@@ -501,12 +384,12 @@
   transition: all 0.2s ease;
 }
 
-.card-vibe-chip:hover {
+.card-vibe-chip-simple:hover {
   background: rgba(255, 255, 255, 0.15);
 }
 
 /* Expanded Content */
-.card-expanded-content {
+.card-expanded-content-simple {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -524,33 +407,33 @@
   }
 }
 
-.card-summary {
+.card-summary-simple {
   margin: 0 0 12px 0;
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.85);
   line-height: 1.6;
 }
 
-.card-must-try,
-.card-when {
+.card-must-try-simple,
+.card-when-simple {
   margin: 0 0 8px 0;
   font-size: 0.85rem;
   color: rgba(255, 255, 255, 0.8);
   line-height: 1.5;
 }
 
-.card-must-try strong,
-.card-when strong {
+.card-must-try-simple strong,
+.card-when-simple strong {
   color: rgba(255, 255, 255, 0.95);
 }
 
-.card-actions {
+.card-actions-simple {
   display: flex;
   gap: 8px;
   margin-top: 12px;
 }
 
-.card-action-btn {
+.card-action-btn-simple {
   flex: 1;
   padding: 10px 16px;
   background: rgba(255, 255, 255, 0.1);
@@ -565,7 +448,7 @@
   display: inline-block;
 }
 
-.card-action-btn:hover {
+.card-action-btn-simple:hover {
   background: rgba(99, 102, 241, 0.3);
   border-color: #6366f1;
   transform: translateY(-1px);
@@ -573,7 +456,7 @@
 }
 
 /* Skeleton Loading */
-.map-place-card.skeleton {
+.map-place-card-simple.skeleton {
   animation: skeletonPulse 1.5s ease-in-out infinite;
   pointer-events: none;
 }
@@ -608,37 +491,26 @@
   animation: skeletonPulse 1.5s ease-in-out infinite;
 }
 
-/* Empty State */
-.panel-empty-state {
-  padding: 40px 20px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.panel-empty-state p {
-  margin: 0;
-  font-size: 0.95rem;
-}
-
 /* Responsive Mobile */
 @media (max-width: 768px) {
-  .map-bottom-panel {
-    max-height: calc(100vh - 60px);
+  .map-section-simple {
+    height: 40vh;
+    min-height: 300px;
   }
 
-  .panel-list-container {
+  .map-list-content {
     padding: 12px 16px;
   }
 
-  .card-photo-wrapper {
+  .card-photo-wrapper-simple {
     height: 150px;
   }
 
-  .card-content {
+  .card-content-simple {
     padding: 12px;
   }
 
-  .card-name {
+  .card-name-simple {
     font-size: 1rem;
   }
 
@@ -649,30 +521,4 @@
     height: 40px;
     font-size: 20px;
   }
-}
-
-/* Touch support for mobile dragging */
-@media (hover: none) and (pointer: coarse) {
-  .panel-drag-handle {
-    padding: 16px 0;
-    touch-action: none;
-  }
-
-  .drag-handle-bar {
-    width: 50px;
-    height: 5px;
-  }
-
-  .map-place-card {
-    touch-action: pan-y; /* Allow vertical scrolling */
-  }
-}
-
-/* Prevent map gestures from interfering with list scrolling */
-.map-section {
-  touch-action: pan-x pan-y pinch-zoom;
-}
-
-.panel-list-container {
-  touch-action: pan-y;
 }
