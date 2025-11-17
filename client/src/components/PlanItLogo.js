@@ -31,24 +31,6 @@ export default function PlanItLogo({ size = 120, showText = true, className = ""
           <ellipse cx="50" cy="50" rx="36" ry="20" stroke="#FFFFFF" strokeWidth="3" fill="none" />
           <ellipse cx="50" cy="50" rx="36" ry="28" stroke="#FFFFFF" strokeWidth="2.5" fill="none" />
         </g>
-
-        {/* 3D Map Pin - black and fully opaque */}
-        <g opacity="0.8">
-          {/* Pin shadow/base */}
-          <ellipse cx="50" cy="72" rx="5" ry="1.5" fill="#333333" opacity="0.3" />
-
-          {/* Pin body - teardrop shape - taller and skinnier */}
-          <path
-            d="M 50 30 C 43 30 37 36 37 43 C 37 49 40 54 50 72 C 60 54 63 49 63 43 C 63 36 57 30 50 30 Z"
-            fill="#333333"
-          />
-
-          {/* Inner circle for 3D effect */}
-          <circle cx="50" cy="43" r="6" fill="#2a2a2a" />
-
-          {/* Center dot - slightly different color */}
-          <circle cx="50" cy="43" r="3" fill="#1a1a1a" />
-        </g>
       </svg>
 
       {/* Text */}

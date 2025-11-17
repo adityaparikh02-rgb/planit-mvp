@@ -333,6 +333,28 @@ function App() {
     setActiveTab("home");
   };
 
+  // Save note to self
+  const handleSaveNote = () => {
+    if (!result) return;
+    const currentUrl = result.video_url || videoUrl;
+    if (!currentUrl) return;
+    
+    const updatedResult = { ...result, note_to_self: noteToSelf };
+    setResult(updatedResult);
+    
+    setCachedResults((prev) => {
+      const updated = { ...prev, [currentUrl]: updatedResult };
+      try {
+        localStorage.setItem("planit_cached_results", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to save note to localStorage:", e);
+      }
+      return updated;
+    });
+    
+    setEditingNote(false);
+  };
+
   // ===== Lists =====
   const togglePlaceInList = (listName, place) => {
     const current = savedPlaces[listName] || [];
