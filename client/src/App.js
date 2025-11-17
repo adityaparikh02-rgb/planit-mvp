@@ -29,6 +29,8 @@ function App() {
   const [editingListName, setEditingListName] = useState(null); // For editing list names
   const [editingListValue, setEditingListValue] = useState("");
   const [expandedSavedPlaceIndex, setExpandedSavedPlaceIndex] = useState(null); // For expanded place details in saved lists
+  const [noteToSelf, setNoteToSelf] = useState(""); // Note to self for current extraction
+  const [editingNote, setEditingNote] = useState(false); // Whether note is being edited
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -99,13 +101,17 @@ function App() {
 
     setError("");
     setResult(null);
+    setNoteToSelf("");
+    setEditingNote(false);
     if (!isFromHistory) {
       setViewingHistory(false); // Reset history view when starting new extraction
     }
     setLoadingStep("Analyzing TikTok...");
 
     if (cachedResults[url]) {
-      setResult(cachedResults[url]);
+      const cached = cachedResults[url];
+      setResult(cached);
+      setNoteToSelf(cached.note_to_self || "");
       setLoadingStep("");
       if (!isFromHistory) {
         setViewingHistory(false); // Not viewing history when extracting new
@@ -215,8 +221,14 @@ function App() {
       const cleanData = { ...data, places_extracted: uniquePlaces };
 
       console.log("💾 Setting result:", cleanData);
+      
+      // Load existing note if available
+      const existingCached = cachedResults[url];
+      const existingNote = existingCached?.note_to_self || "";
+      setNoteToSelf(existingNote);
+      
       setCachedResults((prev) => {
-        const updated = { ...prev, [url]: cleanData };
+        const updated = { ...prev, [url]: { ...cleanData, note_to_self: existingNote } };
         // Save to localStorage for persistence
         try {
           localStorage.setItem("planit_cached_results", JSON.stringify(updated));
@@ -225,7 +237,7 @@ function App() {
         }
         return updated;
       });
-      setResult(cleanData);
+      setResult({ ...cleanData, note_to_self: existingNote });
 
       const title =
         cleanData.summary_title?.replace(/(^"|"$)/g, "") ||
@@ -298,13 +310,15 @@ function App() {
   const handleHistoryClick = async (item) => {
     // Load cached result if available, otherwise extract
     if (cachedResults[item.url]) {
-      setResult(cachedResults[item.url]);
+      const cached = cachedResults[item.url];
+      setResult(cached);
+      setNoteToSelf(cached.note_to_self || "");
       setVideoUrl(item.url);
       setViewingHistory(true);
       setActiveTab("home");
     } else {
       // If not cached, extract it (but keep viewingHistory flag)
-    setVideoUrl(item.url);
+      setVideoUrl(item.url);
       setViewingHistory(true); // Set before extract so it doesn't get reset
       await handleExtract(item.url, true); // Pass flag to indicate it's from history
       setActiveTab("home");
@@ -558,6 +572,53 @@ function App() {
                     </a>
                   </div>
                 )}
+
+                {/* Note to Self Section */}
+                <div className="note-to-self-container">
+                  {editingNote ? (
+                    <div className="note-editor">
+                      <label className="note-label">📝 Note to Self:</label>
+                      <textarea
+                        className="note-textarea"
+                        value={noteToSelf}
+                        onChange={(e) => setNoteToSelf(e.target.value)}
+                        placeholder="Add a personal note about this extraction..."
+                        rows={3}
+                        autoFocus
+                      />
+                      <div className="note-actions">
+                        <button
+                          className="note-save-btn"
+                          onClick={handleSaveNote}
+                        >
+                          Save
+                        </button>
+                        <button
+                          className="note-cancel-btn"
+                          onClick={() => {
+                            setEditingNote(false);
+                            // Restore original note if cancelled
+                            setNoteToSelf(result.note_to_self || "");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      className="note-display"
+                      onClick={() => setEditingNote(true)}
+                    >
+                      <div className="note-label">📝 Note to Self:</div>
+                      {noteToSelf ? (
+                        <div className="note-content">{noteToSelf}</div>
+                      ) : (
+                        <div className="note-placeholder">Click to add a note...</div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {result.places_extracted?.length === 0 && (
                   <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
