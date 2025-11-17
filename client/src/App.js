@@ -593,10 +593,6 @@ function App() {
                 {result.places_extracted && result.places_extracted.length > 0 && viewMode === "map" && (
                   <MapView 
                     places={result.places_extracted}
-                    savedPlaces={savedPlaces}
-                    togglePlaceInList={togglePlaceInList}
-                    handleAddNewList={handleAddNewList}
-                    isInList={isInList}
                     onClose={() => setViewMode("list")}
                   />
                 )}

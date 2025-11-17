@@ -1390,6 +1390,53 @@ def run_ocr_on_image(image_path):
         print(traceback.format_exc())
         return ""
 
+def detect_list_format(text):
+    """
+    Detect if text contains list patterns (numbered lists, bullet points, etc.)
+    Returns True if list patterns are detected.
+    """
+    if not text or len(text.strip()) < 10:
+        return False
+    
+    text_lower = text.lower()
+    
+    # Check for numbered list patterns (1., 2., 3., etc.)
+    numbered_patterns = [
+        r'\b\d+[\.\)]\s+[A-Z]',  # "1. Place" or "1) Place"
+        r'\b\d+/\d+',  # "1/5", "2/5" (common in TikTok lists)
+        r'#\d+',  # "#1", "#2"
+    ]
+    
+    # Check for bullet point patterns
+    bullet_patterns = [
+        r'[•·▪▫◦]\s+[A-Z]',  # Bullet points
+        r'[-*]\s+[A-Z]',  # Dashes or asterisks
+    ]
+    
+    # Check for vertical list structure (multiple lines starting with capital letters)
+    lines = text.split('\n')
+    capital_start_lines = [l.strip() for l in lines if l.strip() and l.strip()[0].isupper()]
+    
+    # Count matches
+    numbered_matches = sum(1 for pattern in numbered_patterns if re.search(pattern, text))
+    bullet_matches = sum(1 for pattern in bullet_patterns if re.search(pattern, text))
+    
+    # If we have numbered patterns or multiple capital-start lines, likely a list
+    has_numbered_list = numbered_matches > 0
+    has_bullet_list = bullet_matches > 0
+    has_vertical_list = len(capital_start_lines) >= 3  # At least 3 items
+    
+    # Also check for common list keywords
+    list_keywords = ['top', 'best', 'favorite', 'must try', 'places', 'spots', 'restaurants', 'bars']
+    has_list_keywords = any(keyword in text_lower for keyword in list_keywords)
+    
+    is_list = has_numbered_list or has_bullet_list or (has_vertical_list and has_list_keywords)
+    
+    if is_list:
+        print(f"📋 List format detected: numbered={has_numbered_list}, bullet={has_bullet_list}, vertical={has_vertical_list}, keywords={has_list_keywords}")
+    
+    return is_list
+
 def extract_ocr_text(video_path):
     """Extract on-screen text using OCR from video frames. Returns empty string if OCR unavailable."""
     if not OCR_AVAILABLE:
@@ -1403,19 +1450,60 @@ def extract_ocr_text(video_path):
         fps = vidcap.get(cv2.CAP_PROP_FPS) or 30
         duration = total / fps if fps > 0 else 0
         
+        # FIRST PASS: Quick scan to detect if there's a list format
+        # Sample a few frames to check for list patterns
+        list_detected = False
+        if total > 5:
+            sample_frames = np.linspace(0, total - 1, min(5, total), dtype=int)
+            print(f"🔍 Quick scan: checking {len(sample_frames)} frames for list format...")
+            
+            for n in sample_frames:
+                vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
+                ok, img = vidcap.read()
+                if not ok:
+                    continue
+                
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                # Quick OCR with single config to detect lists
+                try:
+                    pil_img = Image.fromarray(gray)
+                    quick_text = image_to_string(pil_img, config="--oem 3 --psm 11")
+                    if quick_text and detect_list_format(quick_text):
+                        list_detected = True
+                        print(f"✅ List format detected in frame {n} - will use intensive OCR")
+                        break
+                except:
+                    continue
+        
+        # Reset video capture for main OCR pass
+        vidcap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        
         # Process frames efficiently - balance between accuracy and speed
-        # For shorter videos, process more frames. For longer videos, sample strategically
+        # INCREASE sampling rate if list detected
         if duration > 0:
-            if duration < 30:
-                # Short videos: process every 0.5 seconds (more thorough)
-                frames_per_second = 2
-                num_frames = min(max(int(duration * frames_per_second), 10), 30)
+            if list_detected:
+                # LIST DETECTED: Process more frames for better list capture
+                if duration < 30:
+                    # Short videos with lists: process every 0.3 seconds (very thorough)
+                    frames_per_second = 3.3
+                    num_frames = min(max(int(duration * frames_per_second), 15), 50)
+                else:
+                    # Longer videos with lists: process every 0.5 seconds (more thorough)
+                    frames_per_second = 2
+                    num_frames = min(max(int(duration * frames_per_second), 20), 40)
+                print(f"📋 List detected - using intensive OCR: {frames_per_second} fps, {num_frames} frames")
             else:
-                # Longer videos: process every 1 second (faster)
-                frames_per_second = 1
-                num_frames = min(max(int(duration * frames_per_second), 15), 25)
+                # NO LIST: Standard processing
+                if duration < 30:
+                    # Short videos: process every 0.5 seconds (more thorough)
+                    frames_per_second = 2
+                    num_frames = min(max(int(duration * frames_per_second), 10), 30)
+                else:
+                    # Longer videos: process every 1 second (faster)
+                    frames_per_second = 1
+                    num_frames = min(max(int(duration * frames_per_second), 15), 25)
         else:
-            num_frames = 15  # Default to fewer frames for unknown duration
+            num_frames = 20 if list_detected else 15  # More frames if list detected
         
         frames = np.linspace(0, total - 1, min(total, num_frames), dtype=int)
         
@@ -1425,13 +1513,24 @@ def extract_ocr_text(video_path):
         seen_texts = set()  # Deduplicate similar text
         
         # OCR config optimized for lists of venue names
-        # Try multiple PSM modes to catch different text layouts
-        # Reduced to 3 most effective configs for speed
-        ocr_configs = [
-            r'--oem 3 --psm 11',  # Sparse text - best for lists scattered on screen
-            r'--oem 3 --psm 6',   # Uniform block of text
-            r'--oem 3 --psm 4',   # Single column of text
-        ]
+        # If list detected, use more PSM modes for better list capture
+        if list_detected:
+            # LIST MODE: More PSM modes to catch all list variations
+            ocr_configs = [
+                r'--oem 3 --psm 11',  # Sparse text - best for lists scattered on screen
+                r'--oem 3 --psm 6',   # Uniform block of text
+                r'--oem 3 --psm 4',   # Single column of text
+                r'--oem 3 --psm 3',   # Fully automatic page segmentation (good for lists)
+                r'--oem 3 --psm 12',  # Sparse text with OSD (orientation detection)
+            ]
+            print("📋 Using enhanced OCR configs for list detection")
+        else:
+            # STANDARD MODE: Reduced configs for speed
+            ocr_configs = [
+                r'--oem 3 --psm 11',  # Sparse text - best for lists scattered on screen
+                r'--oem 3 --psm 6',   # Uniform block of text
+                r'--oem 3 --psm 4',   # Single column of text
+            ]
         
         for n in frames:
             vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
@@ -3549,11 +3648,21 @@ def extract_api():
                 except:
                     pass
             
-            # OPTIMIZATION: Only run OCR if transcript is short/insufficient
-            # For voiceover videos with good transcripts, OCR is often unnecessary
+            # OPTIMIZATION: Run OCR if transcript is short/insufficient OR if list format detected
+            # Lists are often shown visually on screen, so OCR is critical even with good transcripts
             transcript_length = len(transcript) if transcript else 0
-            if transcript_length < 100:  # Short transcript - might need OCR
-                print(f"⚠️ Short transcript ({transcript_length} chars) - running OCR as backup...")
+            
+            # Quick check for list keywords in transcript/caption to decide if OCR is needed
+            caption = meta.get("description", "") or meta.get("title", "") if meta else ""
+            combined_text_for_check = f"{transcript} {caption}".lower()
+            list_keywords_in_text = any(kw in combined_text_for_check for kw in ['top', 'best', 'favorite', 'places', 'spots', 'list', 'numbered', '#1', '#2', '1.', '2.'])
+            
+            if transcript_length < 100 or list_keywords_in_text:
+                # Short transcript OR list keywords detected - run OCR
+                if list_keywords_in_text:
+                    print(f"📋 List keywords detected in transcript/caption - running OCR to capture on-screen list...")
+                else:
+                    print(f"⚠️ Short transcript ({transcript_length} chars) - running OCR as backup...")
                 ocr_text = extract_ocr_text(video_path)
             else:
                 print(f"✅ Good transcript length ({transcript_length} chars) - skipping OCR for speed")
