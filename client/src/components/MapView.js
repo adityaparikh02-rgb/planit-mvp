@@ -363,17 +363,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
 
   return (
     <div className="map-simple-container">
-      {/* Close Button */}
-      {onClose && (
-        <button 
-          className="map-close-btn"
-          onClick={onClose}
-          aria-label="Close map view"
-        >
-          ✕
-        </button>
-      )}
-      
       {/* Map Section */}
       <div className="map-section-simple">
         <LoadScript 
