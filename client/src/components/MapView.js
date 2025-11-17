@@ -17,8 +17,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   const [placePositions, setPlacePositions] = useState({});
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const [mapZoom, setMapZoom] = useState(12);
-  const [showListMenu, setShowListMenu] = useState(null);
-  const [expandedPlace, setExpandedPlace] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [mapLoaded, setMapLoaded] = useState(false);
   const mapRef = useRef(null);
@@ -370,7 +368,8 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
           libraries={['places', 'geometry']}
           loadingElement={
             <div style={{ 
-              height: '100%', 
+              width: '100%',
+              height: '500px',
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center', 
@@ -391,8 +390,8 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
           <GoogleMap
             mapContainerStyle={{
               width: "100%",
-              height: "100%",
-              minHeight: "400px",
+              height: "500px",
+              minHeight: "500px",
             }}
             options={mapOptions}
             center={mapCenter}
@@ -461,179 +460,6 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
             })}
           </GoogleMap>
         </LoadScript>
-      </div>
-
-      {/* Simple List Below Map */}
-      <div className="map-list-simple">
-        <div className="map-list-header">
-          <h3>{placesWithLocation.length} {placesWithLocation.length === 1 ? 'Place' : 'Places'}</h3>
-        </div>
-        <div className="map-list-content">
-          {isLoading && Object.keys(placePositions).length === 0 ? (
-            <div className="map-list-items">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="map-place-card-simple skeleton">
-                  <div className="skeleton-photo"></div>
-                  <div className="skeleton-content">
-                    <div className="skeleton-line" style={{ width: '60%' }}></div>
-                    <div className="skeleton-line" style={{ width: '80%' }}></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : placesWithLocation.length === 0 ? (
-            <div className="map-list-empty">
-              <p>No places to display on the map.</p>
-            </div>
-          ) : (
-            <div className="map-list-items">
-              {placesWithLocation.map((place, index) => {
-                const isSelected = selectedPlace?.name === place.name;
-                const isExpanded = expandedPlace?.name === place.name;
-                
-                return (
-                  <div
-                    key={`${place.name}-${index}`}
-                    className={`map-place-card-simple ${isSelected ? 'selected' : ''} ${isExpanded ? 'expanded' : ''}`}
-                    onClick={() => {
-                      setSelectedPlace(place);
-                      setExpandedPlace(isExpanded ? null : place);
-                    }}
-                  >
-                    {/* Card Number Badge */}
-                    <div className="card-number-badge-simple">{index + 1}</div>
-
-                    {/* Photo */}
-              {place.photo_url && (
-                      <div className="card-photo-wrapper-simple">
-                <img 
-                  src={place.photo_url} 
-                  alt={place.name}
-                          className="card-photo-simple"
-                          loading="lazy"
-                        />
-                      </div>
-                    )}
-
-                    {/* Card Content */}
-                    <div className="card-content-simple">
-                      <div className="card-header-simple">
-                        <h4 className="card-name-simple">{place.name}</h4>
-                        <button
-                          className="card-menu-btn-simple"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowListMenu(showListMenu === place.name ? null : place.name);
-                          }}
-                        >
-                          ⋯
-                        </button>
-                        {showListMenu === place.name && (
-                          <div className="card-menu-popup-simple" onClick={(e) => e.stopPropagation()}>
-                            {Object.keys(savedPlaces).length > 0 ? (
-                              Object.keys(savedPlaces).map((list, idx) => {
-                                const inList = isInList ? isInList(list, place) : false;
-                                return (
-                                  <button
-                                    key={idx}
-                                    onClick={() => {
-                                      if (togglePlaceInList) {
-                                        togglePlaceInList(list, place);
-                                      }
-                                      setShowListMenu(null);
-                                    }}
-                                    className={`card-list-toggle-simple ${inList ? 'selected' : ''}`}
-                                  >
-                                    <span className={`card-circle-simple ${inList ? 'filled' : ''}`}>
-                                      {inList ? '✓' : ''}
-                                    </span>
-                                    {list}
-                                  </button>
-                                );
-                              })
-                            ) : (
-                              <p className="card-empty-list-simple">No lists yet</p>
-                            )}
-                            <button
-                              className="card-add-list-btn-simple"
-                              onClick={() => {
-                                if (handleAddNewList) {
-                                  handleAddNewList();
-                                }
-                                setShowListMenu(null);
-                              }}
-                            >
-                              ➕ Add to New List
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                {place.address && (
-                        <p className="card-address-simple">📍 {place.address}</p>
-                      )}
-
-                      {place.vibe_tags && place.vibe_tags.length > 0 && (
-                        <div className="card-vibes-simple">
-                          {place.vibe_tags.slice(0, 3).map((tag, idx) => (
-                            <span key={idx} className="card-vibe-chip-simple">{tag}</span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Expanded Content */}
-                      {isExpanded && (
-                        <div className="card-expanded-content-simple">
-                {place.summary && (
-                            <p className="card-summary-simple">{place.summary}</p>
-                          )}
-                          {place.must_try && (
-                            <p className="card-must-try-simple">
-                              <strong>
-                                {place.must_try_field === "highlights" ? "✨ Highlights:" :
-                                 place.must_try_field === "features" ? "🎯 Features:" :
-                                 "🍴 Must Try:"}
-                              </strong> {place.must_try}
-                            </p>
-                          )}
-                          {place.when_to_go && (
-                            <p className="card-when-simple">
-                              <strong>🕐 When to Go:</strong> {place.when_to_go}
-                            </p>
-                          )}
-                          <div className="card-actions-simple">
-                            {place.maps_url && (
-                              <a
-                                href={place.maps_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="card-action-btn-simple"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                🗺️ Maps
-                              </a>
-                            )}
-                            {place.video_url && (
-                              <a
-                                href={place.video_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="card-action-btn-simple"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                📹 TikTok
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                )}
-              </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
