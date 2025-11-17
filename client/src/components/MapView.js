@@ -186,7 +186,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
     }
   }, [mapLoaded, placePositions, defaultCenter]);
 
-  const mapOptions = {
+  const mapOptions = useMemo(() => ({
     zoom: mapZoom,
     center: mapCenter,
     mapTypeControl: false,
@@ -288,7 +288,7 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
         stylers: [{ color: "#8b92b0" }]
       }
     ]
-  };
+  }), [mapZoom, mapCenter]);
 
   // Custom marker icon
   const createMarkerIcon = useCallback((index, isSelected) => {
@@ -340,13 +340,23 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
   }, [selectedPlace, placePositions]);
 
   // If no API key, show a message
-  if (!GOOGLE_MAPS_API_KEY) {
+  if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY.trim() === "") {
     return (
-      <div style={{ padding: "40px", textAlign: "center", color: "#888" }}>
-        <p>Map view requires Google Maps API key.</p>
-        <p style={{ fontSize: "0.9rem", marginTop: "10px" }}>
-          Places can still be viewed in list/grid view.
+      <div className="map-simple-container" style={{ padding: "40px", textAlign: "center", color: "#888", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+        <p style={{ fontSize: "1.1rem", marginBottom: "10px" }}>Map view requires Google Maps API key.</p>
+        <p style={{ fontSize: "0.9rem", marginTop: "10px", color: "#aaa" }}>
+          Places can still be viewed in list view.
         </p>
+        {onClose && (
+          <button 
+            className="map-close-btn"
+            onClick={onClose}
+            aria-label="Close map view"
+            style={{ marginTop: "20px" }}
+          >
+            ✕
+          </button>
+        )}
       </div>
     );
   }
@@ -366,31 +376,40 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
       
       {/* Map Section */}
       <div className="map-section-simple">
-        <LoadScript googleMapsApiKey={GOOGLE_MAPS_API_KEY} loadingElement={
-          <div style={{ 
-            height: '100%', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            color: '#fff',
-            background: '#0a0a0f'
-          }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', marginBottom: '12px' }}>🗺️</div>
-              <div>Loading map...</div>
+        <LoadScript 
+          googleMapsApiKey={GOOGLE_MAPS_API_KEY}
+          libraries={['places', 'geometry']}
+          loadingElement={
+            <div style={{ 
+              height: '100%', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              color: '#fff',
+              background: '#0a0a0f'
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '24px', marginBottom: '12px' }}>🗺️</div>
+                <div>Loading map...</div>
+              </div>
             </div>
-          </div>
-        }>
-        <GoogleMap
+          }
+          onError={(error) => {
+            console.error('LoadScript error:', error);
+            setIsLoading(false);
+          }}
+        >
+          <GoogleMap
             mapContainerStyle={{
               width: "100%",
               height: "100%",
               minHeight: "400px",
             }}
-          options={mapOptions}
-          center={mapCenter}
-          zoom={mapZoom}
+            options={mapOptions}
+            center={mapCenter}
+            zoom={mapZoom}
             onLoad={(map) => {
+              console.log('Map loaded successfully');
               mapRef.current = map;
               setMapLoaded(true);
               setIsLoading(false);
@@ -423,34 +442,34 @@ const MapView = ({ places, savedPlaces = {}, togglePlaceInList, handleAddNewList
               }
             }}
             onError={(error) => {
-              console.error('Map error:', error);
+              console.error('GoogleMap error:', error);
               setIsLoading(false);
             }}
             onIdle={() => {
               setIsLoading(false);
             }}
-        >
-          {placesWithLocation.map((place, index) => {
-            const position = placePositions[place.name] || {
-              lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
-              lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
-            };
+          >
+            {placesWithLocation.map((place, index) => {
+              const position = placePositions[place.name] || {
+                lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
+                lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
+              };
               const isSelected = selectedPlace?.name === place.name;
             
-            return (
-              <Marker
+              return (
+                <Marker
                   key={`${place.name}-${index}`}
-                position={position}
+                  position={position}
                   onClick={() => {
                     setSelectedPlace(place);
                   }}
                   icon={createMarkerIcon(index, isSelected)}
-                title={place.name}
+                  title={place.name}
                   zIndex={isSelected ? 1000 : index}
-                  animation={isSelected ? window.google?.maps?.Animation?.BOUNCE : null}
-              />
-            );
-          })}
+                  animation={isSelected && window.google?.maps?.Animation?.BOUNCE ? window.google.maps.Animation.BOUNCE : undefined}
+                />
+              );
+            })}
           </GoogleMap>
         </LoadScript>
       </div>

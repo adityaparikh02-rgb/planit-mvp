@@ -56,18 +56,32 @@
   width: 100% !important;
   height: 100% !important;
   min-height: 400px !important;
+  position: relative !important;
 }
 
 .map-section-simple > div > div {
   width: 100% !important;
   height: 100% !important;
   min-height: 400px !important;
+  position: relative !important;
 }
 
 .map-section-simple > div > div > div {
   width: 100% !important;
   height: 100% !important;
   min-height: 400px !important;
+  position: relative !important;
+}
+
+/* Ensure Google Maps container has proper dimensions */
+.map-section-simple .gm-style {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.map-section-simple .gm-style > div {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* Simple List Below Map */
