@@ -1642,42 +1642,90 @@ def extract_ocr_text(video_path):
 def get_photo_url(name, place_id=None, photos=None):
     """Get photo URL from Google Places API. Can use place_id/photos if already fetched."""
     if not GOOGLE_API_KEY:
+        print(f"⚠️ GOOGLE_API_KEY not set - cannot fetch photo for {name}")
         return None
     
     # If photos already provided, use them
     if photos and len(photos) > 0:
-        ref = photos[0].get("photo_reference")
-        if ref:
-            return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+        try:
+            # Handle both dict and list formats
+            photo_data = photos[0] if isinstance(photos[0], dict) else photos[0]
+            ref = photo_data.get("photo_reference") if isinstance(photo_data, dict) else None
+            if ref:
+                photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+                print(f"✅ Using photo from search results for {name}")
+                return photo_url
+        except Exception as e:
+            print(f"⚠️ Error extracting photo from provided photos: {e}")
     
     # If place_id provided, use Place Details API (more reliable)
     if place_id:
         try:
+            print(f"🔍 Fetching photo via Place Details API for place_id: {place_id[:20]}...")
             r = requests.get(
                 "https://maps.googleapis.com/maps/api/place/details/json",
-                params={"place_id": place_id, "fields": "photos", "key": GOOGLE_API_KEY},
-                timeout=6
+                params={"place_id": place_id, "fields": "photos,name", "key": GOOGLE_API_KEY},
+                timeout=10
             )
-            result = r.json().get("result", {})
-            photos = result.get("photos", [])
-            if photos:
-                ref = photos[0].get("photo_reference")
-                if ref:
-                    return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+            r.raise_for_status()
+            data = r.json()
+            
+            if data.get("status") != "OK":
+                print(f"⚠️ Place Details API error: {data.get('status')} - {data.get('error_message', 'Unknown error')}")
+            else:
+                result = data.get("result", {})
+                photos = result.get("photos", [])
+                if photos and len(photos) > 0:
+                    ref = photos[0].get("photo_reference")
+                    if ref:
+                        photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+                        print(f"✅ Got photo via Place Details API for {result.get('name', name)}")
+                        return photo_url
+                else:
+                    print(f"⚠️ No photos found in Place Details for {place_id[:20]}...")
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Google photo fail (place_id) - Request error: {e}")
         except Exception as e:
-            print(f"⚠️ Google photo fail (place_id): {e}")
+            print(f"⚠️ Google photo fail (place_id) - Unexpected error: {e}")
+            import traceback
+            print(traceback.format_exc())
     
     # Fallback: search by name
     try:
+        print(f"🔍 Fallback: Searching for photo by name: {name}")
         r = requests.get(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
-            params={"query": name, "key": GOOGLE_API_KEY}, timeout=6)
-        res = r.json().get("results", [])
-        if res and "photos" in res[0] and len(res[0]["photos"]) > 0:
-            ref = res[0]["photos"][0]["photo_reference"]
-            return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+            params={"query": name, "key": GOOGLE_API_KEY}, 
+            timeout=10
+        )
+        r.raise_for_status()
+        data = r.json()
+        
+        if data.get("status") != "OK":
+            print(f"⚠️ Text Search API error: {data.get('status')} - {data.get('error_message', 'Unknown error')}")
+        else:
+            res = data.get("results", [])
+            if res and len(res) > 0:
+                place_info = res[0]
+                photos = place_info.get("photos", [])
+                if photos and len(photos) > 0:
+                    ref = photos[0].get("photo_reference")
+                    if ref:
+                        photo_url = f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+                        print(f"✅ Got photo via Text Search for {place_info.get('name', name)}")
+                        return photo_url
+                else:
+                    print(f"⚠️ No photos found in search results for {name}")
+            else:
+                print(f"⚠️ No search results found for {name}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Google photo fail (search) - Request error: {e}")
     except Exception as e:
-        print(f"⚠️ Google photo fail (search): {e}")
+        print(f"⚠️ Google photo fail (search) - Unexpected error: {e}")
+        import traceback
+        print(traceback.format_exc())
+    
+    print(f"❌ Failed to get photo for {name} after all attempts")
     return None
 
 # ─────────────────────────────
@@ -2003,24 +2051,41 @@ Return valid JSON list.
 def get_place_info_from_google(place_name):
     """Get canonical name, address, place_id, and photos from Google Maps API."""
     if not GOOGLE_API_KEY:
+        print(f"⚠️ GOOGLE_API_KEY not set - cannot get place info for {place_name}")
         return None, None, None, None
     try:
         # Try without location first (more flexible)
+        print(f"🔍 Searching Google Places for: {place_name}")
         r = requests.get(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
             params={"query": place_name, "key": GOOGLE_API_KEY},
-            timeout=6
+            timeout=10
         )
-        res = r.json().get("results", [])
-        if res:
+        r.raise_for_status()
+        data = r.json()
+        
+        if data.get("status") != "OK":
+            print(f"⚠️ Google Places search error for {place_name}: {data.get('status')} - {data.get('error_message', 'Unknown error')}")
+            return None, None, None, None
+        
+        res = data.get("results", [])
+        if res and len(res) > 0:
             place_info = res[0]
             canonical_name = place_info.get("name", place_name)  # Use Google's canonical name
             address = place_info.get("formatted_address")
             place_id = place_info.get("place_id")
             photos = place_info.get("photos", [])
+            
+            print(f"✅ Found place: {canonical_name} (place_id: {place_id[:20] if place_id else 'None'}..., photos: {len(photos) if photos else 0})")
             return canonical_name, address, place_id, photos
+        else:
+            print(f"⚠️ No results found for {place_name}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Failed to get place info from Google for {place_name} - Request error: {e}")
     except Exception as e:
-        print(f"⚠️ Failed to get place info from Google for {place_name}: {e}")
+        print(f"⚠️ Failed to get place info from Google for {place_name} - Unexpected error: {e}")
+        import traceback
+        print(traceback.format_exc())
     return None, None, None, None
 
 def get_place_address(place_name):
