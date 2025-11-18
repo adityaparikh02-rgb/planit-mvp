@@ -1639,19 +1639,45 @@ def extract_ocr_text(video_path):
 # ─────────────────────────────
 # Google Places Photo
 # ─────────────────────────────
-def get_photo_url(name):
+def get_photo_url(name, place_id=None, photos=None):
+    """Get photo URL from Google Places API. Can use place_id/photos if already fetched."""
     if not GOOGLE_API_KEY:
         return None
+    
+    # If photos already provided, use them
+    if photos and len(photos) > 0:
+        ref = photos[0].get("photo_reference")
+        if ref:
+            return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+    
+    # If place_id provided, use Place Details API (more reliable)
+    if place_id:
+        try:
+            r = requests.get(
+                "https://maps.googleapis.com/maps/api/place/details/json",
+                params={"place_id": place_id, "fields": "photos", "key": GOOGLE_API_KEY},
+                timeout=6
+            )
+            result = r.json().get("result", {})
+            photos = result.get("photos", [])
+            if photos:
+                ref = photos[0].get("photo_reference")
+                if ref:
+                    return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
+        except Exception as e:
+            print(f"⚠️ Google photo fail (place_id): {e}")
+    
+    # Fallback: search by name
     try:
         r = requests.get(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
-            params={"query": f"{name} NYC", "key": GOOGLE_API_KEY}, timeout=6)
+            params={"query": name, "key": GOOGLE_API_KEY}, timeout=6)
         res = r.json().get("results", [])
-        if res and "photos" in res[0]:
+        if res and "photos" in res[0] and len(res[0]["photos"]) > 0:
             ref = res[0]["photos"][0]["photo_reference"]
             return f"https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference={ref}&key={GOOGLE_API_KEY}"
     except Exception as e:
-        print("⚠️ Google photo fail:", e)
+        print(f"⚠️ Google photo fail (search): {e}")
     return None
 
 # ─────────────────────────────
@@ -1975,13 +2001,14 @@ Return valid JSON list.
 # Helper Functions for Place Merging
 # ─────────────────────────────
 def get_place_info_from_google(place_name):
-    """Get canonical name, address, and other info from Google Maps API."""
+    """Get canonical name, address, place_id, and photos from Google Maps API."""
     if not GOOGLE_API_KEY:
-        return None, None
+        return None, None, None, None
     try:
+        # Try without location first (more flexible)
         r = requests.get(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
-            params={"query": f"{place_name} NYC", "key": GOOGLE_API_KEY},
+            params={"query": place_name, "key": GOOGLE_API_KEY},
             timeout=6
         )
         res = r.json().get("results", [])
@@ -1989,14 +2016,16 @@ def get_place_info_from_google(place_name):
             place_info = res[0]
             canonical_name = place_info.get("name", place_name)  # Use Google's canonical name
             address = place_info.get("formatted_address")
-            return canonical_name, address
+            place_id = place_info.get("place_id")
+            photos = place_info.get("photos", [])
+            return canonical_name, address, place_id, photos
     except Exception as e:
         print(f"⚠️ Failed to get place info from Google for {place_name}: {e}")
-    return None, None
+    return None, None, None, None
 
 def get_place_address(place_name):
     """Get formatted address for a place name using Google Maps API."""
-    _, address = get_place_info_from_google(place_name)
+    _, address, _, _ = get_place_info_from_google(place_name)
     return address
 
 def merge_place_with_cache(place_data, video_url, username=None, video_summary=None):
@@ -2006,7 +2035,7 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
     
     # If address not already set, get it (and ensure canonical name)
     if not place_data.get("address"):
-        canonical_name, address = get_place_info_from_google(place_name)
+        canonical_name, address, _, _ = get_place_info_from_google(place_name)
         if canonical_name and canonical_name.lower() != place_name.lower():
             place_name = canonical_name  # Update to canonical name
             place_data["name"] = canonical_name
@@ -2015,7 +2044,7 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
     else:
         place_address = place_data.get("address")
         # Still check canonical name even if address exists
-        canonical_name, _ = get_place_info_from_google(place_name)
+        canonical_name, _, _, _ = get_place_info_from_google(place_name)
         if canonical_name and canonical_name.lower() != place_name.lower():
             place_name = canonical_name
             place_data["name"] = canonical_name
@@ -2128,8 +2157,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
     
     def enrich_and_fetch_photo(venue_name):
         """Enrich a single venue and fetch its photo - runs in parallel."""
-        # Get canonical name from Google Maps (correct spelling)
-        canonical_name, address = get_place_info_from_google(venue_name)
+        # Get canonical name, address, place_id, and photos from Google Maps (correct spelling)
+        canonical_name, address, place_id, photos = get_place_info_from_google(venue_name)
         # Use canonical name if available, otherwise use original
         display_name = canonical_name if canonical_name else venue_name
         
@@ -2138,7 +2167,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         
         intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text)
-        photo = get_photo_url(display_name)
+        # Use place_id and photos if available for more reliable photo fetching
+        photo = get_photo_url(display_name, place_id=place_id, photos=photos)
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
