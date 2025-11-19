@@ -432,6 +432,12 @@ def robust_tiktok_extractor(url):
     Tries TikTok API16 first, then SnapTik fallback, then Playwright.
     Returns dict with {source, caption, photo_urls, video_url}.
     """
+    # Clean URL - remove query parameters that might interfere
+    clean_url = url.split('?')[0] if '?' in url else url
+    if clean_url != url:
+        print(f"🔗 Cleaned URL: {url} -> {clean_url}")
+        url = clean_url
+    
     print(f"🌐 Starting robust extraction for {url}")
     result = {"source": None, "caption": "", "photo_urls": [], "video_url": None}
     
@@ -888,6 +894,12 @@ def fetch_tiktok_photo_post(url):
 # ─────────────────────────────
 def download_tiktok(video_url):
     """Download TikTok content (video or photo). Returns file path and metadata."""
+    # Clean URL - remove query parameters that might interfere with yt-dlp
+    clean_url = video_url.split('?')[0] if '?' in video_url else video_url
+    if clean_url != video_url:
+        print(f"🔗 Cleaned URL: {video_url} -> {clean_url}")
+        video_url = clean_url
+    
     is_photo_url = "/photo/" in video_url.lower()
     
     print(f"🔍 Checking URL type: {'Photo URL' if is_photo_url else 'Video URL'}")
