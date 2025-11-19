@@ -1426,7 +1426,7 @@ def run_ocr_on_image(image_path):
         if text7.strip():
             texts.append(("bilateral", text7))
         
-        # Pick the best result (longest + highest quality + legibility check)
+        # Pick the best result with SMART legibility requirements
         best_text = ""
         best_method = ""
         best_score = 0
@@ -1434,38 +1434,86 @@ def run_ocr_on_image(image_path):
         for method, text in texts:
             cleaned = clean_ocr_text(text)
             
-            # Calculate legibility score
-            alpha_count = sum(1 for c in cleaned if c.isalnum() or c in ' ,-.')
-            if len(cleaned) == 0:
-                score = 0
-            else:
-                # Alphanumeric ratio: prefer cleaner text
-                alpha_ratio = alpha_count / len(cleaned)
-                
-                # Length bonus: longer text is usually better (up to a point)
-                length_score = min(len(cleaned) / 100, 1.0)  # Cap at 100 chars
-                
-                # Word length check: real text has average word length 4-8 chars
-                words = [w for w in cleaned.split() if w]
-                if words:
-                    avg_word_len = len(''.join(words)) / len(words)
-                    word_quality = 1.0 if 3 < avg_word_len < 12 else 0.5  # Penalize very short/long "words"
-                else:
-                    word_quality = 0.3
-                
-                # Combine scores: prioritize alpha_ratio and word_quality over length
-                score = (alpha_ratio * 0.4) + (length_score * 0.3) + (word_quality * 0.3)
+            if len(cleaned) < 10:  # Too short to be meaningful
+                continue
             
-            if score > best_score:
-                best_score = score
+            # Calculate detailed legibility metrics
+            words = [w for w in cleaned.split() if w]
+            
+            if not words:
+                continue
+            
+            # 1. WORD LENGTH CHECK (critical for detecting garbled text)
+            # Real English words: 3-11 chars average
+            # Garbled: very short (1-2) or very long (20+) "words"
+            word_lengths = [len(w) for w in words]
+            avg_word_len = sum(word_lengths) / len(words)
+            
+            # Penalize if words are too short OR too long
+            if avg_word_len < 2 or avg_word_len > 18:
+                continue  # Skip obviously garbled
+            
+            # 2. CONSONANT CLUSTER CHECK (better than vowel ratio for OCR)
+            # Real text: consonant clusters max 3-4 ("str", "scr", "spring")
+            # Garbled: "RRR yy oe ST", "ee JE LEE ESS" = excessive consonants
+            max_consonant_run = 0
+            current_consonant_run = 0
+            for c in cleaned.lower():
+                if c.isalpha() and c not in 'aeiou':
+                    current_consonant_run += 1
+                    max_consonant_run = max(max_consonant_run, current_consonant_run)
+                else:
+                    current_consonant_run = 0
+            
+            # Reject if more than 5 consonants in a row (that's garbled for sure)
+            if max_consonant_run > 5:
+                continue
+            
+            # 3. ALPHANUMERIC RATIO
+            # Real text: mostly letters/numbers/spaces/punctuation
+            alpha_count = sum(1 for c in cleaned if c.isalnum() or c in ' ,-.')
+            alpha_ratio = alpha_count / len(cleaned)
+            
+            if alpha_ratio < 0.65:  # More lenient: 65% instead of 70%
+                continue
+            
+            # 4. SPACE DISTRIBUTION (check for clustering)
+            # Real text: spaces distributed throughout
+            # Garbled: clumped spaces or none
+            space_ratio = cleaned.count(' ') / max(len(cleaned), 1)
+            if space_ratio < 0.08 or space_ratio > 0.45:  # More lenient ranges
+                continue
+            
+            # 5. UPPERCASE/LOWERCASE BALANCE
+            # Real OCR: mostly lowercase with some uppercase (names, starts of sentences)
+            # Garbled: ALL UPPERCASE like "RRR YY OE ST HE" or chaotic
+            upper_count = sum(1 for c in cleaned if c.isupper())
+            lower_count = sum(1 for c in cleaned if c.islower())
+            
+            if upper_count > 0 and lower_count > 0:
+                upper_ratio = upper_count / (upper_count + lower_count)
+                # Reject if >50% uppercase (likely garbled)
+                if upper_ratio > 0.5:
+                    continue
+            
+            # All checks passed! Calculate final score
+            # Prefer longer, cleaner text with better word distribution
+            length_factor = min(len(cleaned) / 200, 1.0)  # Prefer 200+ chars
+            consonant_factor = 1.0 - (max_consonant_run / 10)  # Reward shorter consonant clusters
+            alpha_factor = alpha_ratio
+            
+            quality_score = (alpha_factor * 0.4) + (length_factor * 0.35) + (consonant_factor * 0.25)
+            
+            if quality_score > best_score:
+                best_score = quality_score
                 best_text = cleaned
                 best_method = method
         
         if best_text:
-            print(f"✅ OCR detected text via {best_method} ({len(best_text)} chars, score: {best_score:.2f}): {best_text[:100]}...")
+            print(f"✅ OCR detected text via {best_method} ({len(best_text)} chars, quality: {best_score:.2f}): {best_text[:100]}...")
             return best_text
         else:
-            print("⚠️ No readable text detected after all preprocessing methods.")
+            print("⚠️ No readable text detected after all preprocessing methods (all text was too garbled).")
             return ""
             
     except Exception as e:
