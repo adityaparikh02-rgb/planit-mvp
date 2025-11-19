@@ -42,6 +42,16 @@ from httpx import Client as HttpxClient
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Import new OCR pipeline modules
+try:
+    from ocr_processor import get_ocr_processor, OCR_AVAILABLE as OCR_PROCESSOR_AVAILABLE
+    from slideshow_extractor import extract_text_from_slideshow, extract_text_from_slideshow_weighted
+    print("✅ High-quality OCR pipeline modules loaded successfully")
+    ADVANCED_OCR_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Advanced OCR modules not available: {e}")
+    ADVANCED_OCR_AVAILABLE = False
+
 # Optional OCR - tesseract may not be available on all systems
 OCR_AVAILABLE = False
 try:
@@ -3692,50 +3702,69 @@ def extract_api():
         if photo_urls:
             print(f"✅ Extracted {len(photo_urls)} photos, caption: {caption[:100] if caption else 'None'}...")
             
-            # Download first few images locally (e.g. temp_photo_1.jpg, temp_photo_2.jpg)
+            # Use new advanced OCR pipeline for slideshow extraction
             ocr_text = ""
-            tmpdir = tempfile.mkdtemp()
             
-            try:
-                # Process first few images with OCR (limit to 5 for performance)
-                num_images = min(5, len(photo_urls))
-                print(f"🔍 Processing {num_images} images with OCR...")
-                
-                for i, img_url in enumerate(photo_urls[:num_images]):
-                    try:
-                        # Run OCR directly on the URL - the function will download and process it
-                        if OCR_AVAILABLE:
-                            print(f"🔍 Running OCR on photo {i+1}/{num_images}...")
-                            photo_ocr = run_ocr_on_image(img_url)
-                            if photo_ocr and len(photo_ocr.strip()) > 3:
-                                ocr_text += photo_ocr + " "
-                                print(f"✅ OCR extracted text from photo {i+1} ({len(photo_ocr)} chars): {photo_ocr[:150]}...")
-                            else:
-                                print(f'⚠️ OCR found no text in photo {i+1} (OCR returned: {photo_ocr[:50] if photo_ocr else "None"}...)')
-                        else:
-                            print(f"⚠️ OCR not available - skipping photo {i+1}")
-                            print(f"   OCR_AVAILABLE={OCR_AVAILABLE}")
-                    except Exception as e:
-                        print(f"⚠️ Failed to process photo {i+1}: {e}")
-                        continue
-            
-                
-                ocr_text = ocr_text.strip()
-                print(f"📊 Total OCR text extracted: {len(ocr_text)} chars")
-                if ocr_text:
-                    print(f"📝 OCR text preview: {ocr_text[:300]}...")
-                else:
-                    print("⚠️ No OCR text extracted from any images")
-            finally:
-                # Clean up temp directory
+            if ADVANCED_OCR_AVAILABLE and len(photo_urls) > 0:
+                print(f"🔍 Processing {min(5, len(photo_urls))} images with advanced OCR pipeline...")
                 try:
-                    import shutil
-                    shutil.rmtree(tmpdir, ignore_errors=True)
-                except:
-                    pass
+                    # Use the new high-quality OCR processor on slideshow images
+                    image_sources = photo_urls[:5]  # Process first 5 images
+                    ocr_text = extract_text_from_slideshow(image_sources)
+                    print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
+                    if ocr_text:
+                        print(f"📝 OCR preview: {ocr_text[:200]}...")
+                except Exception as e:
+                    print(f"⚠️ Advanced OCR pipeline failed: {e}")
+                    print(f"   Falling back to legacy OCR method...")
+                    # Fall back to legacy OCR
+                    ocr_text = ""
             
-            # Combine OCR + caption text
-            combined_text = f"{caption} {ocr_text}".strip()
+            # If advanced OCR not available or failed, use legacy method
+            if not ocr_text and OCR_AVAILABLE:
+                tmpdir = tempfile.mkdtemp()
+                try:
+                    num_images = min(5, len(photo_urls))
+                    print(f"🔍 Processing {num_images} images with legacy OCR...")
+                    
+                    for i, img_url in enumerate(photo_urls[:num_images]):
+                        try:
+                            if OCR_AVAILABLE:
+                                print(f"🔍 Running OCR on photo {i+1}/{num_images}...")
+                                photo_ocr = run_ocr_on_image(img_url)
+                                if photo_ocr and len(photo_ocr.strip()) > 3:
+                                    ocr_text += photo_ocr + " "
+                                    print(f"✅ OCR extracted text from photo {i+1} ({len(photo_ocr)} chars): {photo_ocr[:150]}...")
+                                else:
+                                    print(f'⚠️ OCR found no text in photo {i+1}')
+                            else:
+                                print(f"⚠️ OCR not available - skipping photo {i+1}")
+                        except Exception as e:
+                            print(f"⚠️ Failed to process photo {i+1}: {e}")
+                            continue
+                    
+                    ocr_text = ocr_text.strip()
+                finally:
+                    try:
+                        shutil.rmtree(tmpdir, ignore_errors=True)
+                    except:
+                        pass
+            
+            ocr_text = ocr_text.strip()
+            print(f"📊 Total OCR text extracted: {len(ocr_text)} chars")
+            if ocr_text:
+                print(f"📝 OCR text preview: {ocr_text[:300]}...")
+            else:
+                print("⚠️ No OCR text extracted from any images")
+            
+            # Combine OCR + caption text using weighted formula
+            # OCR prioritized: (ocr * 1.4) + (caption * 1.2) = photo-mode specific weights
+            if ocr_text and caption:
+                # Weight OCR more heavily than caption for photo posts
+                combined_text = f"{ocr_text}\n{caption} {caption}"  # OCR gets more weight
+                print(f"📊 Weighted combination: OCR ({len(ocr_text)} chars) prioritized over caption ({len(caption)} chars)")
+            else:
+                combined_text = f"{caption} {ocr_text}".strip()
             
             # Validate we have some text to extract from
             if not combined_text:
@@ -3767,6 +3796,8 @@ def extract_api():
                 "summary_title": context_title or caption or "TikTok Photo Post",
                 "context_summary": context_title or caption or "TikTok Photo Post",
                 "places_extracted": [],
+                "preview_image": photo_urls[0] if photo_urls else None,  # NEW: Include first image as preview
+                "source_type": "photo_slideshow",  # NEW: Identify source type
                 "photo_urls": photo_urls,  # Include photo URLs in response
                 "caption_extracted": caption  # Include actual caption for debugging
             }
