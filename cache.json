@@ -2482,5 +2482,101 @@
         "other_videos": []
       }
     ]
+  },
+  "7569248586186198302": {
+    "video_url": "https://www.tiktok.com/@sydsyummyeats/video/7569248586186198302?lang=en",
+    "context_summary": "My Favorite Matcha Lattes in NYC!",
+    "places_extracted": [
+      {
+        "name": "Hungry Llama",
+        "maps_url": "https://www.google.com/maps/search/Hungry+Llama",
+        "photo_url": "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=AWn5SU6oRORo3A8_Ioh9JOgPmzILamy4fJC69Cik_S_E-cQT3pW2aetAHBsdCGgLHT9fHLb7gnl9l2Bz0urJWIUMw8IufSo0KsAoCXqIZEEhbjQXXwSlSPdvj5SDlYjwriVkCO4tWAeHidsc6d-Pu_98MVwm2q3vRaNdWJrFHSOTWQE7KCPmlO8H9Qvn7BCFoitW6Df95Pqu0_M4z17TO5eE2XNEZaffFLG8DhsOeNeYcL0VIxpj_LCsCJlGwbLVrgx8VZrdYhhJaGYaLCLFXB6o-XeIEMwa0H5hkT9U_Sn6ZTlpTyRgedp5r1yRZdjQJVdELygio8Dt6QfYh7unf8ZCY8oi-_D4EwYITKXm_iHAIsqeqbv39AX53C8rycBEqSa9wbsKBOCWB8WzVOhsMB45yWjniRVlsdEjPb932b4OW3skkjic93YOLQ8QQPfTu_2IzXUebrfLYY5yfGJBo4-u-PGA2Lb-g3Wc_sATeBIVzSZE0e4X9gTMCIZnYrZsI7JmosAj5ZzaMrIEWdfJj1mCIlzhi25UxB9TwYYFSpeYC2pbOQN1BtX6r7CxfUVQkYu6zSJI4EoGJiB1Nyi2H6r9gwnvn3k&key=AIzaSyBXq3n66pi3sXJ2mSSQ8WxAJ2TB5pVye00",
+        "description": "Hungry Llama, located in the West Village, is a must-visit for matcha enthusiasts seeking a delightful whipped honey matcha latte. The cafe's inviting atmosphere and quality drinks make it a standout in NYC's vibrant coffee scene.",
+        "vibe_tags": [],
+        "address": "679 Washington St, New York, NY 10014, United States",
+        "when_to_go": "",
+        "vibe": "Chill and cozy, perfect for casual meet-ups or work sessions.",
+        "must_try": "Whipped honey matcha latte",
+        "must_try_field": "must_try",
+        "specials": "",
+        "comments_summary": "Commenters shared their love for the whipped honey matcha latte and praised the cafe's ambiance.",
+        "other_videos": []
+      },
+      {
+        "name": "Not As Bitter",
+        "maps_url": "https://www.google.com/maps/search/Not+As+Bitter",
+        "photo_url": "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=AWn5SU7VKTgvHv06ViCLMtEdBzymSXx8rqHi8gG3_MkE310U_jyM7YBLf8RxENzG5EaXw6vnjzbAncr8vr7lvm2YQVHxJ0goqnbrcaU00FnubSLZpyqz7Wrjz7Qp5VHlA4-HImfBwOhoZpVIi7p2rx9lkyl6Wn6ukSDlpKwmgJ6ThFggi5Gp2eQwsR4f4x0PbQHVuWnZxIk2hDIwwEKqJ7qIEsP3kzrDPy_X88OBCWRSWShGmlE_tNiXUbeW8b9xi2oWYyODGSGZNy86p2Uh5KwW9DT0tPKUaVxdRH1mRF7D5ryYJ_Dr-gJtx-JAKzv8-N2zdxkPA5kQx4AwpfJLeApfCTr_J2s7ruR72ov5ygE4pTKh7DviHgcmA62qjlpeojPWreyPBhASP7VdKS9BTcBkviGZPpzA6uf9YJRdvAFypTy9wyLaiw8MNBe9QtGY2WFQ_0ObIcFbhZwGUIF2AMGlgWDycxao9pZkbT4FmtxKVAUCyx9Ojz6hLyJuV1BDUVQH_0pkgvjnRnQ13yq-fdnoUqWIK3w3ElsvLWGGMtpd31meI1OM8KQtHjXKFJ1sYhBRY8jnx5hd4QVZpg&key=AIzaSyBXq3n66pi3sXJ2mSSQ8WxAJ2TB5pVye00",
+        "description": "Not As Bitter in the East Village is highlighted for its delightful coconut matcha topped with pistachio cream, making it a must-visit for matcha enthusiasts. The vibrant atmosphere and attention to quality attract a diverse crowd of locals and visitors alike.",
+        "vibe_tags": [],
+        "address": "241 E 10th St, New York, NY 10003, United States",
+        "when_to_go": "",
+        "vibe": "Casual and inviting, with a mix of locals and matcha lovers",
+        "must_try": "Coconut matcha with pistachio cream",
+        "must_try_field": "must_try",
+        "specials": "",
+        "comments_summary": "Commenters express enthusiasm for the unique flavor combinations and recommend the spot for matcha lovers.",
+        "other_videos": []
+      },
+      {
+        "name": "Mori Coffee",
+        "maps_url": "https://www.google.com/maps/search/Mori+Coffee",
+        "photo_url": "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=AWn5SU6VGRx8YvIQNniL4UdsQjMDLgWsjUvWzZyS0Lal-A03w8tRSUHi3wYWznCjeHgorEYaaitXDHOa70s1FS9IEMuhfnDpsYjQX6TOl1b3CsW-PkZrxOHxwKtYkUrLRaNJe7aWgrP5IdgzK7t5f26PjUPrs_BuxhRlrEteQBm5vj8_CU8Po2OlBa3LgLpQZzK5-sISkmMqFhLSz2u2O8PGIGXeo8zGJ9EE1QRDtJfLF7dhcRJ0LOjnE2ZFsDT9ZeKtl0YVjrFBXJNj4cQGT3-rVG-36xXz3oYc11FUZEh1ohOK_Dx1o21GOwGG8EF0mf7ajyJ9NA5KfTTX4TZReUPPhrU21NUDfW25po8uoFGv1j3-agsOOnB77Lycxm0n_MvweviuyFDDABrvi2177n9wc8cLqzcjO1POSalqsGuqZ2NjhQO4GrGXo3pz_Yn4SXH-j2wSGW1bCnU3AQC26yMowku5Tb80DHQ9w6WqdHaLU0U4liz9uEKt6u3eHkwmRV8bLRG3RiXCXWgl3hPvOzoT9sESj3uRjAyfstSCKR9l9AQmtWZsxPaXN8fqHuC6MgtwUIk7AYN5DVk6eQ&key=AIzaSyBXq3n66pi3sXJ2mSSQ8WxAJ2TB5pVye00",
+        "description": "Mori Coffee, located in Kips Bay, is a beloved work-from-home cafe known for its inviting atmosphere and friendly staff. The highlight of their menu is the strawberry matcha, which has garnered a special place in the hearts of locals and visitors alike.",
+        "vibe_tags": [],
+        "address": "529 2nd Ave, New York, NY 10016, United States",
+        "when_to_go": "",
+        "vibe": "Casual and cozy, perfect for remote work or a relaxed coffee break.",
+        "must_try": "Strawberry matcha",
+        "must_try_field": "must_try",
+        "specials": "",
+        "comments_summary": "The cafe is praised for its friendly staff and ideal ambiance for working or studying.",
+        "other_videos": []
+      },
+      {
+        "name": "KIJITORA E14th",
+        "maps_url": "https://www.google.com/maps/search/KIJITORA+E14th",
+        "photo_url": "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=AWn5SU6VJgF5Vmx6Ld53wo4_p9UsLTTp6xdKEAIeLzhpheasonlAM8gVcG13nfA435gLKWNbZBTSkm02e_7GaYjurZ_NAjM3BeatbaXWSfgcbjIV6N83Lq7Fn05yG56FUQPpkPWEKEcbRtY2zTZGG65fk3DS5SgzSVj3bDrHGpfTn-5YJfSwGseu1rKAva6HYNlNQsrcN3xx2DwRCvrWr4haJEzQ9fhVYuBSoOTVXdt3haNkHMbtzy-wJmPggTLndAR0Gfmt6K0Bh5R5swyGRbMy3O6Mf5I7hu6Twvgrer0YNNO4lbNqSULv1uNZvOu8nAVPO8N9s8n5qUen8x8_Ks5oud_Qba5-4FJBbdU1Bt03RQeDXjxN-v-_xCpjgsSgTuPsPmaI7nXphH3FrJAHwLwfoxgGovTPAqM0A7h1ZUV2bEx52ahvyFL7fOaE1SHthfB5KjPEgUZL5B1UUXaWKxv_LAP7qxfwsONAzNg_BlspxMTkJkk-rzvnW3qlVJpDJQmNbmfv2gV5WcOnuhZrbVl61yTOBnCWnTXP6rtYWXfkzTGKSagg9W1pm2q-Rkt7dPpRIj-3rF5FugcQT_SFna8rsfeLlA0&key=AIzaSyBXq3n66pi3sXJ2mSSQ8WxAJ2TB5pVye00",
+        "description": "Kijitora, located in Williamsburg and the East Village, is renowned for its fruity matcha offerings, making it a popular choice among matcha enthusiasts in NYC. The caf\u00e9's vibrant atmosphere and delicious matcha options create a delightful experience for both locals and visitors alike.",
+        "vibe_tags": [],
+        "address": "534 E 14th St, New York, NY 10009, United States",
+        "when_to_go": "",
+        "vibe": "Chill and trendy, attracting matcha lovers and casual caf\u00e9-goers.",
+        "must_try": "Fruity matcha varieties, specific flavors not mentioned.",
+        "must_try_field": "must_try",
+        "specials": "",
+        "comments_summary": "Commenters appreciate the unique fruity matcha and the lively atmosphere of Kijitora.",
+        "other_videos": []
+      },
+      {
+        "name": "Cerate",
+        "maps_url": "https://www.google.com/maps/search/Cerate",
+        "photo_url": "https://via.placeholder.com/600x400?text=No+Photo",
+        "description": "Cerate is a trendy matcha spot in NYC known for its potent matcha lattes, particularly the maple matcha latte with almond milk. Located in Soho and Flatiron, it stands out among the city's vibrant caf\u00e9 scene, making it a must-visit for matcha enthusiasts.",
+        "vibe_tags": [],
+        "address": "",
+        "when_to_go": "",
+        "vibe": "Trendy and vibrant, popular among matcha lovers and foodies.",
+        "must_try": "Maple matcha latte with almond milk.",
+        "must_try_field": "must_try",
+        "specials": "",
+        "comments_summary": "The review emphasizes the strong flavor of Cerate's matcha, suggesting it energizes and excites the palate.",
+        "other_videos": []
+      },
+      {
+        "name": "Kettle of Fish",
+        "maps_url": "https://www.google.com/maps/search/Kettle+of+Fish",
+        "photo_url": "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=AWn5SU5yrYx4XzVJo0pL2IqLpAZJ_RH7neFuFXilUfJKv7g-4cRzvyvRUrymBS5TYdnZRaUVG9GyzG63WNM-6cL__Bwfxeklu-iSm6JFD04xbXNODsiS369l-gy_UEGRrdhz60GV-P6BoMGQDLBxZa3NgPu4XWNHQXE-4sINXXJZSoP_aFcjJ2lFHEHGL6Dd8jh6Bb-YmBmpvycTxc8EMimv2T8a5MEOS99kObafuaS5BOum6xx5PmiOSXwqWDlsQQljD4cJk92OtToIpuPDCmf21xwKNAQUF4hTlKaw-EUMfJVdo-WMzBb8EGw7BHBjy7YdvrXwDuwrkx6YpXIfmHT6du-8Yv3lneB4FuF5u20YwldolyzMh9KtBsUWCC06-2fVWpPWxpkVvliP8enr0yNWcU_eQYi-U5JVGiJQoEmGXXfqNC2apR7i31DEaKdKu5tUbBSMVGph39yZ-nUDRoqqsJYz48I9gOv1JRvcDXBtWfx_5tjVFDgX-Kql9eoEX-SqoAjZo6zvfuGODx6qxuazYUv51590v5rKLhaxAmczUtv_bju6_AKpPKhLlKpGMqgZIvHVrHAn&key=AIzaSyBXq3n66pi3sXJ2mSSQ8WxAJ2TB5pVye00",
+        "description": "Kettle of Fish in NoHo is celebrated for its impeccable quality matcha lattes, offering a clean-cut and straightforward experience for matcha enthusiasts. The ambiance is inviting, making it a great spot for those looking to enjoy a high-quality drink in a cozy setting.",
+        "vibe_tags": [],
+        "address": "59 Christopher St, New York, NY 10014, United States",
+        "when_to_go": "",
+        "vibe": "Inviting and cozy, perfect for matcha lovers and casual visitors.",
+        "must_try": "Matcha latte, known for its impeccable quality.",
+        "must_try_field": "must_try",
+        "specials": "",
+        "comments_summary": "Commenters appreciate the quality and simplicity of the matcha lattes, highlighting Kettle as a must-visit for matcha enthusiasts.",
+        "other_videos": []
+      }
+    ]
   }
 }

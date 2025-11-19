@@ -1288,246 +1288,202 @@ def clean_ocr_text(text):
 
 def run_ocr_on_image(image_path):
     """
-    Run OCR on a single static image with improved preprocessing for better text detection.
-    Downloads image if path is a URL, converts formats, applies multiple preprocessing methods.
-    Returns cleaned extracted text.
+    AGGRESSIVE OCR for TikTok photos with multiple preprocessing strategies.
+    Optimized specifically for white text on dark backgrounds (TikTok caption style).
+    
+    Returns cleaned extracted text or empty string if all methods fail quality checks.
     """
     if not OCR_AVAILABLE:
         print("⚠️ OCR not available (tesseract not installed) - skipping OCR")
         return ""
     
     try:
-        print(f"🖼️ Running OCR on image: {image_path[:60]}...")
+        print(f"🖼️ Running AGGRESSIVE OCR on image: {image_path[:60]}...")
         
-        # If image_path is a URL, download it first
+        # Download if URL
         if image_path.startswith("http://") or image_path.startswith("https://"):
             print(f"📥 Downloading image for OCR: {image_path[:60]}...")
             r = requests.get(image_path, timeout=10)
             r.raise_for_status()
-            
-            # Save to temp file
             with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                 tmp.write(r.content)
                 image_path = tmp.name
         
-        # Read image with OpenCV
+        # Read image
         img = cv2.imread(image_path)
         if img is None:
-            print("⚠️ OpenCV failed to read image, trying PIL fallback...")
-            # Fallback to PIL if OpenCV fails (handles WebP, HEIC, etc.)
+            print("⚠️ OpenCV failed, trying PIL...")
             pil_img = Image.open(image_path)
-            # Convert PIL image to RGB numpy array
             img = np.array(pil_img.convert("RGB"))
-            # Convert RGB to BGR for OpenCV
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         
-        # Resize if image is too large (improves OCR accuracy)
+        # Downsize if too large
         height, width = img.shape[:2]
-        if width > 2000 or height > 2000:
-            scale = min(2000 / width, 2000 / height)
+        if width > 2500 or height > 2500:
+            scale = min(2500 / width, 2500 / height)
             new_width = int(width * scale)
             new_height = int(height * scale)
             img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
-            print(f"📏 Resized image from {width}x{height} to {new_width}x{new_height} for better OCR")
+            print(f"📏 Resized {width}x{height} → {new_width}x{new_height}")
         
         # Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        # Upscale for better OCR of small text
+        # Upscale small images (critical for OCR)
         height, width = gray.shape
-        if width < 1000:
-            scale = 1000 / width
+        if width < 1200:
+            scale = 1200 / width
             new_size = (int(width * scale), int(height * scale))
             gray = cv2.resize(gray, new_size, interpolation=cv2.INTER_CUBIC)
-            print(f"📏 Upscaled image by {scale:.1f}x for better text detection")
+            print(f"📏 Upscaled {scale:.1f}x for OCR accuracy")
         
-        # Try multiple preprocessing methods and pick the best result
-        texts = []
+        # ===== AGGRESSIVE MULTI-METHOD PREPROCESSING =====
+        texts_with_methods = []
         
-        # Method 0: PURE INVERSION (for white text on dark - TikTok captions)
-        # This is often the BEST method for TikTok Sans white text
-        inverted_raw = cv2.bitwise_not(gray)
-        text0 = pytesseract.image_to_string(inverted_raw, config="--oem 3 --psm 11")
-        if text0.strip():
-            texts.append(("inverted_raw", text0))
-        
-        # Method 0b: INVERTED + OTSU (aggressive for white text)
-        _, inverted_otsu = cv2.threshold(inverted_raw, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        text0b = pytesseract.image_to_string(inverted_otsu, config="--oem 3 --psm 11")
-        if text0b.strip():
-            texts.append(("inverted_otsu", text0b))
-        
-        # Method 0c: INVERTED + MORPHOLOGICAL cleanup
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
-        inverted_morphed = cv2.morphologyEx(inverted_raw, cv2.MORPH_CLOSE, kernel)
-        inverted_morphed = cv2.morphologyEx(inverted_morphed, cv2.MORPH_OPEN, kernel)
-        text0c = pytesseract.image_to_string(inverted_morphed, config="--oem 3 --psm 11")
-        if text0c.strip():
-            texts.append(("inverted_morphed", text0c))
-        
-        # Method 0d: INVERTED + BILATERAL (smooth noise while preserving edges)
-        inverted_bilateral = cv2.bilateralFilter(inverted_raw, 5, 50, 50)
-        text0d = pytesseract.image_to_string(inverted_bilateral, config="--oem 3 --psm 11")
-        if text0d.strip():
-            texts.append(("inverted_bilateral", text0d))
-        
-        # Method 1: Adaptive thresholding (best for varying lighting)
-        processed1 = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, 10
-        )
-        text1 = pytesseract.image_to_string(processed1, config="--oem 3 --psm 6")
+        # METHOD 1: INVERT + DENOISE + ENHANCE (BEST for white TikTok text on dark)
+        print("  ▶️ Method 1: Inverted + Denoised + Enhanced...")
+        inverted = cv2.bitwise_not(gray)
+        denoised_inv = cv2.fastNlMeansDenoising(inverted, None, 12, 9, 25)
+        clahe_inv = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        enhanced_inv = clahe_inv.apply(denoised_inv)
+        text1 = pytesseract.image_to_string(enhanced_inv, config="--oem 3 --psm 6")
         if text1.strip():
-            texts.append(("adaptive_thresh", text1))
+            texts_with_methods.append(("inv_denoise_enhance", text1))
         
-        # Method 2: Otsu thresholding (automatic contrast)
-        _, processed2 = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        text2 = pytesseract.image_to_string(processed2, config="--oem 3 --psm 6")
+        # METHOD 2: INVERT + OTSU (high contrast)
+        print("  ▶️ Method 2: Inverted + Otsu...")
+        _, otsu_inv = cv2.threshold(enhanced_inv, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        text2 = pytesseract.image_to_string(otsu_inv, config="--oem 3 --psm 6")
         if text2.strip():
-            texts.append(("otsu_thresh", text2))
+            texts_with_methods.append(("inv_otsu", text2))
         
-        # Method 3: Denoising + adaptive (best for TikTok quality)
-        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-        processed3 = cv2.adaptiveThreshold(
-            denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        )
-        text3 = pytesseract.image_to_string(processed3, config="--oem 3 --psm 6")
+        # METHOD 3: INVERT + ADAPTIVE (smooth varying backgrounds)
+        print("  ▶️ Method 3: Inverted + Adaptive...")
+        adaptive_inv = cv2.adaptiveThreshold(enhanced_inv, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 13, 3)
+        text3 = pytesseract.image_to_string(adaptive_inv, config="--oem 3 --psm 6")
         if text3.strip():
-            texts.append(("denoised_adaptive", text3))
+            texts_with_methods.append(("inv_adaptive", text3))
         
-        # Method 4: INVERTED adaptive (critical for white text on dark background!)
-        # TikTok captions are usually WHITE TEXT - inverted helps a LOT
-        inverted = cv2.bitwise_not(processed3)  # Invert denoised adaptive for best results
-        text4 = pytesseract.image_to_string(inverted, config="--oem 3 --psm 11")  # PSM 11 for sparse text
+        # METHOD 4: REGULAR grayscale + DENOISE + ENHANCE (for black text on light)
+        print("  ▶️ Method 4: Regular + Denoised + Enhanced...")
+        denoised = cv2.fastNlMeansDenoising(gray, None, 12, 9, 25)
+        clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+        enhanced = clahe.apply(denoised)
+        text4 = pytesseract.image_to_string(enhanced, config="--oem 3 --psm 6")
         if text4.strip():
-            texts.append(("inverted_denoised", text4))
+            texts_with_methods.append(("gray_denoise_enhance", text4))
         
-        # Method 5: MORPHOLOGICAL cleaning (removes noise, keeps text)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        processed5 = cv2.morphologyEx(processed3, cv2.MORPH_CLOSE, kernel)  # Close small holes
-        processed5 = cv2.morphologyEx(processed5, cv2.MORPH_OPEN, kernel)   # Remove small noise
-        text5 = pytesseract.image_to_string(processed5, config="--oem 3 --psm 6")
+        # METHOD 5: REGULAR + OTSU
+        print("  ▶️ Method 5: Regular + Otsu...")
+        _, otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        text5 = pytesseract.image_to_string(otsu, config="--oem 3 --psm 6")
         if text5.strip():
-            texts.append(("morphology", text5))
+            texts_with_methods.append(("gray_otsu", text5))
         
-        # Method 6: CONTRAST BOOST (for low-contrast images)
-        # Use CLAHE to enhance local contrast
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(gray)
-        processed6 = cv2.adaptiveThreshold(
-            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        )
-        text6 = pytesseract.image_to_string(processed6, config="--oem 3 --psm 6")
+        # METHOD 6: REGULAR + ADAPTIVE
+        print("  ▶️ Method 6: Regular + Adaptive...")
+        adaptive = cv2.adaptiveThreshold(enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 13, 3)
+        text6 = pytesseract.image_to_string(adaptive, config="--oem 3 --psm 6")
         if text6.strip():
-            texts.append(("contrast_enhanced", text6))
+            texts_with_methods.append(("gray_adaptive", text6))
         
-        # Method 6b: INVERTED + CONTRAST BOOST (for dark images with white text)
-        clahe_inv = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        enhanced_inv = clahe_inv.apply(inverted_raw)
-        text6b = pytesseract.image_to_string(enhanced_inv, config="--oem 3 --psm 11")
-        if text6b.strip():
-            texts.append(("inverted_contrast", text6b))
-        
-        # Method 7: Bilateral filtering + threshold (smooth while keeping edges)
-        bilateral = cv2.bilateralFilter(gray, 9, 75, 75)
-        processed7 = cv2.adaptiveThreshold(
-            bilateral, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-        )
-        text7 = pytesseract.image_to_string(processed7, config="--oem 3 --psm 11")
+        # METHOD 7: BILATERAL + CLAHE (smooth + contrast)
+        print("  ▶️ Method 7: Bilateral + CLAHE...")
+        bilateral = cv2.bilateralFilter(gray, 11, 85, 85)
+        clahe_bi = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        enhanced_bi = clahe_bi.apply(bilateral)
+        text7 = pytesseract.image_to_string(enhanced_bi, config="--oem 3 --psm 6")
         if text7.strip():
-            texts.append(("bilateral", text7))
+            texts_with_methods.append(("bilateral_clahe", text7))
         
-        # Pick the best result with SMART legibility requirements
+        # ===== SMART TEXT SELECTION =====
         best_text = ""
         best_method = ""
         best_score = 0
         
-        for method, text in texts:
+        print(f"\n📊 Evaluating {len(texts_with_methods)} extraction methods...")
+        
+        for method, text in texts_with_methods:
             cleaned = clean_ocr_text(text)
             
-            if len(cleaned) < 10:  # Too short to be meaningful
+            if len(cleaned) < 8:
                 continue
             
-            # Calculate detailed legibility metrics
             words = [w for w in cleaned.split() if w]
-            
-            if not words:
+            if not words or len(words) < 2:
                 continue
             
-            # 1. WORD LENGTH CHECK (critical for detecting garbled text)
-            # Real English words: 3-11 chars average
-            # Garbled: very short (1-2) or very long (20+) "words"
+            # QUALITY CHECKS
             word_lengths = [len(w) for w in words]
             avg_word_len = sum(word_lengths) / len(words)
             
-            # Penalize if words are too short OR too long
-            if avg_word_len < 2 or avg_word_len > 18:
-                continue  # Skip obviously garbled
+            # Check 1: Word lengths reasonable (3-13 chars average for real text)
+            if avg_word_len < 2.5 or avg_word_len > 16:
+                print(f"   ❌ {method}: word_len={avg_word_len:.1f} (garbled)")
+                continue
             
-            # 2. CONSONANT CLUSTER CHECK (better than vowel ratio for OCR)
-            # Real text: consonant clusters max 3-4 ("str", "scr", "spring")
-            # Garbled: "RRR yy oe ST", "ee JE LEE ESS" = excessive consonants
-            max_consonant_run = 0
-            current_consonant_run = 0
+            # Check 2: Consonant clustering (max 5 in a row for real text)
+            max_cons = 0
+            curr_cons = 0
             for c in cleaned.lower():
                 if c.isalpha() and c not in 'aeiou':
-                    current_consonant_run += 1
-                    max_consonant_run = max(max_consonant_run, current_consonant_run)
+                    curr_cons += 1
+                    max_cons = max(max_cons, curr_cons)
                 else:
-                    current_consonant_run = 0
+                    curr_cons = 0
             
-            # Reject if more than 5 consonants in a row (that's garbled for sure)
-            if max_consonant_run > 5:
+            if max_cons > 6:
+                print(f"   ❌ {method}: consonant_run={max_cons} (garbled)")
                 continue
             
-            # 3. ALPHANUMERIC RATIO
-            # Real text: mostly letters/numbers/spaces/punctuation
-            alpha_count = sum(1 for c in cleaned if c.isalnum() or c in ' ,-.')
-            alpha_ratio = alpha_count / len(cleaned)
+            # Check 3: Alphanumeric ratio
+            alpha_count = sum(1 for c in cleaned if c.isalnum() or c in ' ,.-')
+            alpha_ratio = alpha_count / len(cleaned) if cleaned else 0
             
-            if alpha_ratio < 0.65:  # More lenient: 65% instead of 70%
+            if alpha_ratio < 0.60:
+                print(f"   ❌ {method}: alpha_ratio={alpha_ratio:.1%} (too many symbols)")
                 continue
             
-            # 4. SPACE DISTRIBUTION (check for clustering)
-            # Real text: spaces distributed throughout
-            # Garbled: clumped spaces or none
-            space_ratio = cleaned.count(' ') / max(len(cleaned), 1)
-            if space_ratio < 0.08 or space_ratio > 0.45:  # More lenient ranges
+            # Check 4: Spacing
+            space_ratio = cleaned.count(' ') / len(cleaned) if cleaned else 0
+            if space_ratio < 0.07 or space_ratio > 0.50:
+                print(f"   ❌ {method}: space_ratio={space_ratio:.1%} (weird spacing)")
                 continue
             
-            # 5. UPPERCASE/LOWERCASE BALANCE
-            # Real OCR: mostly lowercase with some uppercase (names, starts of sentences)
-            # Garbled: ALL UPPERCASE like "RRR YY OE ST HE" or chaotic
-            upper_count = sum(1 for c in cleaned if c.isupper())
-            lower_count = sum(1 for c in cleaned if c.islower())
-            
-            if upper_count > 0 and lower_count > 0:
-                upper_ratio = upper_count / (upper_count + lower_count)
-                # Reject if >50% uppercase (likely garbled)
-                if upper_ratio > 0.5:
+            # Check 5: Case balance
+            upper = sum(1 for c in cleaned if c.isupper())
+            lower = sum(1 for c in cleaned if c.islower())
+            if upper > 0 and lower > 0:
+                upper_ratio = upper / (upper + lower)
+                if upper_ratio > 0.55:
+                    print(f"   ❌ {method}: uppercase={upper_ratio:.1%} (too many caps)")
                     continue
             
-            # All checks passed! Calculate final score
-            # Prefer longer, cleaner text with better word distribution
-            length_factor = min(len(cleaned) / 200, 1.0)  # Prefer 200+ chars
-            consonant_factor = 1.0 - (max_consonant_run / 10)  # Reward shorter consonant clusters
-            alpha_factor = alpha_ratio
+            # PASSED ALL CHECKS - Calculate score
+            quality = (
+                (alpha_ratio * 0.35) +  # Alphanumeric
+                (min(len(cleaned) / 250, 1.0) * 0.35) +  # Length
+                ((1.0 - max_cons / 12) * 0.30)  # Consonant factor
+            )
             
-            quality_score = (alpha_factor * 0.4) + (length_factor * 0.35) + (consonant_factor * 0.25)
+            print(f"   ✅ {method}: score={quality:.2f}, words={len(words)}, len={len(cleaned)}")
             
-            if quality_score > best_score:
-                best_score = quality_score
+            if quality > best_score:
+                best_score = quality
                 best_text = cleaned
                 best_method = method
         
-        if best_text:
-            print(f"✅ OCR detected text via {best_method} ({len(best_text)} chars, quality: {best_score:.2f}): {best_text[:100]}...")
+        if best_text and best_score > 0.45:
+            print(f"\n✅ BEST: {best_method} (score={best_score:.2f}, {len(best_text)} chars)")
+            print(f"   Preview: {best_text[:120]}...\n")
             return best_text
         else:
-            print("⚠️ No readable text detected after all preprocessing methods (all text was too garbled).")
+            print(f"\n⚠️ All methods failed quality check (best_score={best_score:.2f})")
+            print(f"   This image likely has no readable text or only garbled OCR.\n")
             return ""
             
     except Exception as e:
-        print(f"❌ OCR failed on image: {e}")
+        print(f"❌ OCR exception: {e}")
         import traceback
         print(traceback.format_exc())
         return ""
