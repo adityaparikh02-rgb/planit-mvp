@@ -29,8 +29,8 @@ function App() {
   const [editingListName, setEditingListName] = useState(null); // For editing list names
   const [editingListValue, setEditingListValue] = useState("");
   const [expandedSavedPlaceIndex, setExpandedSavedPlaceIndex] = useState(null); // For expanded place details in saved lists
-  const [noteToSelf, setNoteToSelf] = useState(""); // Note to self for current extraction
-  const [editingNote, setEditingNote] = useState(false); // Whether note is being edited
+  const [editingNoteForPlace, setEditingNoteForPlace] = useState(null); // Which place's note is being edited: {listName, placeIndex}
+  const [noteValue, setNoteValue] = useState(""); // Current note value being edited
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -101,8 +101,6 @@ function App() {
 
     setError("");
     setResult(null);
-    setNoteToSelf("");
-    setEditingNote(false);
     if (!isFromHistory) {
       setViewingHistory(false); // Reset history view when starting new extraction
     }
@@ -111,7 +109,6 @@ function App() {
     if (cachedResults[url]) {
       const cached = cachedResults[url];
       setResult(cached);
-      setNoteToSelf(cached.note_to_self || "");
       setLoadingStep("");
       if (!isFromHistory) {
         setViewingHistory(false); // Not viewing history when extracting new
@@ -222,13 +219,8 @@ function App() {
 
       console.log("💾 Setting result:", cleanData);
       
-      // Load existing note if available
-      const existingCached = cachedResults[url];
-      const existingNote = existingCached?.note_to_self || "";
-      setNoteToSelf(existingNote);
-      
       setCachedResults((prev) => {
-        const updated = { ...prev, [url]: { ...cleanData, note_to_self: existingNote } };
+        const updated = { ...prev, [url]: cleanData };
         // Save to localStorage for persistence
         try {
           localStorage.setItem("planit_cached_results", JSON.stringify(updated));
@@ -237,7 +229,7 @@ function App() {
         }
         return updated;
       });
-      setResult({ ...cleanData, note_to_self: existingNote });
+      setResult(cleanData);
 
       const title =
         cleanData.summary_title?.replace(/(^"|"$)/g, "") ||
@@ -312,7 +304,6 @@ function App() {
     if (cachedResults[item.url]) {
       const cached = cachedResults[item.url];
       setResult(cached);
-      setNoteToSelf(cached.note_to_self || "");
       setVideoUrl(item.url);
       setViewingHistory(true);
       setActiveTab("home");
@@ -333,34 +324,33 @@ function App() {
     setActiveTab("home");
   };
 
-  // Save note to self
-  const handleSaveNote = () => {
-    if (!result) return;
-    const currentUrl = result.video_url || videoUrl;
-    if (!currentUrl) return;
+  // Save note for a place in a saved list
+  const handleSavePlaceNote = (listName, placeIndex) => {
+    const updated = { ...savedPlaces };
+    if (!updated[listName] || !updated[listName][placeIndex]) return;
     
-    const updatedResult = { ...result, note_to_self: noteToSelf };
-    setResult(updatedResult);
+    updated[listName][placeIndex] = {
+      ...updated[listName][placeIndex],
+      note_to_self: noteValue
+    };
     
-    setCachedResults((prev) => {
-      const updated = { ...prev, [currentUrl]: updatedResult };
-      try {
-        localStorage.setItem("planit_cached_results", JSON.stringify(updated));
-      } catch (e) {
-        console.error("Failed to save note to localStorage:", e);
-      }
-      return updated;
-    });
+    setSavedPlaces(updated);
+    try {
+      localStorage.setItem("planit_saved_places", JSON.stringify(updated));
+    } catch (e) {
+      console.error("Failed to save note to localStorage:", e);
+    }
     
-    setEditingNote(false);
+    setEditingNoteForPlace(null);
+    setNoteValue("");
   };
 
   // ===== Lists =====
   const togglePlaceInList = (listName, place) => {
     const current = savedPlaces[listName] || [];
-    const alreadyInList = current.some((p) => p.name === place.name);
+    const existingPlaceIndex = current.findIndex((p) => p.name === place.name);
 
-    if (alreadyInList) {
+    if (existingPlaceIndex >= 0) {
       // Remove from list
       const updated = {
         ...savedPlaces,
@@ -510,7 +500,7 @@ function App() {
               <Search size={20} className="search-icon" />
               <input
                 type="text"
-                placeholder="Paste TikTok video URL..."
+                placeholder="Paste TikTok video or slideshow URL..."
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
                 onKeyDown={(e) => {
@@ -595,52 +585,6 @@ function App() {
                   </div>
                 )}
 
-                {/* Note to Self Section */}
-                <div className="note-to-self-container">
-                  {editingNote ? (
-                    <div className="note-editor">
-                      <label className="note-label">📝 Note to Self:</label>
-                      <textarea
-                        className="note-textarea"
-                        value={noteToSelf}
-                        onChange={(e) => setNoteToSelf(e.target.value)}
-                        placeholder="Add a personal note about this extraction..."
-                        rows={3}
-                        autoFocus
-                      />
-                      <div className="note-actions">
-                        <button
-                          className="note-save-btn"
-                          onClick={handleSaveNote}
-                        >
-                          Save
-                        </button>
-                        <button
-                          className="note-cancel-btn"
-                          onClick={() => {
-                            setEditingNote(false);
-                            // Restore original note if cancelled
-                            setNoteToSelf(result.note_to_self || "");
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div 
-                      className="note-display"
-                      onClick={() => setEditingNote(true)}
-                    >
-                      <div className="note-label">📝 Note to Self:</div>
-                      {noteToSelf ? (
-                        <div className="note-content">{noteToSelf}</div>
-                      ) : (
-                        <div className="note-placeholder">Click to add a note...</div>
-                      )}
-                    </div>
-                  )}
-                </div>
 
                 {result.places_extracted?.length === 0 && (
                   <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>
@@ -657,20 +601,29 @@ function App() {
                 )}
 
                 {result.places_extracted?.length > 0 && (
-                  <div className="view-toggle">
-                    <button
-                      className={viewMode === "list" ? "active" : ""}
-                      onClick={() => setViewMode("list")}
-                    >
-                      📋 List
-                    </button>
-                    <button
-                      className={viewMode === "map" ? "active" : ""}
-                      onClick={() => setViewMode("map")}
-                    >
-                      🗺️ Map
-                    </button>
-                  </div>
+                  <>
+                    {loadingStep && loadingStep.includes("Enriching") && (
+                      <div className="extraction-in-progress-banner">
+                        <Loader2 size={16} className="loading-icon spin" />
+                        <span>Extracting more information...</span>
+                      </div>
+                    )}
+                    
+                    <div className="view-toggle">
+                      <button
+                        className={viewMode === "list" ? "active" : ""}
+                        onClick={() => setViewMode("list")}
+                      >
+                        📋 List
+                      </button>
+                      <button
+                        className={viewMode === "map" ? "active" : ""}
+                        onClick={() => setViewMode("map")}
+                      >
+                        🗺️ Map
+                      </button>
+                    </div>
+                  </>
                 )}
 
                 {result.places_extracted && result.places_extracted.length > 0 && viewMode === "map" && (
@@ -1148,6 +1101,56 @@ function App() {
                                     </details>
                                   </div>
                                 )}
+                                
+                                {/* Note to Self Section */}
+                                <div className="note-to-self-container" onClick={(e) => e.stopPropagation()}>
+                                  {editingNoteForPlace?.listName === selectedList && editingNoteForPlace?.placeIndex === i ? (
+                                    <div className="note-editor">
+                                      <label className="note-label">📝 Note to Self:</label>
+                                      <textarea
+                                        className="note-textarea"
+                                        value={noteValue}
+                                        onChange={(e) => setNoteValue(e.target.value)}
+                                        placeholder="Add a personal note about this place..."
+                                        rows={3}
+                                        autoFocus
+                                      />
+                                      <div className="note-actions">
+                                        <button
+                                          className="note-save-btn"
+                                          onClick={() => handleSavePlaceNote(selectedList, i)}
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          className="note-cancel-btn"
+                                          onClick={() => {
+                                            setEditingNoteForPlace(null);
+                                            setNoteValue("");
+                                          }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div 
+                                      className="note-display"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingNoteForPlace({ listName: selectedList, placeIndex: i });
+                                        setNoteValue(p.note_to_self || "");
+                                      }}
+                                    >
+                                      <div className="note-label">📝 Note to Self:</div>
+                                      {p.note_to_self ? (
+                                        <div className="note-content">{p.note_to_self}</div>
+                                      ) : (
+                                        <div className="note-placeholder">Click to add a note...</div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )}
                             

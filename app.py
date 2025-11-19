@@ -1323,10 +1323,45 @@ def run_ocr_on_image(image_path):
         # Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
+        # Upscale for better OCR of small text
+        height, width = gray.shape
+        if width < 1000:
+            scale = 1000 / width
+            new_size = (int(width * scale), int(height * scale))
+            gray = cv2.resize(gray, new_size, interpolation=cv2.INTER_CUBIC)
+            print(f"📏 Upscaled image by {scale:.1f}x for better text detection")
+        
         # Try multiple preprocessing methods and pick the best result
         texts = []
         
-        # Method 1: Adaptive thresholding
+        # Method 0: PURE INVERSION (for white text on dark - TikTok captions)
+        # This is often the BEST method for TikTok Sans white text
+        inverted_raw = cv2.bitwise_not(gray)
+        text0 = pytesseract.image_to_string(inverted_raw, config="--oem 3 --psm 11")
+        if text0.strip():
+            texts.append(("inverted_raw", text0))
+        
+        # Method 0b: INVERTED + OTSU (aggressive for white text)
+        _, inverted_otsu = cv2.threshold(inverted_raw, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        text0b = pytesseract.image_to_string(inverted_otsu, config="--oem 3 --psm 11")
+        if text0b.strip():
+            texts.append(("inverted_otsu", text0b))
+        
+        # Method 0c: INVERTED + MORPHOLOGICAL cleanup
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
+        inverted_morphed = cv2.morphologyEx(inverted_raw, cv2.MORPH_CLOSE, kernel)
+        inverted_morphed = cv2.morphologyEx(inverted_morphed, cv2.MORPH_OPEN, kernel)
+        text0c = pytesseract.image_to_string(inverted_morphed, config="--oem 3 --psm 11")
+        if text0c.strip():
+            texts.append(("inverted_morphed", text0c))
+        
+        # Method 0d: INVERTED + BILATERAL (smooth noise while preserving edges)
+        inverted_bilateral = cv2.bilateralFilter(inverted_raw, 5, 50, 50)
+        text0d = pytesseract.image_to_string(inverted_bilateral, config="--oem 3 --psm 11")
+        if text0d.strip():
+            texts.append(("inverted_bilateral", text0d))
+        
+        # Method 1: Adaptive thresholding (best for varying lighting)
         processed1 = cv2.adaptiveThreshold(
             gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 15, 10
         )
@@ -1334,13 +1369,13 @@ def run_ocr_on_image(image_path):
         if text1.strip():
             texts.append(("adaptive_thresh", text1))
         
-        # Method 2: Otsu thresholding
+        # Method 2: Otsu thresholding (automatic contrast)
         _, processed2 = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         text2 = pytesseract.image_to_string(processed2, config="--oem 3 --psm 6")
         if text2.strip():
             texts.append(("otsu_thresh", text2))
         
-        # Method 3: Denoising + adaptive threshold
+        # Method 3: Denoising + adaptive (best for TikTok quality)
         denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
         processed3 = cv2.adaptiveThreshold(
             denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
@@ -1349,36 +1384,85 @@ def run_ocr_on_image(image_path):
         if text3.strip():
             texts.append(("denoised_adaptive", text3))
         
-        # Method 4: Inverted adaptive threshold (for white text on dark background)
-        inverted = cv2.bitwise_not(processed1)
-        text4 = pytesseract.image_to_string(inverted, config="--oem 3 --psm 6")
+        # Method 4: INVERTED adaptive (critical for white text on dark background!)
+        # TikTok captions are usually WHITE TEXT - inverted helps a LOT
+        inverted = cv2.bitwise_not(processed3)  # Invert denoised adaptive for best results
+        text4 = pytesseract.image_to_string(inverted, config="--oem 3 --psm 11")  # PSM 11 for sparse text
         if text4.strip():
-            texts.append(("inverted", text4))
+            texts.append(("inverted_denoised", text4))
         
-        # Method 5: Morphological operations to clean up text
-        kernel = np.ones((2, 2), np.uint8)
-        processed5 = cv2.morphologyEx(processed1, cv2.MORPH_CLOSE, kernel)
+        # Method 5: MORPHOLOGICAL cleaning (removes noise, keeps text)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        processed5 = cv2.morphologyEx(processed3, cv2.MORPH_CLOSE, kernel)  # Close small holes
+        processed5 = cv2.morphologyEx(processed5, cv2.MORPH_OPEN, kernel)   # Remove small noise
         text5 = pytesseract.image_to_string(processed5, config="--oem 3 --psm 6")
         if text5.strip():
             texts.append(("morphology", text5))
         
-        # Pick the best result (longest meaningful text)
+        # Method 6: CONTRAST BOOST (for low-contrast images)
+        # Use CLAHE to enhance local contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
+        processed6 = cv2.adaptiveThreshold(
+            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        )
+        text6 = pytesseract.image_to_string(processed6, config="--oem 3 --psm 6")
+        if text6.strip():
+            texts.append(("contrast_enhanced", text6))
+        
+        # Method 6b: INVERTED + CONTRAST BOOST (for dark images with white text)
+        clahe_inv = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        enhanced_inv = clahe_inv.apply(inverted_raw)
+        text6b = pytesseract.image_to_string(enhanced_inv, config="--oem 3 --psm 11")
+        if text6b.strip():
+            texts.append(("inverted_contrast", text6b))
+        
+        # Method 7: Bilateral filtering + threshold (smooth while keeping edges)
+        bilateral = cv2.bilateralFilter(gray, 9, 75, 75)
+        processed7 = cv2.adaptiveThreshold(
+            bilateral, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        )
+        text7 = pytesseract.image_to_string(processed7, config="--oem 3 --psm 11")
+        if text7.strip():
+            texts.append(("bilateral", text7))
+        
+        # Pick the best result (longest + highest quality + legibility check)
         best_text = ""
         best_method = ""
         best_score = 0
         
         for method, text in texts:
             cleaned = clean_ocr_text(text)
-            # Score based on length and alphanumeric ratio
-            alpha_count = sum(1 for c in cleaned if c.isalnum())
-            score = len(cleaned) * (alpha_count / max(len(cleaned), 1))
+            
+            # Calculate legibility score
+            alpha_count = sum(1 for c in cleaned if c.isalnum() or c in ' ,-.')
+            if len(cleaned) == 0:
+                score = 0
+            else:
+                # Alphanumeric ratio: prefer cleaner text
+                alpha_ratio = alpha_count / len(cleaned)
+                
+                # Length bonus: longer text is usually better (up to a point)
+                length_score = min(len(cleaned) / 100, 1.0)  # Cap at 100 chars
+                
+                # Word length check: real text has average word length 4-8 chars
+                words = [w for w in cleaned.split() if w]
+                if words:
+                    avg_word_len = len(''.join(words)) / len(words)
+                    word_quality = 1.0 if 3 < avg_word_len < 12 else 0.5  # Penalize very short/long "words"
+                else:
+                    word_quality = 0.3
+                
+                # Combine scores: prioritize alpha_ratio and word_quality over length
+                score = (alpha_ratio * 0.4) + (length_score * 0.3) + (word_quality * 0.3)
+            
             if score > best_score:
                 best_score = score
                 best_text = cleaned
                 best_method = method
         
         if best_text:
-            print(f"✅ OCR detected text via {best_method} ({len(best_text)} chars): {best_text[:100]}...")
+            print(f"✅ OCR detected text via {best_method} ({len(best_text)} chars, score: {best_score:.2f}): {best_text[:100]}...")
             return best_text
         else:
             print("⚠️ No readable text detected after all preprocessing methods.")
@@ -1437,204 +1521,266 @@ def detect_list_format(text):
     
     return is_list
 
-def extract_ocr_text(video_path):
-    """Extract on-screen text using OCR from video frames. Returns empty string if OCR unavailable."""
+def extract_ocr_text(video_path, sample_rate=1.0):
+    """
+    Extract on-screen text using OCR from video frames.
+    
+    Args:
+        video_path: Path to video file
+        sample_rate: Fraction of frames to process (1.0 = all frames, 0.5 = 50%, etc.)
+    
+    Returns:
+        Extracted text or empty string if OCR unavailable
+    """
     if not OCR_AVAILABLE:
         print("⚠️ OCR not available (tesseract not installed) - skipping OCR")
         return ""
     
     try:
-        print("🧩 Extracting on-screen text with OCR…")
+        print(f"🧩 Extracting on-screen text with OCR (sample_rate={sample_rate})…")
         vidcap = cv2.VideoCapture(video_path)
         total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = vidcap.get(cv2.CAP_PROP_FPS) or 30
         duration = total / fps if fps > 0 else 0
         
-        # FIRST PASS: Quick scan to detect if there's a list format
-        # Sample a few frames to check for list patterns
-        list_detected = False
-        if total > 5:
-            sample_frames = np.linspace(0, total - 1, min(5, total), dtype=int)
-            print(f"🔍 Quick scan: checking {len(sample_frames)} frames for list format...")
-            
-            for n in sample_frames:
-                vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
-                ok, img = vidcap.read()
-                if not ok:
-                    continue
-                
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                # Quick OCR with single config to detect lists
-                try:
-                    pil_img = Image.fromarray(gray)
-                    quick_text = image_to_string(pil_img, config="--oem 3 --psm 11")
-                    if quick_text and detect_list_format(quick_text):
-                        list_detected = True
-                        print(f"✅ List format detected in frame {n} - will use intensive OCR")
-                        break
-                except:
-                    continue
+        print(f"📹 Video: {total} frames, {fps:.1f} fps, {duration:.1f}s duration")
         
-        # Reset video capture for main OCR pass
-        vidcap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        # DETECT SLIDESHOW: If frames are very similar, it's likely a slideshow
+        # Slideshows have static slides with transitions
+        is_slideshow = _detect_slideshow(vidcap, total)
         
-        # Process frames efficiently - balance between accuracy and speed
-        # INCREASE sampling rate if list detected
-        if duration > 0:
-            if list_detected:
-                # LIST DETECTED: Process more frames for better list capture
-                if duration < 30:
-                    # Short videos with lists: process every 0.3 seconds (very thorough)
-                    frames_per_second = 3.3
-                    num_frames = min(max(int(duration * frames_per_second), 15), 50)
-                else:
-                    # Longer videos with lists: process every 0.5 seconds (more thorough)
-                    frames_per_second = 2
-                    num_frames = min(max(int(duration * frames_per_second), 20), 40)
-                print(f"📋 List detected - using intensive OCR: {frames_per_second} fps, {num_frames} frames")
-            else:
-                # NO LIST: Standard processing
-                if duration < 30:
-                    # Short videos: process every 0.5 seconds (more thorough)
-                    frames_per_second = 2
-                    num_frames = min(max(int(duration * frames_per_second), 10), 30)
-                else:
-                    # Longer videos: process every 1 second (faster)
-                    frames_per_second = 1
-                    num_frames = min(max(int(duration * frames_per_second), 15), 25)
+        if is_slideshow:
+            print("📸 SLIDESHOW DETECTED - Extracting text per slide")
+            return _extract_ocr_per_slide(vidcap, total, fps, duration, sample_rate)
         else:
-            num_frames = 20 if list_detected else 15  # More frames if list detected
+            print("🎥 REGULAR VIDEO - Extracting text from sampled frames")
+            return _extract_ocr_all_frames(vidcap, total, fps, duration, sample_rate)
+
+    except Exception as e:
+        print(f"❌ OCR error: {e}")
+        import traceback
+        print(traceback.format_exc())
+        return ""
+
+
+def _detect_slideshow(vidcap, total):
+    """
+    Detect if video is a slideshow by checking if frames are similar.
+    Slideshows have static slides that repeat.
+    """
+    try:
+        if total < 10:
+            return False
         
-        frames = np.linspace(0, total - 1, min(total, num_frames), dtype=int)
+        # Sample frames throughout video
+        sample_indices = [int(total * i / 5) for i in range(5)]
         
-        print(f"📹 Processing {len(frames)} frames from {total} total frames (duration: {duration:.1f}s)")
+        frames_data = []
+        for idx in sample_indices:
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, img = vidcap.read()
+            if ok:
+                # Resize for comparison
+                small = cv2.resize(img, (64, 64))
+                frames_data.append(small)
         
-        texts = []
-        seen_texts = set()  # Deduplicate similar text
+        if len(frames_data) < 2:
+            return False
         
-        # OCR config optimized for lists of venue names
-        # If list detected, use more PSM modes for better list capture
-        if list_detected:
-            # LIST MODE: More PSM modes to catch all list variations
-            ocr_configs = [
-                r'--oem 3 --psm 11',  # Sparse text - best for lists scattered on screen
-                r'--oem 3 --psm 6',   # Uniform block of text
-                r'--oem 3 --psm 4',   # Single column of text
-                r'--oem 3 --psm 3',   # Fully automatic page segmentation (good for lists)
-                r'--oem 3 --psm 12',  # Sparse text with OSD (orientation detection)
-            ]
-            print("📋 Using enhanced OCR configs for list detection")
-        else:
-            # STANDARD MODE: Reduced configs for speed
-            ocr_configs = [
-                r'--oem 3 --psm 11',  # Sparse text - best for lists scattered on screen
-                r'--oem 3 --psm 6',   # Uniform block of text
-                r'--oem 3 --psm 4',   # Single column of text
-            ]
+        # Compare frames - if they're very different, it's a regular video
+        # If they're similar, it might be a slideshow
+        diffs = []
+        for i in range(len(frames_data) - 1):
+            diff = cv2.absdiff(frames_data[i], frames_data[i+1])
+            mean_diff = diff.mean()
+            diffs.append(mean_diff)
         
-        for n in frames:
-            vidcap.set(cv2.CAP_PROP_POS_FRAMES, n)
+        avg_diff = sum(diffs) / len(diffs) if diffs else 0
+        print(f"   Frame similarity: avg_diff={avg_diff:.1f}")
+        
+        # If average difference is low, frames are similar = slideshow
+        is_slideshow = avg_diff < 5.0  # Threshold for "similar" frames
+        
+        return is_slideshow
+    except Exception as e:
+        print(f"   Slideshow detection failed: {e}")
+        return False
+
+
+def _extract_ocr_per_slide(vidcap, total, fps, duration, sample_rate):
+    """
+    Extract OCR text for each slide separately.
+    Detects slide changes and extracts text per slide to avoid mixing context.
+    """
+    print("🔍 Detecting slide boundaries...")
+    
+    slide_boundaries = _detect_slide_boundaries(vidcap, total)
+    print(f"   Found {len(slide_boundaries)} slides")
+    
+    all_slides_text = []
+    
+    for slide_num, (start, end) in enumerate(slide_boundaries, 1):
+        print(f"\n📄 Slide {slide_num}: frames {start}-{end}")
+        
+        # Sample frames from this slide
+        num_frames = max(1, int((end - start) / fps * 2))  # 2 frames per second
+        slide_frames = np.linspace(start, end, min(num_frames, 5), dtype=int)
+        
+        slide_text_parts = []
+        
+        for frame_idx in slide_frames:
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ok, img = vidcap.read()
             if not ok:
                 continue
-                
-            # Convert to grayscale
+            
+            # Run OCR on this frame
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
-            # Enhanced image preprocessing for maximum OCR accuracy
-            # Reduced to 4 most effective preprocessing methods for speed
-            processed_images = []
-            
-            # 1. Original grayscale (sometimes best as-is)
-            processed_images.append(("original", gray))
-            
-            # 2. Upscale if image is small (critical for small text)
+            # Preprocess
             height, width = gray.shape
-            if width < 1000 or height < 800:
-                scale_factor = max(1000 / width, 800 / height, 1.5)  # At least 1.5x upscale
-                new_width = int(width * scale_factor)
-                new_height = int(height * scale_factor)
-                upscaled = cv2.resize(gray, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
-                processed_images.append(("upscaled", upscaled))
-                gray = upscaled  # Use upscaled for further processing
+            if width < 1000:
+                scale = 1000 / width
+                new_size = (int(width * scale), int(height * scale))
+                gray = cv2.resize(gray, new_size, interpolation=cv2.INTER_CUBIC)
             
-            # 3. Increase contrast with CLAHE (stronger)
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-            enhanced = clahe.apply(gray)
-            processed_images.append(("enhanced", enhanced))
-            
-            # 4. Adaptive thresholding (better for varying lighting)
-            adaptive_thresh = cv2.adaptiveThreshold(
-                enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-            )
-            processed_images.append(("adaptive", adaptive_thresh))
-            
-            # Try OCR on all processed versions with different configs
-            frame_texts = []
-            for img_name, processed_img in processed_images:
-                for ocr_config in ocr_configs:
-                    try:
-                        # Convert to PIL Image for pytesseract
-                        pil_img = Image.fromarray(processed_img)
-                        txt = image_to_string(pil_img, config=ocr_config)
-                        txt_clean = txt.strip()
-                        if txt_clean and len(txt_clean) > 2:
-                            # Check if this is new text
-                            txt_lower = txt_clean.lower()
-                            is_duplicate = any(
-                                txt_lower in seen or seen in txt_lower 
-                                for seen in seen_texts 
-                                if len(seen) > 5 and len(txt_lower) > 5
-                            )
-                            if not is_duplicate:
-                                frame_texts.append(txt_clean)
-                                seen_texts.add(txt_lower)
-                                print(f"   Frame {n} ({img_name}, PSM {ocr_config.split()[-1]}): Found {len(txt_clean)} chars")
-                    except Exception as e:
-                        # Silently continue - some configs might fail
-                        continue
-            
-            # Add all unique texts from this frame (don't break early - capture all text)
-            if frame_texts:
-                # For lists, we want to keep ALL text blocks, not just the longest
-                # Merge all unique texts from this frame
-                for txt in frame_texts:
-                    if txt not in texts:  # Simple check to avoid exact duplicates
-                        texts.append(txt)
-                        print(f"   Frame {n}: Added text block ({len(txt)} chars): {txt[:60]}...")
-            
-            # Clean up image from memory
-            del img
-            if 'gray' in locals():
-                del gray
-            if 'enhanced' in locals():
-                del enhanced
-            if 'upscaled' in locals():
-                del upscaled
-            gc.collect()
+            # OCR
+            pil_img = Image.fromarray(gray)
+            try:
+                configs = [
+                    r'--oem 3 --psm 11',  # Sparse text
+                    r'--oem 3 --psm 6',   # Uniform block
+                ]
+                frame_text = ""
+                for config in configs:
+                    text = image_to_string(pil_img, config=config)
+                    if len(text) > len(frame_text):
+                        frame_text = text
+                
+                if frame_text.strip():
+                    slide_text_parts.append(frame_text.strip())
+            except Exception as e:
+                print(f"   ⚠️ OCR failed on frame {frame_idx}: {e}")
+                continue
         
-        vidcap.release()
-        del vidcap
-        gc.collect()  # Force garbage collection
+        # Deduplicate and combine slide text
+        slide_text = " ".join(dict.fromkeys(slide_text_parts))
         
-        # Merge all texts, preserving line breaks for lists
-        merged = "\n".join(texts)
-        print(f"✅ OCR extracted {len(merged)} chars from {len(texts)} unique text blocks")
-        if merged:
-            print(f"📝 OCR text preview (first 500 chars):\n{merged[:500]}...")
-            # Count potential venue names (lines with capital letters)
-            lines_with_text = [t for t in texts if any(c.isupper() for c in t)]
-            print(f"📊 Found {len(lines_with_text)} text blocks that might contain venue names")
-            if len(merged) > 100:
-                print(f"✅ OCR found substantial text ({len(merged)} chars) - should be extractable!")
+        if slide_text.strip():
+            print(f"   ✅ Extracted {len(slide_text)} chars: {slide_text[:100]}...")
+            all_slides_text.append(f"SLIDE {slide_num}:\n{slide_text}")
         else:
-            print("⚠️ OCR found NO text - this might be why venues aren't being extracted")
-        return merged
+            print(f"   ⚠️ No text found on slide {slide_num}")
+    
+    # Return all slides with clear separation
+    combined = "\n\n".join(all_slides_text)
+    print(f"\n✅ Total OCR text: {len(combined)} chars from {len(all_slides_text)} slides")
+    
+    return combined
+
+
+def _detect_slide_boundaries(vidcap, total):
+    """
+    Detect where slides change in a slideshow.
+    Returns list of (start_frame, end_frame) tuples for each slide.
+    """
+    try:
+        # Sample every 10 frames to detect changes
+        sample_interval = max(1, total // 30)  # Sample ~30 points
+        
+        prev_gray = None
+        boundaries = [0]  # Start with frame 0
+        
+        for idx in range(0, total, sample_interval):
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, img = vidcap.read()
+            if not ok:
+                continue
+            
+            # Downscale for faster comparison
+            gray = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (160, 120))
+            
+            if prev_gray is not None:
+                # Calculate difference
+                diff = cv2.absdiff(gray, prev_gray)
+                mean_diff = diff.mean()
+                
+                # Significant change = slide transition
+                if mean_diff > 10.0:  # Threshold for "different" slide
+                    boundaries.append(idx)
+            
+            prev_gray = gray
+        
+        boundaries.append(total - 1)  # End with last frame
+        
+        # Convert boundaries to (start, end) tuples
+        slide_ranges = []
+        for i in range(len(boundaries) - 1):
+            slide_ranges.append((boundaries[i], boundaries[i + 1]))
+        
+        return slide_ranges
     except Exception as e:
-        print(f"⚠️ OCR extraction failed: {e}")
-        import traceback
-        print(traceback.format_exc())
-        return ""  # Return empty string so extraction can continue
+        print(f"⚠️ Slide detection failed: {e}, using fallback")
+        # Fallback: assume 3-4 slides
+        slide_count = max(3, min(10, total // 100))
+        frames_per_slide = total // slide_count
+        return [(i * frames_per_slide, (i + 1) * frames_per_slide) for i in range(slide_count)]
+
+
+def _extract_ocr_all_frames(vidcap, total, fps, duration, sample_rate):
+    """
+    Extract OCR text from sampled frames (for regular videos, not slideshows).
+    """
+    print(f"📹 Extracting OCR from {total} frames...")
+    
+    # Determine sampling
+    if duration > 0:
+        frames_per_second = 2 if duration < 30 else 1
+        num_frames = int(duration * frames_per_second)
+    else:
+        num_frames = 20
+    
+    # Apply sample_rate
+    num_frames = max(1, int(num_frames * sample_rate))
+    
+    frames = np.linspace(0, total - 1, min(total, num_frames), dtype=int)
+    print(f"   Sampling {len(frames)} frames")
+    
+    all_texts = []
+    
+    for frame_idx in frames:
+        vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        ok, img = vidcap.read()
+        if not ok:
+            continue
+        
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        
+        # Upscale if needed
+        height, width = gray.shape
+        if width < 1000:
+            scale = 1000 / width
+            new_size = (int(width * scale), int(height * scale))
+            gray = cv2.resize(gray, new_size, interpolation=cv2.INTER_CUBIC)
+        
+        # Try multiple configs
+        best_text = ""
+        for config in [r'--oem 3 --psm 11', r'--oem 3 --psm 6']:
+            try:
+                pil_img = Image.fromarray(gray)
+                text = image_to_string(pil_img, config=config)
+                if len(text) > len(best_text):
+                    best_text = text
+            except:
+                pass
+        
+        if best_text.strip():
+            all_texts.append(best_text.strip())
+    
+    combined = " ".join(all_texts)
+    print(f"✅ Extracted {len(combined)} chars from {len(frames)} frames")
+    return combined
+
 
 # ─────────────────────────────
 # Google Places Photo
@@ -1731,6 +1877,74 @@ def get_photo_url(name, place_id=None, photos=None):
 # ─────────────────────────────
 # GPT: Extract Venues + Summary
 # ─────────────────────────────
+def _is_ocr_garbled(text):
+    """
+    Detect if OCR text is too garbled/corrupted to be useful.
+    Garbled text has too many special characters, random letters, and few real words.
+    """
+    if not text or len(text) < 50:
+        return False
+    
+    # Count different character types
+    total_chars = len(text)
+    alphanumeric = sum(1 for c in text if c.isalnum() or c.isspace())
+    special_chars = total_chars - alphanumeric
+    
+    # Calculate garbling ratio
+    garble_ratio = special_chars / total_chars if total_chars > 0 else 0
+    
+    # If more than 40% special characters, it's probably garbled
+    if garble_ratio > 0.4:
+        print(f"   Garble detection: {garble_ratio:.1%} special chars (threshold: 40%)")
+        return True
+    
+    # Also check for common words - if barely any, it's garbled
+    words = text.split()
+    common_words = ['the', 'and', 'a', 'to', 'of', 'in', 'is', 'at', 'for', 'nyc', 'restaurant', 'food']
+    word_matches = sum(1 for w in words if w.lower() in common_words)
+    
+    if len(words) > 20 and word_matches < 2:
+        print(f"   Garble detection: Found {word_matches} common words in {len(words)} words")
+        return True
+    
+    return False
+
+
+def _parse_slide_text(ocr_text):
+    """
+    Parse OCR text that contains SLIDE markers and return a dict of slides.
+    Returns: {"slide_1": "text from slide 1", "slide_2": "text from slide 2", ...}
+    """
+    if not ocr_text:
+        return {}
+    
+    slides = {}
+    current_slide = None
+    current_text = []
+    
+    for line in ocr_text.split('\n'):
+        # Check if line starts with "SLIDE N:"
+        match = re.match(r"^SLIDE\s+(\d+)\s*:\s*(.*)$", line.strip(), re.I)
+        if match:
+            # Save previous slide if exists
+            if current_slide is not None:
+                slides[f"slide_{current_slide}"] = "\n".join(current_text).strip()
+            
+            # Start new slide
+            current_slide = int(match.group(1))
+            current_text = [match.group(2)] if match.group(2) else []
+        elif current_slide is not None:
+            # Add to current slide
+            if line.strip():
+                current_text.append(line.strip())
+    
+    # Don't forget the last slide
+    if current_slide is not None:
+        slides[f"slide_{current_slide}"] = "\n".join(current_text).strip()
+    
+    return slides
+
+
 def extract_places_and_context(transcript, ocr_text, caption, comments):
     # Clean OCR text before processing
     original_ocr_len = len(ocr_text) if ocr_text else 0
@@ -1739,6 +1953,25 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
         if original_ocr_len != len(ocr_text):
             print(f"🧹 Cleaned OCR text: {len(ocr_text)} chars (was {original_ocr_len} chars before cleaning)")
     
+    # Parse OCR into slides for slide-aware extraction
+    slide_dict = _parse_slide_text(ocr_text)
+    is_slideshow = len(slide_dict) > 1
+    
+    if is_slideshow:
+        print(f"📖 SLIDE-AWARE EXTRACTION: Detected {len(slide_dict)} slides")
+        print(f"   Extracting places per-slide to maintain context (like reading a book)")
+    
+    # CRITICAL: Detect if OCR is too garbled to be useful
+    # If OCR has too many special characters/random letters, it's probably corrupted
+    if ocr_text and _is_ocr_garbled(ocr_text):
+        print("⚠️ OCR text appears to be heavily garbled/corrupted - deprioritizing it")
+        print(f"   Reason: Too many non-alphanumeric characters or random text")
+        print(f"   Will prioritize caption instead")
+        # If OCR is garbled but caption exists, use caption as primary
+        if caption:
+            ocr_text = ""  # Ignore garbled OCR, use caption instead
+            slide_dict = {}  # Clear slide dict
+    
     # Log what we have for debugging
     print(f"📋 Content sources:")
     print(f"   - Caption: {len(caption)} chars - {caption[:100] if caption else 'None'}...")
@@ -1746,6 +1979,113 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     print(f"   - OCR: {len(ocr_text)} chars - {ocr_text[:100] if ocr_text else 'None'}...")
     print(f"   - Comments: {len(comments)} chars - {comments[:100] if comments else 'None'}...")
     
+    # If we have slides, extract per-slide to maintain context
+    if is_slideshow:
+        print(f"\n🔄 Extracting places per-slide (slide-aware mode)...")
+        all_venues_per_slide = {}
+        overall_summary = ""
+        
+        # Analyze each slide independently
+        for slide_key, slide_text in sorted(slide_dict.items()):
+            print(f"\n  📄 Analyzing {slide_key}...")
+            
+            # For each slide, create a targeted extraction prompt
+            slide_content = f"{slide_text}\nCaption: {caption if caption else '(no caption)'}"
+            
+            if not slide_text or len(slide_text.strip()) < 5:
+                print(f"     ⚠️ Slide has no text content")
+                continue
+            
+            try:
+                slide_prompt = f"""
+You are analyzing SLIDE from a TikTok photo slideshow about NYC venues.
+Extract venue names ONLY from THIS SPECIFIC SLIDE's content.
+Do NOT use context from other slides - only what you see here.
+
+IMPORTANT: Extract venue names that appear in THIS slide's text ONLY.
+
+Slide content:
+{slide_text[:1000]}
+
+Caption context: {caption[:200] if caption else '(none)'}
+
+Output format: One venue name per line, or empty if none found.
+VenueName1
+VenueName2
+...
+
+If no venues found, output: (none)
+"""
+                
+                client = get_openai_client()
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": slide_prompt}],
+                    temperature=0.2,  # Very low temperature for consistent extraction
+                )
+                
+                slide_response = response.choices[0].message.content.strip()
+                
+                # Parse venues from this slide
+                slide_venues = []
+                for line in slide_response.split('\n'):
+                    line = line.strip()
+                    if not line or line.lower() == '(none)':
+                        continue
+                    # Remove bullets/numbers
+                    line = re.sub(r"^[\d\-\•\.\s]+", "", line).strip()
+                    if 2 < len(line) < 60 and not re.search(r"^<.*>$", line):
+                        slide_venues.append(line)
+                
+                if slide_venues:
+                    print(f"     ✅ Found {len(slide_venues)} venue(s): {slide_venues}")
+                    all_venues_per_slide[slide_key] = slide_venues
+                else:
+                    print(f"     ⚠️ No venues found in this slide")
+            
+            except Exception as e:
+                print(f"     ❌ Slide extraction failed: {e}")
+                continue
+        
+        # Combine venues from all slides (preserving slide info for enrichment)
+        all_venues_with_slides = []
+        for slide_key, venues in all_venues_per_slide.items():
+            for venue in venues:
+                all_venues_with_slides.append({
+                    "name": venue,
+                    "source_slide": slide_key
+                })
+        
+        # Create overall summary from caption
+        if caption and len(caption) > 10:
+            overall_summary = caption[:100] if len(caption) <= 100 else caption[:97] + "..."
+        else:
+            overall_summary = f"Photo Slideshow ({len(all_venues_per_slide)} slides)"
+        
+        # Deduplicate venues by name (keeping first occurrence and slide info)
+        unique_venues = []
+        seen = set()
+        for v_dict in all_venues_with_slides:
+            v_lower = v_dict["name"].lower().strip()
+            if v_lower not in seen and len(v_lower) >= 3:
+                seen.add(v_lower)
+                unique_venues.append(v_dict["name"])  # Return just names for compatibility
+        
+        print(f"\n📖 Slide-aware extraction complete:")
+        print(f"   Total unique venues: {len(unique_venues)}")
+        print(f"   Summary: {overall_summary}")
+        
+        # Return tuple: (venue_names, summary, venue_to_slide_mapping)
+        # Build mapping for enrichment later
+        venue_to_slide = {}
+        for v_dict in all_venues_with_slides:
+            v_lower = v_dict["name"].lower().strip()
+            if v_lower not in venue_to_slide and len(v_lower) >= 3:
+                venue_to_slide[v_dict["name"]] = v_dict["source_slide"]
+        
+        return unique_venues, overall_summary, venue_to_slide
+    
+    # Non-slideshow extraction (fallback to combined text)
     combined_text = "\n".join(x for x in [ocr_text, transcript, caption, comments] if x)
     
     # Emphasize OCR text if it's available (especially when there's no transcript)
@@ -1852,7 +2192,7 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
     try:
         if not combined_text or not combined_text.strip():
             print("⚠️ No content to analyze (empty transcript, OCR, caption, comments)")
-            return [], "TikTok Venues"
+            return [], "TikTok Venues", {}
         
         # Increase context window to 8000 chars to capture more OCR content
         content_to_analyze = combined_text[:8000]
@@ -1924,16 +2264,31 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
 
         print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
-        return unique, summary
+        return unique, summary, {}  # Empty venue_to_slide for non-slideshow videos
     except Exception as e:
         print("❌ GPT extraction failed:", e)
-        return [], "TikTok Venues"
+        return [], "TikTok Venues", {}
 
 # ─────────────────────────────
 # GPT: Enrichment + Vibe Tags
 # ─────────────────────────────
-def enrich_place_intel(name, transcript, ocr_text, caption, comments):
-    context = "\n".join([caption, ocr_text, transcript, comments])
+def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_slide=None):
+    """
+    Enrich place information with slide-aware context.
+    If source_slide is provided (e.g., "slide_1"), only use context from that slide.
+    """
+    # Parse slides if OCR has them
+    slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
+    
+    # If we have slide info and this place came from a specific slide, use only that slide's context
+    if source_slide and source_slide in slide_dict:
+        print(f"   🔍 Enriching {name} using context from {source_slide} only (slide-aware)")
+        slide_specific_text = slide_dict[source_slide]
+        context = "\n".join(x for x in [slide_specific_text, caption] if x)
+    else:
+        # Fallback: use full context (for non-slideshow videos or if source_slide not found)
+        context = "\n".join(x for x in [caption, ocr_text, transcript, comments] if x)
+    
     context_lower = context.lower()
     
     # Determine venue type from context
@@ -2216,8 +2571,16 @@ def extract_username_from_url(url):
     match = re.search(r"@([^/]+)", url)
     return match.group(1) if match else None
 
-def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text, url, username, context_title):
-    """Enrich multiple places in parallel for better performance."""
+def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text, url, username, context_title, venue_to_slide=None):
+    """Enrich multiple places in parallel for better performance.
+    
+    Args:
+        venues: List of venue names to enrich
+        venue_to_slide: Optional dict mapping venue names to their source slides
+    """
+    if venue_to_slide is None:
+        venue_to_slide = {}
+    
     places_extracted = []
     
     def enrich_and_fetch_photo(venue_name):
@@ -2231,7 +2594,11 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         if canonical_name and canonical_name.lower() != venue_name.lower():
             print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         
-        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text)
+        # Get source slide for this venue if available
+        source_slide = venue_to_slide.get(venue_name)
+        
+        # Pass source_slide to enrichment for slide-aware context
+        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide)
         # Use place_id and photos if available for more reliable photo fetching
         photo = get_photo_url(display_name, place_id=place_id, photos=photos)
         place_data = {
@@ -3194,6 +3561,13 @@ def extract_photo_post(url):
 
 @app.route("/api/extract", methods=["POST"])
 def extract_api():
+    """
+    NEW EXTRACTION PRIORITY LOGIC:
+    1. If voice (non-song): Use voice extraction
+    2. If photo slideshow: Use OCR extraction on each slide
+    3. Use OCR sparingly (sample frames, not every frame)
+    4. Stream results: Show places as they arrive, then supplement with OCR
+    """
     url = request.json.get("video_url")
     
     if not url:
@@ -3202,9 +3576,12 @@ def extract_api():
             "message": "Please provide a valid TikTok video URL."
         }), 400
     
+    # ===== AUTO-DETECT SLIDESHOW =====
+    is_slideshow = "/photo/" in url.lower()
+    
     # ===== PHOTO POST HANDLING =====
     # Detect if the TikTok URL contains /photo/ and use robust extractor
-    if "/photo/" in url.lower():
+    if is_slideshow:
         print("📸 Detected TikTok photo post - using robust extractor (API16 -> SnapTik -> Playwright)")
         
         # Clean URL - remove query parameters that might interfere
@@ -3330,7 +3707,7 @@ def extract_api():
             transcript = ""  # No audio for photo posts
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
-            venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
             print(f"🤖 GPT returned {len(venues)} venues: {venues}")
             print(f"🤖 GPT returned title: {context_title}")
             venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
@@ -3352,7 +3729,7 @@ def extract_api():
                 username = extract_username_from_url(url)
                 places_extracted = enrich_places_parallel(
                     venues, transcript, ocr_text, caption, comments_text,
-                    url, username, context_title
+                    url, username, context_title, venue_to_slide=venue_to_slide
                 )
                 print(f"✅ Enriched {len(places_extracted)} places successfully")
                 data["places_extracted"] = places_extracted
@@ -3383,7 +3760,7 @@ def extract_api():
             transcript = ""
             ocr_text = ""
             comments_text = ""
-            venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
             venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
             
             # Build response
@@ -3400,7 +3777,7 @@ def extract_api():
                 username = extract_username_from_url(url)
                 places_extracted = enrich_places_parallel(
                     venues, transcript, ocr_text, caption, comments_text,
-                    url, username, context_title
+                    url, username, context_title, venue_to_slide=venue_to_slide
                 )
                 data["places_extracted"] = places_extracted
             else:
@@ -3628,7 +4005,7 @@ def extract_api():
                 if caption: sources.append("caption")
                 if ocr_text: sources.append("OCR")
                 print(f"📝 Extracting venues from: {', '.join(sources) if sources else 'no sources available'}")
-                venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
                 
                 data = {
@@ -3641,7 +4018,7 @@ def extract_api():
                     username = extract_username_from_url(url)
                     places_extracted = enrich_places_parallel(
                         venues, transcript, ocr_text, caption, comments_text,
-                        url, username, context_title
+                        url, username, context_title, venue_to_slide=venue_to_slide
                     )
                     data["places_extracted"] = places_extracted
                 
@@ -3743,39 +4120,39 @@ def extract_api():
                 except:
                     pass
             
-            # OPTIMIZATION: Run OCR if transcript is short/insufficient OR if list format detected
-            # Lists are often shown visually on screen, so OCR is critical even with good transcripts
+            # ========== NEW PRIORITY LOGIC ==========
+            # Priority 1: If there's good speech (non-music), use transcript only
+            # Priority 2: Only run OCR if no transcript or if it's a slideshow
+            # Priority 3: Use OCR sparingly - sample frames, not every frame
+            
             transcript_length = len(transcript) if transcript else 0
             
-            # Quick check for list keywords in transcript/caption to decide if OCR is needed
+            # Check if this is a slideshow (multiple slides with text)
             caption = meta.get("description", "") or meta.get("title", "") if meta else ""
-            combined_text_for_check = f"{transcript} {caption}".lower()
-            list_keywords_in_text = any(kw in combined_text_for_check for kw in ['top', 'best', 'favorite', 'places', 'spots', 'list', 'numbered', '#1', '#2', '1.', '2.'])
+            is_slideshow = "/photo/" in url.lower() or "_is_slideshow" in meta
             
-            if transcript_length < 100 or list_keywords_in_text:
-                # Short transcript OR list keywords detected - run OCR
-                if list_keywords_in_text:
-                    print(f"📋 List keywords detected in transcript/caption - running OCR to capture on-screen list...")
-                else:
-                    print(f"⚠️ Short transcript ({transcript_length} chars) - running OCR as backup...")
-                ocr_text = extract_ocr_text(video_path)
-            else:
-                print(f"✅ Good transcript length ({transcript_length} chars) - skipping OCR for speed")
-                # Still try a quick OCR on just a few frames if video is short
-                # But don't do full processing
+            if is_slideshow:
+                print("📸 SLIDESHOW DETECTED - OCR will be primary extraction method")
+                # For slideshows, OCR is essential - run it on multiple slides
+                ocr_text = extract_ocr_text(video_path, sample_rate=1)  # Sample every frame
+                print(f"✅ Slideshow OCR: {len(ocr_text)} chars extracted")
+            elif transcript_length > 50 and not "music" in transcript.lower():
+                # Good transcript exists and it's speech (not music) - skip OCR
+                print(f"✅ GOOD TRANSCRIPT ({transcript_length} chars) - SKIPPING OCR for speed")
                 ocr_text = ""
-        if ocr_text:
-            print(f"✅ OCR successfully extracted {len(ocr_text)} chars of on-screen text")
-            print(f"📝 OCR text preview: {ocr_text[:200]}...")
-        else:
-            if OCR_AVAILABLE:
-                print("⚠️ OCR ran but found no text in video frames (text may not be visible or clear)")
+                print("   Reason: Voice content detected and transcript is substantial")
             else:
-                print("⚠️ OCR not available - install tesseract to extract on-screen text")
+                # No transcript or very short - run OCR with sampling
+                print(f"⚠️ LIMITED SPEECH ({transcript_length} chars) - Running sampled OCR")
+                ocr_text = extract_ocr_text(video_path, sample_rate=0.5)  # Sample 50% of frames
+                print(f"✅ Sampled OCR: {len(ocr_text)} chars extracted")
             
-        # Warn if we have no transcript and no OCR (slideshow/image-only videos)
-        if not transcript and not ocr_text:
-            print("⚠️ No audio transcript and no OCR text - extraction will rely on captions/description only")
+            if ocr_text:
+                print(f"📝 OCR preview: {ocr_text[:200]}...")
+            else:
+                if not transcript:
+                    print("⚠️ No transcript AND no OCR text - extraction will use caption only")
+
             
         # Clean up video file immediately after processing
         if os.path.exists(video_path):
@@ -3786,7 +4163,7 @@ def extract_api():
             except:
                 pass
 
-        venues, context_title = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+        venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
 
         # Filter out any remaining placeholder-like venues
         venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
@@ -3812,7 +4189,7 @@ def extract_api():
         username = extract_username_from_url(url)
         places_extracted = enrich_places_parallel(
             venues, transcript, ocr_text, caption, comments_text,
-            url, username, context_title
+            url, username, context_title, venue_to_slide=venue_to_slide
         )
 
         data = {
@@ -3843,7 +4220,7 @@ def extract_api():
                 transcript = ""
                 ocr_text = ""
                 comments_text = ""
-                venues, context_title = extract_places_and_context(transcript, ocr_text, html_caption, comments_text)
+                venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, html_caption, comments_text)
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
                 
                 data = {
@@ -3859,7 +4236,7 @@ def extract_api():
                     username = extract_username_from_url(url)
                     places_extracted = enrich_places_parallel(
                         venues, transcript, ocr_text, html_caption, comments_text,
-                        url, username, context_title
+                        url, username, context_title, venue_to_slide=venue_to_slide
                     )
                     data["places_extracted"] = places_extracted
                 

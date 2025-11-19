@@ -24,9 +24,11 @@ const MapView = ({ places, onClose }) => {
   useEffect(() => {
     console.log('🗺️ MapView Debug:');
     console.log('  - API Key exists:', !!GOOGLE_MAPS_API_KEY);
+    console.log('  - API Key (first 20 chars):', GOOGLE_MAPS_API_KEY?.substring(0, 20) + '...' || 'MISSING');
     console.log('  - API Key length:', GOOGLE_MAPS_API_KEY?.length || 0);
     console.log('  - Places count:', placesWithLocation.length);
-  }, []);
+    console.log('  - Places:', placesWithLocation.map(p => ({name: p.name, address: p.address})));
+  }, [placesWithLocation]);
 
   // Geocode places using Google Geocoding API
   useEffect(() => {
@@ -170,8 +172,16 @@ const MapView = ({ places, onClose }) => {
           }
           onError={(error) => {
             console.error('❌ LoadScript error:', error);
-            setMapError(`Failed to load Google Maps: ${error.message || 'Unknown error'}`);
+            console.error('Error details:', {
+              message: error.message,
+              code: error.code,
+              toString: error.toString()
+            });
+            setMapError(`Failed to load Google Maps: ${error.message || error.toString() || 'Unknown error'}`);
             setIsLoading(false);
+          }}
+          onLoad={() => {
+            console.log('✅ LoadScript loaded successfully');
           }}
         >
         <GoogleMap
