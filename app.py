@@ -242,6 +242,12 @@ def get_tiktok_id(url):
 
 def get_tiktok_post_data(url):
     """Fetch TikTok post data using mobile API endpoint. Returns dict with type, caption, photo_urls/video_url."""
+    # Clean URL - remove query parameters
+    clean_url = url.split('?')[0] if '?' in url else url
+    if clean_url != url:
+        print(f"🔗 Cleaned URL: {url} -> {clean_url}")
+        url = clean_url
+    
     try:
         # Extract item ID from URL (handles both /video/ and /photo/ formats)
         item_id_match = re.search(r'/video/(\d+)|/photo/(\d+)', url)
@@ -334,6 +340,12 @@ def get_tiktok_post_data(url):
 
 def get_tiktok_media(tiktok_url):
     """Fetch TikTok media directly using TikTok's internal API16 endpoint."""
+    # Clean URL - remove query parameters
+    clean_url = tiktok_url.split('?')[0] if '?' in tiktok_url else tiktok_url
+    if clean_url != tiktok_url:
+        print(f"🔗 Cleaned URL: {tiktok_url} -> {clean_url}")
+        tiktok_url = clean_url
+    
     try:
         # Extract item ID from URL (handles both /video/ and /photo/ formats)
         item_id_match = re.search(r'/video/(\d+)|/photo/(\d+)', tiktok_url)
@@ -2996,6 +3008,12 @@ def add_history():
 # ─────────────────────────────
 def extract_photo_post(url):
     """Extract photo post data from TikTok URL using mobile API first, then fallback to Playwright."""
+    # Clean URL - remove query parameters
+    clean_url = url.split('?')[0] if '?' in url else url
+    if clean_url != url:
+        print(f"🔗 Cleaned URL: {url} -> {clean_url}")
+        url = clean_url
+    
     try:
         print(f"🌐 Extracting TikTok post data from: {url}")
         
