@@ -11,9 +11,9 @@
   height: 500px;
   position: relative;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible; /* Changed from hidden to visible */
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #f0f0f0;
+  background: transparent; /* Changed from dark to transparent */
 }
 
 /* Ensure Google Maps renders properly */

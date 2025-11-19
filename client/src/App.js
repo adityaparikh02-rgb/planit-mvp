@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
-import MapView from "./components/MapView";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://planit-backend-fbm5.onrender.com";
 
@@ -19,13 +18,13 @@ function App() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState([]);
   const [cachedResults, setCachedResults] = useState({});
-  const [viewMode, setViewMode] = useState("list");
+  // Removed viewMode - always show list view
   const [expandedIndex, setExpandedIndex] = useState(null);
   const [activeTab, setActiveTab] = useState("home");
   const [abortController, setAbortController] = useState(null);
   const [viewingHistory, setViewingHistory] = useState(false);
   const [selectedList, setSelectedList] = useState(null); // For saved list detail view
-  const [showListMap, setShowListMap] = useState(false); // For map view in list detail
+  // Removed showListMap - no map view
   const [editingListName, setEditingListName] = useState(null); // For editing list names
   const [editingListValue, setEditingListValue] = useState("");
   const [expandedSavedPlaceIndex, setExpandedSavedPlaceIndex] = useState(null); // For expanded place details in saved lists
@@ -609,34 +608,12 @@ function App() {
                       </div>
                     )}
                     
-                    <div className="view-toggle">
-                      <button
-                        className={viewMode === "list" ? "active" : ""}
-                        onClick={() => setViewMode("list")}
-                      >
-                        📋 List
-                      </button>
-                      <button
-                        className={viewMode === "map" ? "active" : ""}
-                        onClick={() => setViewMode("map")}
-                      >
-                        🗺️ Map
-                      </button>
-                    </div>
                   </>
                 )}
 
-                {result.places_extracted && result.places_extracted.length > 0 && viewMode === "map" && (
-                  <MapView 
-                    places={result.places_extracted}
-                    onClose={() => setViewMode("list")}
-                  />
-                )}
-                {result.places_extracted && result.places_extracted.length > 0 && viewMode !== "map" && (
+                {result.places_extracted && result.places_extracted.length > 0 && (
                   <div
-                    className={
-                      viewMode === "grid" ? "results-grid" : "results-list"
-                    }
+                    className="results-list"
                   >
                     {result.places_extracted.map((p, i) => {
                     const isExpanded = expandedIndex === i;
@@ -920,7 +897,6 @@ function App() {
                     className="back-btn"
                     onClick={() => {
                       setSelectedList(null);
-                      setShowListMap(false);
                     }}
                   >
                     <ChevronRight size={18} className="back-icon" style={{ transform: 'rotate(180deg)' }} />
@@ -972,34 +948,10 @@ function App() {
                         </button>
                       </div>
                     )}
-                    <div className="view-toggle-list-detail">
-                      <button
-                        className={!showListMap ? "active" : ""}
-                        onClick={() => setShowListMap(false)}
-                      >
-                        List
-                      </button>
-                      <button
-                        className={showListMap ? "active" : ""}
-                        onClick={() => setShowListMap(true)}
-                      >
-                        Map
-                      </button>
-                    </div>
                   </div>
                 </div>
                 
-                {showListMap ? (
-                  <MapView 
-                    places={savedPlaces[selectedList] || []}
-                    savedPlaces={savedPlaces}
-                    togglePlaceInList={togglePlaceInList}
-                    handleAddNewList={handleAddNewList}
-                    isInList={isInList}
-                    onClose={() => setShowListMap(false)}
-                  />
-                ) : (
-                  <div className="saved-list-places">
+                <div className="saved-list-places">
                     {savedPlaces[selectedList]?.map((p, i) => {
                       const isExpanded = expandedSavedPlaceIndex === i;
                       // Get first sentence or first 120 characters as one-line summary
@@ -1192,7 +1144,6 @@ function App() {
                       );
                     })}
                   </div>
-                )}
               </div>
             )}
           </div>

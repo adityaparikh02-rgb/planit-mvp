@@ -36,6 +36,14 @@ if [ -z "$JWT_SECRET_KEY" ]; then
     export JWT_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 fi
 
+# Load Google Cloud Vision service account if available
+if [ -f "google-vision-service-account.json" ]; then
+    export GOOGLE_VISION_SERVICE_ACCOUNT_JSON=$(cat google-vision-service-account.json | tr -d '\n')
+    echo "✅ Google Cloud Vision service account loaded"
+else
+    echo "ℹ️  Google Vision: Use GOOGLE_VISION_SERVICE_ACCOUNT_JSON env var or google-vision-service-account.json file"
+fi
+
 # Set the backend port and enable debug mode
 export PORT=5001
 export FLASK_DEBUG=true

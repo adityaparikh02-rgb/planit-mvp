@@ -1,24 +1,31 @@
-import React, { useMemo, useRef, useEffect, useState } from "react";
+import React, { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
 import "./MapView.css";
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 
-const MapView = ({ places, onClose }) => {
-  // Filter places that have addresses or can be geocoded
-  const placesWithLocation = useMemo(() => {
-    return places.filter(p => p.address || p.maps_url || p.name);
-  }, [places]);
+// Move libraries array outside component to prevent LoadScript reloads
+const GOOGLE_MAPS_LIBRARIES = ['places', 'geometry'];
 
+const MapView = ({ places, onClose }) => {
   // Default center (NYC)
   const defaultCenter = { lat: 40.7128, lng: -73.9352 };
 
+  // ALL HOOKS MUST BE CALLED FIRST - before any conditional returns
   const [placePositions, setPlacePositions] = useState({});
   const [mapCenter, setMapCenter] = useState(defaultCenter);
   const [mapZoom, setMapZoom] = useState(12);
   const [mapError, setMapError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadScriptReady, setLoadScriptReady] = useState(false);
   const mapRef = useRef(null);
+  const geocodingInProgressRef = useRef(false); // Prevent multiple geocoding runs
+  const geocodedPlaceNamesRef = useRef(new Set()); // Track which places we've geocoded
+
+  // Filter places that have addresses or can be geocoded
+  const placesWithLocation = useMemo(() => {
+    return places.filter(p => p.address || p.maps_url || p.name);
+  }, [places]);
 
   // Debug: Log API key status
   useEffect(() => {
@@ -43,61 +50,159 @@ const MapView = ({ places, onClose }) => {
       setIsLoading(false);
       setMapCenter(defaultCenter);
       setMapZoom(12);
+      geocodedPlaceNamesRef.current.clear();
       return;
     }
 
+    // Check if we already have positions for all places - prevent re-geocoding
+    const placeNames = placesWithLocation.map(p => p.name);
+    const placeNamesSet = new Set(placeNames);
+    const existingPositions = Object.keys(placePositions);
+    const existingSet = new Set(existingPositions);
+    
+    // Check if all current places are already geocoded
+    const allPlacesGeocoded = placeNames.every(name => existingSet.has(name));
+    
+    // Also check if geocoding is already in progress
+    if (geocodingInProgressRef.current) {
+      console.log('⏳ Geocoding already in progress, skipping');
+      return;
+    }
+    
+    // Only geocode if we don't have positions for all places
+    if (allPlacesGeocoded && placeNames.length === existingPositions.length) {
+      console.log('✅ All places already geocoded, skipping');
+      return;
+    }
+
+    // Prevent concurrent geocoding runs
+    geocodingInProgressRef.current = true;
     setIsLoading(true);
     setMapError(null);
 
     const geocodePlace = async (place) => {
+      // Skip if we already have a position for this place
+      if (placePositions[place.name]) {
+        return placePositions[place.name];
+      }
+
       const query = place.address || `${place.name} NYC`;
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // Reduced to 5 second timeout
+        
         const response = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_API_KEY}`
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_API_KEY}`,
+          { signal: controller.signal }
         );
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`Geocoding failed: ${response.status}`);
+        }
+        
         const data = await response.json();
         if (data.results && data.results.length > 0) {
           const location = data.results[0].geometry.location;
           return { lat: location.lat, lng: location.lng };
         }
       } catch (error) {
-        console.error(`Failed to geocode ${place.name}:`, error);
+        if (error.name === 'AbortError') {
+          console.warn(`Geocoding timeout for ${place.name} - using fallback`);
+        } else {
+          console.warn(`Failed to geocode ${place.name}:`, error.message);
+        }
+        // Don't re-throw - use fallback instead
       }
-      // Fallback: random position near NYC
+      
+      // Fallback: use address if available, otherwise random position near NYC
+      if (place.address) {
+        // Try to extract lat/lng from maps_url if available
+        const mapsUrlMatch = place.maps_url?.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+        if (mapsUrlMatch) {
+          return {
+            lat: parseFloat(mapsUrlMatch[1]),
+            lng: parseFloat(mapsUrlMatch[2])
+          };
+        }
+      }
+      
+      // Final fallback: use a stable position based on place name hash (not random)
+      const nameHash = place.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
       return {
-        lat: defaultCenter.lat + (Math.random() - 0.5) * 0.05,
-        lng: defaultCenter.lng + (Math.random() - 0.5) * 0.05,
+        lat: defaultCenter.lat + ((nameHash % 100) / 1000 - 0.05),
+        lng: defaultCenter.lng + (((nameHash * 7) % 100) / 1000 - 0.05),
       };
     };
 
     const geocodeAll = async () => {
       try {
-      const positions = {};
-      for (const place of placesWithLocation) {
-        positions[place.name] = await geocodePlace(place);
-      }
-      setPlacePositions(positions);
+        const positions = { ...placePositions }; // Start with existing positions
+        
+        // Only geocode places we don't have positions for
+        const placesToGeocode = placesWithLocation.filter(p => {
+          const alreadyGeocoded = geocodedPlaceNamesRef.current.has(p.name) || positions[p.name];
+          return !alreadyGeocoded;
+        });
+        
+        if (placesToGeocode.length === 0) {
+          console.log('✅ No new places to geocode');
+          geocodingInProgressRef.current = false;
+          setIsLoading(false);
+          return;
+        }
+        
+        console.log(`📍 Geocoding ${placesToGeocode.length} new place(s)...`);
+        
+        // Geocode places with delay between requests to avoid ERR_INSUFFICIENT_RESOURCES
+        for (let i = 0; i < placesToGeocode.length; i++) {
+          const place = placesToGeocode[i];
+          
+          // Add delay between requests (except first one)
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay
+          }
+          
+          try {
+            positions[place.name] = await geocodePlace(place);
+            geocodedPlaceNamesRef.current.add(place.name); // Mark as geocoded
+          } catch (error) {
+            console.warn(`Failed to geocode ${place.name}, using fallback`);
+            // Use stable fallback position
+            const nameHash = place.name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            positions[place.name] = {
+              lat: defaultCenter.lat + ((nameHash % 100) / 1000 - 0.05),
+              lng: defaultCenter.lng + (((nameHash * 7) % 100) / 1000 - 0.05),
+            };
+            geocodedPlaceNamesRef.current.add(place.name); // Mark as geocoded even with fallback
+          }
+        }
+        
+        setPlacePositions(positions);
 
-      const positionsArray = Object.values(positions);
-      if (positionsArray.length > 0) {
-        const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
-        const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
+        const positionsArray = Object.values(positions);
+        if (positionsArray.length > 0) {
+          const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
+          const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
 
-        setMapCenter({ lat: avgLat, lng: avgLng });
+          setMapCenter({ lat: avgLat, lng: avgLng });
           setMapZoom(13);
         }
+        geocodingInProgressRef.current = false;
         setIsLoading(false);
       } catch (error) {
         console.error('Geocoding error:', error);
         setMapError('Failed to geocode places');
+        geocodingInProgressRef.current = false;
         setIsLoading(false);
       }
     };
 
     geocodeAll();
-  }, [placesWithLocation, GOOGLE_MAPS_API_KEY, defaultCenter]);
+  }, [placesWithLocation, GOOGLE_MAPS_API_KEY, defaultCenter]); // Removed placePositions from dependencies to prevent loop
 
-  // Simple map options - no custom styling
+  // Simple map options - ensure map is fully interactive
   const mapOptions = useMemo(() => ({
     zoom: mapZoom,
     center: mapCenter,
@@ -105,8 +210,138 @@ const MapView = ({ places, onClose }) => {
     mapTypeControl: true,
     streetViewControl: false,
     fullscreenControl: true,
+    panControl: true, // Enable pan controls
+    scrollwheel: true, // Enable mouse wheel zoom
+    disableDoubleClickZoom: false, // Enable double-click zoom
+    draggable: true, // Enable dragging/panning
+    keyboardShortcuts: true, // Enable keyboard shortcuts
+    gestureHandling: 'auto', // Enable touch gestures
   }), [mapZoom, mapCenter]);
 
+  // Check if Google Maps is already loaded (from previous render or other component)
+  useEffect(() => {
+    if (window.google && window.google.maps) {
+      console.log('✅ Google Maps already loaded, skipping LoadScript wait');
+      setLoadScriptReady(true);
+    }
+  }, []);
+
+  // Debug: Log when component renders (must be before conditional returns)
+  useEffect(() => {
+    console.log('🗺️ MapView render:', {
+      placesCount: places.length,
+      placesWithLocationCount: placesWithLocation.length,
+      placePositionsCount: Object.keys(placePositions).length,
+      loadScriptReady,
+      hasApiKey: !!GOOGLE_MAPS_API_KEY,
+      mapCenter,
+      mapZoom,
+      googleAlreadyLoaded: !!(window.google && window.google.maps)
+    });
+  }, [places, placesWithLocation, placePositions, loadScriptReady, mapCenter, mapZoom]);
+
+  // Function to fit map to all markers
+  const fitMapToMarkers = useCallback(() => {
+    if (!mapRef.current) {
+      console.log('⏳ Map ref not ready yet');
+      return;
+    }
+    
+    if (Object.keys(placePositions).length === 0) {
+      console.log('⏳ No place positions yet');
+      return;
+    }
+    
+    if (!window.google || !window.google.maps) {
+      console.log('⏳ Google Maps API not ready');
+      return;
+    }
+    
+    try {
+      const positionsArray = Object.values(placePositions);
+      console.log(`📍 Fitting map to ${positionsArray.length} markers`);
+      
+      const bounds = new window.google.maps.LatLngBounds();
+      positionsArray.forEach(pos => {
+        if (pos && typeof pos.lat === 'number' && typeof pos.lng === 'number') {
+          bounds.extend(new window.google.maps.LatLng(pos.lat, pos.lng));
+        }
+      });
+      
+      if (bounds.isEmpty()) {
+        console.log('⚠️ Bounds are empty, cannot fit map');
+        return;
+      }
+      
+      mapRef.current.fitBounds(bounds, { padding: 50 });
+      console.log('✅ Map fitted to show all markers');
+    } catch (error) {
+      console.error('❌ Error fitting map to markers:', error);
+    }
+  }, [placePositions]);
+
+  // Effect to fit map when placePositions are ready AND map is loaded
+  useEffect(() => {
+    if (!loadScriptReady) {
+      return; // Wait for LoadScript
+    }
+    
+    if (Object.keys(placePositions).length === 0) {
+      return; // No positions yet
+    }
+    
+    if (placesWithLocation.length === 0) {
+      return; // No places to show
+    }
+    
+    // Only fit if we have positions for all places AND map is ready
+    const placeNames = placesWithLocation.map(p => p.name);
+    const hasAllPositions = placeNames.every(name => placePositions[name]);
+    
+    if (!hasAllPositions) {
+      console.log('⏳ Waiting for all positions. Have:', Object.keys(placePositions).length, 'of', placeNames.length);
+      return;
+    }
+    
+    // If map is ready, fit immediately
+    if (mapRef.current) {
+      console.log('✅ All positions ready and map loaded, fitting map to markers');
+      console.log('Positions:', placePositions);
+      // Use a small delay to ensure map is fully initialized
+      const timeoutId = setTimeout(() => {
+        if (mapRef.current) {
+          fitMapToMarkers();
+        }
+      }, 500);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
+      // Map not ready yet - set up a retry mechanism
+      console.log('⏳ Positions ready but map not loaded yet - will retry fitting');
+      let retryCount = 0;
+      const maxRetries = 10; // Try for up to 5 seconds (10 * 500ms)
+      
+      const retryInterval = setInterval(() => {
+        retryCount++;
+        if (mapRef.current) {
+          console.log('✅ Map now loaded, fitting to markers');
+          clearInterval(retryInterval);
+          setTimeout(() => {
+            if (mapRef.current) {
+              fitMapToMarkers();
+            }
+          }, 300);
+        } else if (retryCount >= maxRetries) {
+          console.log('⚠️ Map not loaded after retries, giving up');
+          clearInterval(retryInterval);
+        }
+      }, 500);
+      
+      return () => clearInterval(retryInterval);
+    }
+  }, [placePositions, placesWithLocation, loadScriptReady, fitMapToMarkers]); // Fit map when positions change
+
+  // NOW we can do conditional returns - all hooks are called above
   // If no API key, show error
   if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY.trim() === "") {
     return (
@@ -131,118 +366,208 @@ const MapView = ({ places, onClose }) => {
 
   // Show error if geocoding failed
   if (mapError) {
-  return (
+    return (
       <div style={{ padding: "40px", textAlign: "center", color: "#f87171" }}>
         <p style={{ fontSize: "1.1rem", marginBottom: "10px" }}>❌ {mapError}</p>
         <p style={{ fontSize: "0.9rem", color: "#888", marginTop: "10px" }}>
           Check browser console for details.
         </p>
-      {onClose && (
-        <button 
-          onClick={onClose}
+        {onClose && (
+          <button 
+            onClick={onClose}
             style={{ marginTop: "20px", padding: "10px 20px", cursor: "pointer" }}
-        >
+          >
             Close
-        </button>
-      )}
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="map-simple-container">
-      <div className="map-section-simple">
-        <LoadScript 
-          googleMapsApiKey={GOOGLE_MAPS_API_KEY}
-          loadingElement={
+      <div className="map-section-simple" style={{ position: 'relative' }}>
+        {/* Show all markers button */}
+        {loadScriptReady && Object.keys(placePositions).length > 0 && (
+          <button
+            onClick={fitMapToMarkers}
+            style={{
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              zIndex: 1000,
+              padding: '8px 16px',
+              backgroundColor: '#4F46E5',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            }}
+            onMouseOver={(e) => e.target.style.backgroundColor = '#4338CA'}
+            onMouseOut={(e) => e.target.style.backgroundColor = '#4F46E5'}
+          >
+            📍 Show All Places
+          </button>
+        )}
+        {!loadScriptReady && (
           <div style={{ 
-              width: '100%',
-              height: '500px',
+            width: '100%',
+            height: '500px',
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
-              background: '#f0f0f0',
-              color: '#666'
+            background: '#0a0a0f',
+            color: '#fff'
           }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: '24px', marginBottom: '12px' }}>🗺️</div>
-              <div>Loading map...</div>
+              <div>Loading Google Maps...</div>
+              <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
+                Places: {placesWithLocation.length}
+              </div>
             </div>
           </div>
+        )}
+        <LoadScript 
+          googleMapsApiKey={GOOGLE_MAPS_API_KEY}
+          libraries={GOOGLE_MAPS_LIBRARIES}
+          loadingElement={
+            <div style={{ 
+              width: '100%',
+              height: '500px',
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              background: '#0a0a0f',
+              color: '#fff'
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '24px', marginBottom: '12px' }}>🗺️</div>
+                <div>Loading map...</div>
+              </div>
+            </div>
           }
           onError={(error) => {
             console.error('❌ LoadScript error:', error);
             console.error('Error details:', {
-              message: error.message,
-              code: error.code,
-              toString: error.toString()
+              message: error?.message,
+              code: error?.code,
+              toString: error?.toString(),
+              error
             });
-            setMapError(`Failed to load Google Maps: ${error.message || error.toString() || 'Unknown error'}`);
-            setIsLoading(false);
+            setMapError(`Failed to load Google Maps: ${error?.message || error?.toString() || 'Unknown error'}`);
           }}
           onLoad={() => {
             console.log('✅ LoadScript loaded successfully');
+            console.log('window.google:', window.google);
+            console.log('window.google.maps:', window.google?.maps);
+            setLoadScriptReady(true);
           }}
         >
-        <GoogleMap
-            mapContainerStyle={{
-              width: "100%",
-              height: "500px",
-            }}
-          options={mapOptions}
-          center={mapCenter}
-          zoom={mapZoom}
-            onLoad={(map) => {
-              console.log('✅ Map loaded successfully');
-              mapRef.current = map;
-              setIsLoading(false);
-              
-              // Center map on places if we have positions
-              if (Object.keys(placePositions).length > 0) {
-                const positionsArray = Object.values(placePositions);
-                const avgLat = positionsArray.reduce((sum, pos) => sum + pos.lat, 0) / positionsArray.length;
-                const avgLng = positionsArray.reduce((sum, pos) => sum + pos.lng, 0) / positionsArray.length;
+          {loadScriptReady && window.google && window.google.maps && (
+            <GoogleMap
+              mapContainerStyle={{
+                width: "100%",
+                height: "500px",
+              }}
+              options={mapOptions}
+              center={mapCenter}
+              zoom={mapZoom}
+              onLoad={(map) => {
+                console.log('✅ GoogleMap onLoad called');
+                console.log('Map instance:', map);
+                console.log('Places to show:', placesWithLocation.length);
+                console.log('Place positions:', placePositions);
+                mapRef.current = map;
                 
-                setTimeout(() => {
-                  if (map && map.panTo) {
-                    try {
-                      map.panTo({ lat: avgLat, lng: avgLng });
-                      map.setZoom(13);
-                    } catch (error) {
-                      console.error('Error centering map:', error);
-                    }
+                // Always try to fit the map when it loads
+                // Use a function that checks current state
+                const tryFitMap = () => {
+                  if (!mapRef.current) return;
+                  
+                  const currentPositions = placePositions;
+                  if (Object.keys(currentPositions).length === 0) {
+                    console.log('⏳ Map loaded but positions not ready yet');
+                    return;
                   }
-                }, 300);
-              }
-            }}
-            onError={(error) => {
-              console.error('❌ GoogleMap error:', error);
-              setMapError(`Map error: ${error.message || 'Unknown error'}`);
-              setIsLoading(false);
-            }}
-        >
-          {placesWithLocation.map((place, index) => {
-            const position = placePositions[place.name] || {
-              lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
-              lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
-            };
-            
-            return (
-              <Marker
-                  key={`${place.name}-${index}`}
-                position={position}
-                  title={place.name}
-                  label={{
-                    text: String(index + 1),
-                    color: '#000',
-                    fontSize: '12px',
-                    fontWeight: 'bold',
-                  }}
-              />
-            );
-          })}
-          </GoogleMap>
+                  
+                  const placeNames = placesWithLocation.map(p => p.name);
+                  const hasAllPositions = placeNames.every(name => currentPositions[name]);
+                  
+                  if (hasAllPositions) {
+                    console.log('✅ Map loaded and positions ready, fitting immediately');
+                    setTimeout(() => {
+                      if (mapRef.current) {
+                        fitMapToMarkers();
+                      }
+                    }, 300);
+                  } else {
+                    console.log('⏳ Map loaded but waiting for all positions. Have:', Object.keys(currentPositions).length, 'of', placeNames.length);
+                  }
+                };
+                
+                // Try immediately
+                tryFitMap();
+                
+                // Also set up a check in case positions arrive after map loads
+                // This will be handled by the useEffect, but we can also check here
+                setTimeout(() => {
+                  tryFitMap();
+                }, 1000);
+              }}
+              onError={(error) => {
+                console.error('❌ GoogleMap error:', error);
+                console.error('Error details:', error);
+                setMapError(`Map error: ${error?.message || 'Unknown error'}`);
+              }}
+            >
+              {placesWithLocation.map((place, index) => {
+                const position = placePositions[place.name] || {
+                  lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
+                  lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
+                };
+              
+                console.log(`📍 Marker ${index + 1}: ${place.name} at`, position);
+              
+                return (
+                  <Marker
+                    key={`${place.name}-${index}`}
+                    position={position}
+                    title={place.name}
+                    label={{
+                      text: String(index + 1),
+                      color: '#000',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                    }}
+                  />
+                );
+              })}
+            </GoogleMap>
+          )}
         </LoadScript>
+        {loadScriptReady && (!window.google || !window.google.maps) && (
+          <div style={{ 
+            width: '100%',
+            height: '500px',
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            background: '#0a0a0f',
+            color: '#f87171'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '24px', marginBottom: '12px' }}>⚠️</div>
+              <div>Google Maps API not available</div>
+              <div style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>
+                Check console for details
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

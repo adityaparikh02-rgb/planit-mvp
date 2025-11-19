@@ -1665,7 +1665,7 @@ def _extract_ocr_per_slide(vidcap, total, fps, duration, sample_rate):
             ok, img = vidcap.read()
             if not ok:
                 continue
-            
+                
             # Run OCR on this frame
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
@@ -1727,7 +1727,7 @@ def _detect_slide_boundaries(vidcap, total):
             vidcap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ok, img = vidcap.read()
             if not ok:
-                continue
+                        continue
             
             # Downscale for faster comparison
             gray = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (160, 120))
@@ -1914,7 +1914,7 @@ def _is_ocr_garbled(text):
     Detect if OCR text is too garbled/corrupted to be useful.
     Garbled text has too many special characters, random letters, and few real words.
     """
-    if not text or len(text) < 50:
+    if not text or len(text) < 30:
         return False
     
     # Count different character types
@@ -1925,19 +1925,65 @@ def _is_ocr_garbled(text):
     # Calculate garbling ratio
     garble_ratio = special_chars / total_chars if total_chars > 0 else 0
     
-    # If more than 40% special characters, it's probably garbled
-    if garble_ratio > 0.4:
-        print(f"   Garble detection: {garble_ratio:.1%} special chars (threshold: 40%)")
+    # If more than 35% special characters, it's probably garbled (lowered threshold)
+    if garble_ratio > 0.35:
+        print(f"   🚫 Garble detection: {garble_ratio:.1%} special chars (threshold: 35%)")
         return True
     
-    # Also check for common words - if barely any, it's garbled
+    # Check for excessive consonant clusters (like "ERR oe on vee BA RES")
     words = text.split()
-    common_words = ['the', 'and', 'a', 'to', 'of', 'in', 'is', 'at', 'for', 'nyc', 'restaurant', 'food']
-    word_matches = sum(1 for w in words if w.lower() in common_words)
+    if len(words) > 10:
+        # Count words with excessive consonants (3+ consonants in a row)
+        consonant_cluster_words = 0
+        for word in words[:20]:  # Check first 20 words
+            max_consonants = 0
+            current_run = 0
+            for char in word.lower():
+                if char.isalpha() and char not in 'aeiou':
+                    current_run += 1
+                    max_consonants = max(max_consonants, current_run)
+                else:
+                    current_run = 0
+            if max_consonants >= 4:  # 4+ consonants in a row is suspicious
+                consonant_cluster_words += 1
+        
+        if consonant_cluster_words > len(words[:20]) * 0.3:  # More than 30% have excessive clusters
+            print(f"   🚫 Garble detection: {consonant_cluster_words}/{len(words[:20])} words have excessive consonant clusters")
+            return True
     
-    if len(words) > 20 and word_matches < 2:
-        print(f"   Garble detection: Found {word_matches} common words in {len(words)} words")
+    # Check for structured OCR (SLIDE markers indicate legitimate OCR)
+    has_slide_markers = 'SLIDE' in text.upper() or re.search(r'SLIDE\s+\d+', text, re.I)
+    
+    # Check for proper nouns (capitalized words) - common in venue names
+    capitalized_words = sum(1 for w in words if len(w) > 2 and w[0].isupper() and w[1:].islower())
+    proper_noun_ratio = capitalized_words / len(words) if words else 0
+    
+    # If text has slide markers OR high ratio of proper nouns, it's likely legitimate OCR
+    # (venue names, menu items are proper nouns)
+    if has_slide_markers or proper_noun_ratio > 0.2:
+        print(f"   ✅ OCR appears legitimate: {'has slide markers' if has_slide_markers else ''} {proper_noun_ratio:.1%} proper nouns")
+        return False  # Not garbled - has structure or proper nouns
+    
+    # Check for common words - if barely any AND no proper nouns, it's garbled
+    common_words = ['the', 'and', 'a', 'to', 'of', 'in', 'is', 'at', 'for', 'nyc', 'restaurant', 'food', 'pizza', 'bar', 'cafe', 'coffee', 'ny', 'new', 'york']
+    word_matches = sum(1 for w in words if w.lower().strip('.,!?') in common_words)
+    
+    # Only flag as garbled if no common words AND no proper nouns
+    if len(words) > 15 and word_matches < 2 and proper_noun_ratio < 0.1:
+        print(f"   🚫 Garble detection: Found only {word_matches} common words and {proper_noun_ratio:.1%} proper nouns in {len(words)} words")
         return True
+    
+    # Check for patterns that indicate garbled text (like "wee ce ERR oe")
+    suspicious_patterns = [
+        r'\b\w{1,2}\s+\w{1,2}\s+\w{1,2}\b',  # Many 1-2 char words in a row
+        r'\b[A-Z]{3,}\s+[a-z]{1,2}\s+[A-Z]{3,}\b',  # Mixed case patterns like "ERR oe BA"
+    ]
+    import re
+    for pattern in suspicious_patterns:
+        matches = len(re.findall(pattern, text[:500]))  # Check first 500 chars
+        if matches > 5:
+            print(f"   🚫 Garble detection: Found {matches} suspicious patterns")
+            return True
     
     return False
 
@@ -1996,13 +2042,13 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     # CRITICAL: Detect if OCR is too garbled to be useful
     # If OCR has too many special characters/random letters, it's probably corrupted
     if ocr_text and _is_ocr_garbled(ocr_text):
-        print("⚠️ OCR text appears to be heavily garbled/corrupted - deprioritizing it")
+        print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
         print(f"   Reason: Too many non-alphanumeric characters or random text")
-        print(f"   Will prioritize caption instead")
-        # If OCR is garbled but caption exists, use caption as primary
-        if caption:
-            ocr_text = ""  # Ignore garbled OCR, use caption instead
-            slide_dict = {}  # Clear slide dict
+        print(f"   Garbled OCR preview: {ocr_text[:200]}...")
+        print(f"   Will use caption/transcript only instead")
+        # If OCR is garbled, completely ignore it - it will confuse GPT
+        ocr_text = ""  # Ignore garbled OCR completely
+        slide_dict = {}  # Clear slide dict
     
     # Log what we have for debugging
     print(f"📋 Content sources:")
@@ -2166,6 +2212,9 @@ If no venues found, output: (none)
    • Venue names might be in hashtags (#VenueName) - extract those too
    • Don't skip any venue names - be thorough and extract them all
    • If the caption is about NYC venues/restaurants/bars, there ARE venues to extract
+   • IMPORTANT: If caption only has generic hashtags (#nycfood, #nyceats) but no specific venue names,
+     AND OCR was garbled/ignored, then the venue names are in the images but OCR failed.
+     In this case, return empty venues list with a summary like "NYC Food Recommendations" or similar.
 """
         else:
             caption_emphasis = f"""
@@ -2179,6 +2228,8 @@ If no venues found, output: (none)
    • If the video compares venues (e.g., "Gazab vs Dhamaka vs Semma"), ONLY extract the venue(s) mentioned in the CAPTION
    • Do NOT extract venues that are only mentioned in comparisons if they're not in the caption
    • The caption tells you which venue(s) are actually being featured/recommended
+   • IMPORTANT: If OCR text is garbled (random characters like "wee ce ERR oe"), IGNORE IT and focus ONLY on the caption
+   • Look for venue names in hashtags (#VenueName) - extract those too
 """
     
     prompt = f"""
@@ -3680,10 +3731,10 @@ def extract_api():
             ocr_text = ""
             
             if ADVANCED_OCR_AVAILABLE and len(photo_urls) > 0:
-                print(f"🔍 Processing {min(5, len(photo_urls))} images with advanced OCR pipeline...")
+                print(f"🔍 Processing {len(photo_urls)} images with advanced OCR pipeline...")
                 try:
                     # Use the new high-quality OCR processor on slideshow images
-                    image_sources = photo_urls[:5]  # Process first 5 images
+                    image_sources = photo_urls  # Process ALL images (no limit)
                     ocr_text = extract_text_from_slideshow(image_sources)
                     print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
                     if ocr_text:
@@ -3698,10 +3749,10 @@ def extract_api():
             if not ocr_text and OCR_AVAILABLE:
                 tmpdir = tempfile.mkdtemp()
                 try:
-                    num_images = min(5, len(photo_urls))
+                    num_images = len(photo_urls)  # Process ALL images (no limit)
                     print(f"🔍 Processing {num_images} images with legacy OCR...")
                     
-                    for i, img_url in enumerate(photo_urls[:num_images]):
+                    for i, img_url in enumerate(photo_urls):
                         try:
                             if OCR_AVAILABLE:
                                 print(f"🔍 Running OCR on photo {i+1}/{num_images}...")
@@ -3716,20 +3767,20 @@ def extract_api():
                         except Exception as e:
                             print(f"⚠️ Failed to process photo {i+1}: {e}")
                             continue
-                    
+            
                     ocr_text = ocr_text.strip()
                 finally:
                     try:
                         shutil.rmtree(tmpdir, ignore_errors=True)
                     except:
                         pass
-            
-            ocr_text = ocr_text.strip()
-            print(f"📊 Total OCR text extracted: {len(ocr_text)} chars")
-            if ocr_text:
-                print(f"📝 OCR text preview: {ocr_text[:300]}...")
-            else:
-                print("⚠️ No OCR text extracted from any images")
+                
+                ocr_text = ocr_text.strip()
+                print(f"📊 Total OCR text extracted: {len(ocr_text)} chars")
+                if ocr_text:
+                    print(f"📝 OCR text preview: {ocr_text[:300]}...")
+                else:
+                    print("⚠️ No OCR text extracted from any images")
             
             # Combine OCR + caption text using weighted formula
             # OCR prioritized: (ocr * 1.4) + (caption * 1.2) = photo-mode specific weights
@@ -4000,7 +4051,7 @@ def extract_api():
                 
                 if photo_urls and OCR_AVAILABLE:
                     print(f"🔍 Attempting OCR on {len(photo_urls)} images...")
-                    for i, photo_url in enumerate(photo_urls[:5]):  # Try first 5 images
+                    for i, photo_url in enumerate(photo_urls):  # Process ALL images
                         try:
                             print(f"📥 Downloading image {i+1} for OCR: {photo_url[:100]}...")
                             tmpdir = tempfile.mkdtemp()
@@ -4063,7 +4114,8 @@ def extract_api():
                 
                 data = {
                     "video_url": url,
-                    "context_summary": context_title or "No venues found",
+                    "summary_title": context_title or caption or "No venues found",
+                    "context_summary": context_title or caption or "No venues found",
                     "places_extracted": []
                 }
                 
@@ -4200,9 +4252,9 @@ def extract_api():
                 ocr_text = extract_ocr_text(video_path, sample_rate=0.5)  # Sample 50% of frames
                 print(f"✅ Sampled OCR: {len(ocr_text)} chars extracted")
             
-            if ocr_text:
+        if ocr_text:
                 print(f"📝 OCR preview: {ocr_text[:200]}...")
-            else:
+        else:
                 if not transcript:
                     print("⚠️ No transcript AND no OCR text - extraction will use caption only")
 
@@ -4232,7 +4284,8 @@ def extract_api():
             # Return empty result with helpful message
             data = {
                 "video_url": url,
-                "context_summary": context_title or "No venues found",
+                "summary_title": context_title or caption or "No venues found",
+                "context_summary": context_title or caption or "No venues found",
                 "places_extracted": [],
                 "warning": warning_msg if warning_msg else None,
             }
@@ -4247,7 +4300,8 @@ def extract_api():
 
         data = {
             "video_url": url,
-            "context_summary": context_title,
+            "summary_title": context_title or caption or "TikTok Venues",
+            "context_summary": context_title or caption or "TikTok Venues",
             "places_extracted": places_extracted,
         }
 

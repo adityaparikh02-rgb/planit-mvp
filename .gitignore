@@ -26,3 +26,4 @@ cache.json
 # Keep test scripts and docs
 !test_share_target.sh
 !*.md
+google-vision-service-account.json
