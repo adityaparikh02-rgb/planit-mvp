@@ -1326,16 +1326,34 @@ def run_ocr_on_image(image_path):
             img = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
             print(f"📏 Resized {width}x{height} → {new_width}x{new_height}")
         
+        # ========== PRE-PROCESSING: Improve image quality FIRST ==========
+        # This runs BEFORE all the other methods - improves base input
+        print(f"  ▶️ Pre-processing: Denoise + Sharpen + Enhance...")
+        
+        # Aggressive denoising (removes JPEG compression artifacts)
+        denoised = cv2.fastNlMeansDenoisingColored(img, None, 15, 15, 7, 21)
+        
+        # Sharpen (enhances text edges)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        sharpened = cv2.morphologyEx(denoised, cv2.MORPH_GRADIENT, kernel)
+        img = cv2.addWeighted(denoised, 1.5, sharpened, -0.5, 0)
+        
+        # Unsharp mask for extra clarity
+        blurred = cv2.GaussianBlur(img, (0, 0), 2)
+        img = cv2.addWeighted(img, 1.8, blurred, -0.8, 0)
+        
+        print(f"  ✅ Pre-processed: Denoised + Sharpened + Unsharp mask applied")
+        
         # Convert to grayscale
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         # Upscale small images (critical for OCR)
         height, width = gray.shape
-        if width < 1200:
-            scale = 1200 / width
+        if width < 1500:  # Increased from 1200 to 1500
+            scale = 1500 / width
             new_size = (int(width * scale), int(height * scale))
             gray = cv2.resize(gray, new_size, interpolation=cv2.INTER_CUBIC)
-            print(f"📏 Upscaled {scale:.1f}x for OCR accuracy")
+            print(f"📏 Upscaled {scale:.1f}x to {new_size[0]}x{new_size[1]} for OCR accuracy")
         
         # ===== AGGRESSIVE MULTI-METHOD PREPROCESSING =====
         texts_with_methods = []
