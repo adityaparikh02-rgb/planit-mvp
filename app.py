@@ -2117,7 +2117,6 @@ def _is_ocr_garbled(text):
         r'\b\w{1,2}\s+\w{1,2}\s+\w{1,2}\b',  # Many 1-2 char words in a row
         r'\b[A-Z]{3,}\s+[a-z]{1,2}\s+[A-Z]{3,}\b',  # Mixed case patterns like "ERR oe BA"
     ]
-    import re
     for pattern in suspicious_patterns:
         matches = len(re.findall(pattern, text[:500]))  # Check first 500 chars
         if matches > 5:
