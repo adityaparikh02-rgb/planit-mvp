@@ -1808,8 +1808,8 @@ def _extract_ocr_all_frames(vidcap, total, fps, duration, sample_rate):
         vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ok, img = vidcap.read()
         if not ok:
-            continue
-        
+                        continue
+            
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         # Upscale if needed
@@ -1841,6 +1841,10 @@ def _extract_ocr_all_frames(vidcap, total, fps, duration, sample_rate):
 # ─────────────────────────────
 # Google Places API - Optimized Geocoding Service
 # ─────────────────────────────
+# Initialize fallback cache (always available)
+_places_cache = {}
+_MAX_CACHE_SIZE = 1000
+
 # Import the optimized geocoding service (reduces costs by 80-95%)
 try:
     from geocoding_service import get_geocoding_service
@@ -1850,8 +1854,6 @@ except ImportError as e:
     print(f"⚠️ Optimized geocoding service not available: {e}")
     print("   Falling back to basic caching. Install googlemaps and rapidfuzz for full optimization.")
     OPTIMIZED_GEOCODING_AVAILABLE = False
-    _places_cache = {}
-    _MAX_CACHE_SIZE = 1000
 
 def _clear_places_cache_if_needed():
     """Clear cache if it gets too large (keep most recent 500 entries)."""
