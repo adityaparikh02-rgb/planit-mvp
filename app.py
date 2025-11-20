@@ -2263,7 +2263,16 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
 {caption_emphasis}
    • CRITICAL PRIORITY: Check the OCR text FIRST - photo posts show venue names IN THE IMAGES
    • IMPORTANT: Check the CAPTION/DESCRIPTION - venue names are often listed there
-   • Also check speech (transcript) and comments
+   • Also check speech (transcript) and comments - LISTEN CAREFULLY to what the creator actually says
+   • IMPORTANT: If transcript says "high life in east village", extract "High Life" as the venue name, NOT "high life dispo"
+   • IMPORTANT: If transcript says "go to employees only", extract "Employees Only" as the venue name
+   • Pay attention to phrases like "go to X", "check out X", "visit X", "at X", "try X", "hit up X" - X is the venue name
+   • Pay attention to context - if creator says "X in Y neighborhood", X is the venue name, Y is the location
+   • Venue names can be phrases like "Employees Only", "Death & Co", "Katana Kitten", "Wealth Over Now" - extract them exactly as spoken
+   • IMPORTANT: Listen to what the creator ACTUALLY says. If transcript has errors (e.g., "wealth over now" when creator said "employees only"), 
+     prioritize the actual spoken words over transcription errors. Cross-reference with caption and OCR if available.
+   • If multiple venues are mentioned, extract ALL of them separately (e.g., "Employees Only" and "Katana Kitten" are two different venues)
+   • Do NOT extract random phrases that don't match venue names - verify venue names make sense as actual restaurant/bar names
    • Look for venue names even if they appear in lists, numbered lists, hashtags, or casual mentions
    • If OCR shows a numbered list (1. Venue Name, 2. Another Venue), extract ALL venue names from that list
    • If OCR shows venue names separated by commas, newlines, bullets, or semicolons, extract ALL of them
@@ -2273,10 +2282,11 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • Ignore broad neighborhoods like "SoHo" or "Brooklyn" unless they're part of a venue name
    • ONLY list actual venue names that are mentioned. Do NOT use placeholders like "venue 1" or "<venue 1>".
    • IMPORTANT: OCR text may contain garbled characters or errors. Look for REAL venue names, not random words.
-   • If OCR text is mostly garbled (lots of special characters, random letters), rely MORE on the caption.
+   • IMPORTANT: Transcript may have transcription errors. If transcript says "X dispo" but context suggests "X in Y", trust the context and extract "X"
+   • If OCR text is mostly garbled (lots of special characters, random letters), rely MORE on the caption and transcript.
    • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's").
    • Do NOT extract random words from garbled OCR text (e.g., "Danny's" or "Ballerina" if they don't appear in context).
-   • If OCR text is too garbled or unclear, prioritize the caption for venue names.
+   • If OCR text is too garbled or unclear, prioritize the caption and transcript for venue names.
    • Be thorough - if the content is about NYC venues, there ARE venues to extract (likely in OCR text)
    • If no venues are found after careful analysis, return an empty list (no venues, just the Summary line).
 {ocr_emphasis}
@@ -2379,10 +2389,11 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
 # ─────────────────────────────
 # GPT: Enrichment + Vibe Tags
 # ─────────────────────────────
-def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_slide=None):
+def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_slide=None, all_venues=None):
     """
     Enrich place information with slide-aware context.
     If source_slide is provided (e.g., "slide_1"), only use context from that slide.
+    If all_venues is provided, filter context to only include mentions of THIS venue, not others.
     """
     # Parse slides if OCR has them
     slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
@@ -2391,10 +2402,63 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     if source_slide and source_slide in slide_dict:
         print(f"   🔍 Enriching {name} using context from {source_slide} only (slide-aware)")
         slide_specific_text = slide_dict[source_slide]
-        context = "\n".join(x for x in [slide_specific_text, caption] if x)
+        raw_context = "\n".join(x for x in [slide_specific_text, caption] if x)
     else:
         # Fallback: use full context (for non-slideshow videos or if source_slide not found)
-        context = "\n".join(x for x in [caption, ocr_text, transcript, comments] if x)
+        raw_context = "\n".join(x for x in [caption, ocr_text, transcript, comments] if x)
+    
+    # CRITICAL: Filter context to only include parts relevant to THIS venue
+    # This prevents mixing details from other venues mentioned in the same video
+    if all_venues and len(all_venues) > 1:
+        print(f"   🎯 Filtering context for {name} (excluding {len(all_venues)-1} other venues)")
+        # Split context into sentences/segments
+        import re
+        sentences = re.split(r'[.!?]\s+', raw_context)
+        
+        # Keep only sentences that mention THIS venue name (case-insensitive)
+        name_lower = name.lower()
+        name_words = set(name_lower.split())
+        # Also check for partial matches (e.g., "employees only" matches "Employees Only")
+        relevant_sentences = []
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            # Check if sentence mentions this venue
+            # Match if venue name appears, or if key words from venue name appear together
+            if name_lower in sentence_lower:
+                relevant_sentences.append(sentence)
+            elif len(name_words) > 1:
+                # For multi-word names, check if most words appear together
+                words_found = sum(1 for word in name_words if word in sentence_lower)
+                if words_found >= min(2, len(name_words) - 1):  # At least 2 words or all but 1
+                    relevant_sentences.append(sentence)
+            elif len(name_words) == 1:
+                # Single word - be more careful, check it's not part of another word
+                if re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower):
+                    relevant_sentences.append(sentence)
+        
+        # Also remove sentences that mention OTHER venues
+        other_venues = [v.lower() for v in all_venues if v.lower() != name_lower]
+        filtered_sentences = []
+        for sentence in relevant_sentences:
+            sentence_lower = sentence.lower()
+            # Skip if sentence mentions another venue more prominently than this one
+            mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            
+            if mentions_this and not mentions_other:
+                filtered_sentences.append(sentence)
+            elif mentions_this and mentions_other:
+                # If both mentioned, only keep if this venue appears first or more prominently
+                this_pos = sentence_lower.find(name_lower)
+                other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
+                if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
+                    filtered_sentences.append(sentence)
+        
+        context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
+        if len(filtered_sentences) < len(sentences):
+            print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences relevant to {name}")
+    else:
+        context = raw_context
     
     context_lower = context.lower()
     
@@ -2404,18 +2468,25 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     is_club = any(word in context_lower for word in ["club", "nightclub", "dj", "dance", "nightlife", "party", "music venue"])
     
     prompt = f"""
-Analyze the TikTok context for "{name}" and return JSON with:
+Analyze the TikTok context for "{name}" ONLY. Return JSON with details SPECIFICALLY about "{name}".
+
+CRITICAL: Only extract information that is clearly about "{name}". 
+- If context mentions "{name}" AND another venue, only extract details that are explicitly about "{name}"
+- Do NOT include details about other venues (even if they're mentioned in the same context)
+- If context says "at Katana Kitten, try XYZ" but you're analyzing a different venue, do NOT include "at Katana Kitten" in the response
+- Only use information that directly relates to "{name}"
 
 {{
-  "summary": "2–3 sentence vivid description (realistic, not fabricated)",
-  "when_to_go": "Mention best time/day if clearly stated, else blank",
-  "vibe": "Mood or crowd if present",
-  "must_try": "Context-aware field: For RESTAURANTS/FOOD places, list specific dishes, drinks, or menu items to try. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Only include if mentioned.",
-  "specials": "Real deals or special events if mentioned",
-  "comments_summary": "Short insight from comments if available"
+  "summary": "2–3 sentence vivid description about {name} specifically (realistic, not fabricated)",
+  "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
+  "vibe": "Mood or crowd at {name} if present",
+  "must_try": "Context-aware field: For RESTAURANTS/FOOD places, list specific dishes, drinks, or menu items to try AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Only include if mentioned SPECIFICALLY for {name}.",
+  "specials": "Real deals or special events at {name} if mentioned",
+  "comments_summary": "Short insight from comments about {name} if available",
+  "creator_insights": "Capture personal recommendations, comparisons, or unique context from the creator SPECIFICALLY about {name}. Examples: 'I'm from California and this is the only burger comparable to In-N-Out', 'This place reminds me of my favorite spot back home', 'Only place in NYC that does X like this'. Include personal anecdotes, comparisons to other places, or unique selling points the creator emphasizes ABOUT {name}. Keep it authentic and specific to what the creator actually said ABOUT {name}."
 }}
 
-Context:
+Context (filtered to only include mentions of "{name}"):
 {context[:4000]}
 """
     try:
@@ -2465,6 +2536,7 @@ Context:
             "must_try_field": field_name,  # Store the field name
             "specials": j.get("specials", "").strip(),
             "comments_summary": j.get("comments_summary", "").strip(),
+            "creator_insights": j.get("creator_insights", "").strip(),  # Personal recommendations and comparisons
         }
         vibe_text = " ".join(v for v in data.values())
         data["vibe_tags"] = extract_vibe_tags(vibe_text)
@@ -2479,6 +2551,7 @@ Context:
             "must_try_field": "must_try",
             "specials": "",
             "comments_summary": "",
+            "creator_insights": "",
             "vibe_tags": [],
         }
 
@@ -2704,8 +2777,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # Get source slide for this venue if available
         source_slide = venue_to_slide.get(venue_name)
         
-        # Pass source_slide to enrichment for slide-aware context
-        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide)
+        # Pass source_slide and all_venues to enrichment for slide-aware and venue-specific context
+        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, all_venues=venues)
         # Use place_id and photos if available for more reliable photo fetching
         photo = get_photo_url(display_name, place_id=place_id, photos=photos)
         place_data = {

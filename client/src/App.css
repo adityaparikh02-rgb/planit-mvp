@@ -791,6 +791,16 @@
   margin-bottom: 0;
 }
 
+.meta .creator-insights {
+  background: rgba(63, 71, 255, 0.1);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border-left: 3px solid rgba(63, 71, 255, 0.5);
+  margin-top: 12px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .vibe-tags {
   display: flex;
   flex-wrap: wrap;

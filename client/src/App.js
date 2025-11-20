@@ -751,6 +751,11 @@ function App() {
                                 <strong>💫 Vibe:</strong> {p.vibe}
                               </p>
                             )}
+                            {p.creator_insights && (
+                              <p className="creator-insights">
+                                <strong>💡 Creator Insight:</strong> {p.creator_insights}
+                              </p>
+                            )}
                           </div>
                           {p.maps_url && (
                             <a
@@ -991,7 +996,7 @@ function App() {
                             )}
                             
                             {/* Show More/Less Toggle */}
-                            {(p.summary?.length > (oneLineSummary?.length || 0) || p.must_try || p.when_to_go || p.vibe || p.other_videos?.length > 0) && (
+                            {(p.summary?.length > (oneLineSummary?.length || 0) || p.must_try || p.when_to_go || p.vibe || p.creator_insights || p.other_videos?.length > 0) && (
                               <button
                                 className="show-more-btn"
                                 onClick={() => setExpandedSavedPlaceIndex(isExpanded ? null : i)}
@@ -1024,6 +1029,11 @@ function App() {
                                   {p.vibe && (
                                     <p>
                                       <strong>💫 Vibe:</strong> {p.vibe}
+                                    </p>
+                                  )}
+                                  {p.creator_insights && (
+                                    <p className="creator-insights">
+                                      <strong>💡 Creator Insight:</strong> {p.creator_insights}
                                     </p>
                                   )}
                                 </div>
