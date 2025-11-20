@@ -162,13 +162,17 @@ function App() {
       
       console.log(`📡 Response status: ${res.status}`);
       
+      // Clone response before reading to allow fallback to text if JSON parsing fails
+      const responseClone = res.clone();
+      
       // Try to parse JSON, but handle non-JSON errors
       let data;
       try {
         data = await res.json();
         console.log("📦 Response data:", data);
       } catch (parseError) {
-        const text = await res.text();
+        // If JSON parsing fails, read from cloned response as text
+        const text = await responseClone.text();
         console.error("❌ Failed to parse JSON:", text);
         // Check if it's a timeout
         if (controller.signal.aborted) {
