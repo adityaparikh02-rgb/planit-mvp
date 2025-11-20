@@ -1846,10 +1846,18 @@ _places_cache = {}
 _MAX_CACHE_SIZE = 1000
 
 # Import the optimized geocoding service (reduces costs by 80-95%)
+OPTIMIZED_GEOCODING_AVAILABLE = False
 try:
     from geocoding_service import get_geocoding_service
-    OPTIMIZED_GEOCODING_AVAILABLE = True
-    print("✅ Optimized geocoding service loaded - cost reduction enabled")
+    # Test if we can actually create the service (googlemaps might not be installed)
+    try:
+        _test_service = get_geocoding_service()
+        OPTIMIZED_GEOCODING_AVAILABLE = True
+        print("✅ Optimized geocoding service loaded - cost reduction enabled")
+    except (ImportError, ValueError) as e:
+        print(f"⚠️ Optimized geocoding service not available: {e}")
+        print("   Falling back to basic caching. Install googlemaps and rapidfuzz for full optimization.")
+        OPTIMIZED_GEOCODING_AVAILABLE = False
 except ImportError as e:
     print(f"⚠️ Optimized geocoding service not available: {e}")
     print("   Falling back to basic caching. Install googlemaps and rapidfuzz for full optimization.")
@@ -1899,12 +1907,21 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
             else:
                 print(f"⚠️ No results found for {place_name} (optimized service)")
                 return None, None, None, None
-        except Exception as e:
+        except (ImportError, ValueError, Exception) as e:
+            # If optimized service fails, disable it and fall back to basic method
             print(f"⚠️ Optimized geocoding service error: {e} - falling back to basic method")
-            import traceback
-            print(traceback.format_exc())
+            # Don't print full traceback for expected ImportError
+            if not isinstance(e, ImportError):
+                import traceback
+                print(traceback.format_exc())
+            # Continue to fallback below
     
     # Fallback to basic caching method
+    # Ensure _places_cache is available (should always be, but check for safety)
+    if '_places_cache' not in globals():
+        global _places_cache
+        _places_cache = {}
+    
     cache_key = place_name.lower().strip()
     if use_cache and cache_key in _places_cache:
         cached_result = _places_cache[cache_key]
@@ -2752,6 +2769,10 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
         place_address = place_data.get("address")
         # Only check canonical name if we don't have it cached - avoid redundant API call
         # Check cache first
+        # Ensure _places_cache is available
+        if '_places_cache' not in globals():
+            global _places_cache
+            _places_cache = {}
         cache_key = place_name.lower().strip()
         if cache_key in _places_cache:
             canonical_name, _, _, _ = _places_cache[cache_key]

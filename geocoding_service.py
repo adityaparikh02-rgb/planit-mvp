@@ -497,12 +497,19 @@ class OptimizedGeocodingService:
 
 # Global service instance (singleton pattern)
 _geocoding_service = None
+_geocoding_service_error = None
 
 def get_geocoding_service():
     """Get or create the global geocoding service instance"""
-    global _geocoding_service
-    if _geocoding_service is None:
-        _geocoding_service = OptimizedGeocodingService()
+    global _geocoding_service, _geocoding_service_error
+    if _geocoding_service is None and _geocoding_service_error is None:
+        try:
+            _geocoding_service = OptimizedGeocodingService()
+        except Exception as e:
+            _geocoding_service_error = e
+            raise
+    elif _geocoding_service_error:
+        raise _geocoding_service_error
     return _geocoding_service
 
 
