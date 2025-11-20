@@ -2099,11 +2099,40 @@ def _is_ocr_garbled(text):
     capitalized_words = sum(1 for w in words if len(w) > 2 and w[0].isupper() and w[1:].islower())
     proper_noun_ratio = capitalized_words / len(words) if words else 0
     
-    # If text has slide markers OR high ratio of proper nouns, it's likely legitimate OCR
+    # CRITICAL: Check if text is mostly random 1-3 character "words" (garbled OCR)
+    # Example: "vee ae ra Me we a a ee ee cf a. ay USSG nn. ib. it ray af fh i SY"
+    short_words = sum(1 for w in words if len(w.strip('.,!?;:')) <= 3)
+    short_word_ratio = short_words / len(words) if words else 0
+    
+    # If more than 60% of words are 1-3 characters, it's likely garbled
+    # (real text has longer words mixed in)
+    if short_word_ratio > 0.6 and len(words) > 20:
+        print(f"   🚫 Garble detection: {short_word_ratio:.1%} of words are 1-3 chars ({short_words}/{len(words)}) - likely garbled OCR")
+        return True
+    
+    # Check for patterns of random letters (like "vee ae ra Me we a a ee ee cf")
+    # Count sequences of 1-2 char words followed by another 1-2 char word
+    random_letter_sequences = 0
+    for i in range(len(words) - 2):
+        w1 = words[i].strip('.,!?;:')
+        w2 = words[i+1].strip('.,!?;:')
+        w3 = words[i+2].strip('.,!?;:')
+        # If we have 3+ consecutive very short words, it's suspicious
+        if len(w1) <= 2 and len(w2) <= 2 and len(w3) <= 2:
+            random_letter_sequences += 1
+    
+    if random_letter_sequences > len(words) * 0.15:  # More than 15% of word positions are in random sequences
+        print(f"   🚫 Garble detection: Found {random_letter_sequences} random letter sequences (pattern: 'vee ae ra Me we a a ee ee')")
+        return True
+    
+    # If text has slide markers AND high ratio of proper nouns AND not mostly short words, it's likely legitimate OCR
     # (venue names, menu items are proper nouns)
-    if has_slide_markers or proper_noun_ratio > 0.2:
-        print(f"   ✅ OCR appears legitimate: {'has slide markers' if has_slide_markers else ''} {proper_noun_ratio:.1%} proper nouns")
-        return False  # Not garbled - has structure or proper nouns
+    if has_slide_markers and proper_noun_ratio > 0.15 and short_word_ratio < 0.5:
+        print(f"   ✅ OCR appears legitimate: has slide markers, {proper_noun_ratio:.1%} proper nouns, {short_word_ratio:.1%} short words")
+        return False  # Not garbled - has structure and proper nouns
+    elif proper_noun_ratio > 0.25 and short_word_ratio < 0.4:  # High proper nouns, low short words
+        print(f"   ✅ OCR appears legitimate: {proper_noun_ratio:.1%} proper nouns, {short_word_ratio:.1%} short words")
+        return False
     
     # Check for common words - if barely any AND no proper nouns, it's garbled
     common_words = ['the', 'and', 'a', 'to', 'of', 'in', 'is', 'at', 'for', 'nyc', 'restaurant', 'food', 'pizza', 'bar', 'cafe', 'coffee', 'ny', 'new', 'york']

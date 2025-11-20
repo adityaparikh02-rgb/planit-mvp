@@ -16,3 +16,5 @@ beautifulsoup4==4.12.3
 playwright==1.40.0
 googlemaps==4.10.0
 rapidfuzz==3.5.2
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
