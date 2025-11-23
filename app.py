@@ -1945,10 +1945,10 @@ def _extract_neighborhood_from_text(text):
 
     # Common NYC neighborhoods to look for
     neighborhoods = [
-        "SoHo", "NoHo", "Tribeca", "TriBeCa", "NoLita", "Nolita",
+        "SoHo", "Soho", "NoHo", "Tribeca", "TriBeCa", "NoLita", "Nolita",
         "East Village", "West Village", "Greenwich Village",
         "Lower East Side", "Upper East Side", "Upper West Side",
-        "Midtown", "Hell's Kitchen", "Chelsea", "Flatiron",
+        "Midtown", "Midtown East", "Midtown West", "Hell's Kitchen", "Chelsea", "Flatiron",
         "Gramercy", "Murray Hill", "Kips Bay",
         "Financial District", "Battery Park City",
         "Chinatown", "Little Italy",
@@ -1956,6 +1956,17 @@ def _extract_neighborhood_from_text(text):
         "DUMBO", "Brooklyn Heights", "Carroll Gardens",
         "Fort Greene", "Prospect Heights", "Crown Heights",
         "Astoria", "Long Island City", "Flushing",
+        # Add more specific areas
+        "Nolita", "Bowery", "Lower Manhattan", "Upper Manhattan",
+        "East Harlem", "Harlem", "Morningside Heights", "Washington Heights",
+        "Inwood", "Yorkville", "Lenox Hill", "Turtle Bay", "Sutton Place",
+        "Stuyvesant Town", "Peter Cooper Village", "Alphabet City",
+        "Lower Manhattan", "Civic Center", "Two Bridges",
+        "Bedford-Stuyvesant", "Bed-Stuy", "Crown Heights", "Prospect Lefferts Gardens",
+        "Sunset Park", "Bay Ridge", "Red Hook", "Gowanus", "Cobble Hill",
+        "Boerum Hill", "Vinegar Hill", "Navy Yard", "Downtown Brooklyn",
+        "Long Island City", "Astoria", "Sunnyside", "Woodside", "Jackson Heights",
+        "Elmhurst", "Corona", "Flushing", "Forest Hills", "Rego Park",
     ]
 
     text_lower = text.lower()
@@ -1988,10 +1999,10 @@ def _extract_neighborhood_from_address(address):
 
     # Common NYC neighborhoods to look for
     neighborhoods = [
-        "SoHo", "NoHo", "Tribeca", "TriBeCa", "NoLita", "Nolita",
+        "SoHo", "Soho", "NoHo", "Tribeca", "TriBeCa", "NoLita", "Nolita",
         "East Village", "West Village", "Greenwich Village",
         "Lower East Side", "Upper East Side", "Upper West Side",
-        "Midtown", "Hell's Kitchen", "Chelsea", "Flatiron",
+        "Midtown", "Midtown East", "Midtown West", "Hell's Kitchen", "Chelsea", "Flatiron",
         "Gramercy", "Murray Hill", "Kips Bay",
         "Financial District", "Battery Park City",
         "Chinatown", "Little Italy",
@@ -1999,15 +2010,27 @@ def _extract_neighborhood_from_address(address):
         "DUMBO", "Brooklyn Heights", "Carroll Gardens",
         "Fort Greene", "Prospect Heights", "Crown Heights",
         "Astoria", "Long Island City", "Flushing",
+        # Add more specific areas
+        "Nolita", "Bowery", "Lower Manhattan", "Upper Manhattan",
+        "East Harlem", "Harlem", "Morningside Heights", "Washington Heights",
+        "Inwood", "Yorkville", "Lenox Hill", "Turtle Bay", "Sutton Place",
+        "Stuyvesant Town", "Peter Cooper Village", "Alphabet City",
+        "Lower Manhattan", "Civic Center", "Two Bridges",
+        "Bedford-Stuyvesant", "Bed-Stuy", "Crown Heights", "Prospect Lefferts Gardens",
+        "Sunset Park", "Bay Ridge", "Red Hook", "Gowanus", "Cobble Hill",
+        "Boerum Hill", "Vinegar Hill", "Navy Yard", "Downtown Brooklyn",
+        "Long Island City", "Astoria", "Sunnyside", "Woodside", "Jackson Heights",
+        "Elmhurst", "Corona", "Flushing", "Forest Hills", "Rego Park",
     ]
 
     address_lower = address.lower()
 
+    # Check neighborhoods FIRST (prioritize specific neighborhoods over boroughs)
     for neighborhood in neighborhoods:
         if neighborhood.lower() in address_lower:
-            return neighborhood
+            return neighborhood  # Return immediately when found
 
-    # If no specific neighborhood found, try to extract borough
+    # Only check boroughs if no specific neighborhood found
     boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
     for borough in boroughs:
         if borough.lower() in address_lower:
@@ -2757,6 +2780,104 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         cleaned = re.sub(r'SLIDE\s*\d+\s*:\s*', '', text, flags=re.IGNORECASE)
         return cleaned.strip()
     
+    # Helper function to filter garbled sentences from text
+    def filter_garbled_sentences(text):
+        """Remove garbled sentences, hashtags, and OCR noise from text before sending to GPT."""
+        if not text:
+            return text
+        import re
+        
+        # Remove hashtags
+        text = re.sub(r'#\w+', '', text)
+        
+        # Remove Unicode garbage
+        text = re.sub(r'â\x80\x99', "'", text)
+        text = re.sub(r'â\x80\x9c', '"', text)
+        text = re.sub(r'â\x80\x9d', '"', text)
+        text = re.sub(r'â\x80\x94', '—', text)
+        
+        # Remove all-caps OCR garbage fragments (3+ consecutive uppercase words)
+        text = re.sub(r'\b[A-Z]{3,}(?:\s+[A-Z]{3,}){2,}\b', '', text)
+        
+        # Remove known OCR garbage patterns
+        garbage_patterns = [
+            r'\bREX\s+TAREX\s+SAN\s+MAL\s+PAR\s+BIE\s+WALL\b',
+            r'\bVALLAGASH\s+PETER\s+REST\s+PHO\b',
+            r'\bMUURE\s+DAME\b',
+            r'\bBASIL\s+PAYDER\s+AVE\s+BRAU\s+COUL\s+CENTRAL\s+UNPONT\s+ONTEN\s+IDE\s+APE\s+AVARON\b',
+            r'\bQ\s+BASIL\s+PAYDER\s+AVE\s+BRAU\b',
+        ]
+        for pattern in garbage_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+        
+        sentences = re.split(r'[.!?]\s+', text)
+        good_sentences = []
+        for sentence in sentences:
+            sentence = sentence.strip()
+            # Skip very short sentences (< 10 chars) that are likely OCR errors
+            if len(sentence) < 10:
+                continue
+            # Skip if sentence is mostly garbled
+            if _is_ocr_garbled(sentence):
+                continue
+            # Skip sentences that are mostly hashtags or random characters
+            if re.match(r'^[#\s]+$', sentence):
+                continue
+            good_sentences.append(sentence)
+        return '. '.join(good_sentences)
+    
+    # Helper function to clean vibe text
+    def clean_vibe_text(vibe_text, venue_name):
+        """Remove venue name, hashtags, garbled text, and 'the vibes:' prefixes from vibe text."""
+        if not vibe_text:
+            return vibe_text
+        import re
+        
+        # Remove hashtags
+        cleaned = re.sub(r'#\w+', '', vibe_text)
+        
+        # Remove venue name (case-insensitive)
+        cleaned = re.sub(re.escape(venue_name), '', cleaned, flags=re.IGNORECASE)
+        
+        # Remove "the vibes:" prefix
+        cleaned = re.sub(r'the\s+vibes?\s*:\s*', '', cleaned, flags=re.IGNORECASE)
+        
+        # Remove garbled OCR patterns (all caps fragments, random letters)
+        # Pattern: 3+ consecutive uppercase letters/words that look like OCR garbage
+        cleaned = re.sub(r'\b[A-Z]{3,}(?:\s+[A-Z]{3,}){2,}\b', '', cleaned)
+        
+        # Remove Unicode garbage like "NYCâ's" -> "NYC's"
+        cleaned = re.sub(r'â\x80\x99', "'", cleaned)  # Fix curly apostrophe
+        cleaned = re.sub(r'â\x80\x9c', '"', cleaned)  # Fix curly quotes
+        cleaned = re.sub(r'â\x80\x9d', '"', cleaned)
+        cleaned = re.sub(r'â\x80\x94', '—', cleaned)  # Fix em dash
+        
+        # Remove random OCR fragments (words that are all caps and don't make sense)
+        words = cleaned.split()
+        good_words = []
+        garbage_words = {'REX', 'TAREX', 'SAN', 'MAL', 'PAR', 'BIE', 'WALL', 'H', 'F', 'Q', 'BASIL', 'PAYDER', 'AVE', 'BRAU', 'COUL', 'CENTRAL', 'UNPONT', 'ONTEN', 'IDE', 'APE', 'AVARON', 'NO', 'VALLAGASH', 'PETER', 'REST', 'PHO', 'MUURE', 'DAME'}
+        for word in words:
+            word_clean = re.sub(r'[^\w\s]', '', word)  # Remove punctuation for check
+            # Skip if it's known OCR garbage
+            if word_clean.upper() in garbage_words:
+                continue
+            # Skip if it's all caps and longer than 3 chars but doesn't look like a real word
+            if word_clean.isupper() and len(word_clean) > 3:
+                # Check if it looks like a real acronym or proper noun
+                if word_clean not in ['NYC', 'NY', 'USA']:
+                    # Skip if it's not a common acronym
+                    continue
+            good_words.append(word)
+        cleaned = ' '.join(good_words)
+        
+        # Remove extra whitespace
+        cleaned = ' '.join(cleaned.split())
+        
+        # Remove leading/trailing punctuation
+        cleaned = cleaned.strip('.,;:!?')
+        
+        return cleaned.strip()
+    
     # Use pre-built slide context if available (already includes sequential reading)
     # Slide context is already venue-specific, so we skip the venue filtering below
     if slide_context:
@@ -2842,6 +2963,9 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     else:
         context = raw_context
     
+    # Filter out garbled sentences before sending to GPT
+    context = filter_garbled_sentences(context)
+    
     context_lower = context.lower()
     
     # Determine venue type from context
@@ -2862,8 +2986,10 @@ CRITICAL: Only extract information that is clearly about "{name}".
 {{
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides.",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
-  "vibe": "Mood or crowd at {name} if present",
-  "must_try": "Context-aware field: For RESTAURANTS/FOOD places, list specific dishes, drinks, or menu items to try AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Only include if mentioned SPECIFICALLY for {name}.",
+  "vibe": "Clean, concise description of the mood/atmosphere at {name}. CRITICAL: Remove ALL hashtags, OCR garbage, random text fragments, and venue names. Do NOT include: hashtags (#holidaybar), garbled OCR (REX TAREX SAN MAL), venue name, or 'the vibes:' prefix. Example: 'Year-round rooftop' not '#holidaybar REX TAREX Daintree the vibes: Year-round rooftop'. Keep it short, clean, and descriptive.",
+  "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list specific dishes, drinks, or menu items. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Only include if mentioned SPECIFICALLY for {name}.",
+  "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required'). Only include if clearly mentioned in the context.",
+  "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "specials": "Real deals or special events at {name} if mentioned",
   "comments_summary": "Short insight from comments about {name} if available",
   "creator_insights": "Capture personal recommendations, comparisons, or unique context from the creator SPECIFICALLY about {name}. Examples: 'I'm from California and this is the only burger comparable to In-N-Out', 'This place reminds me of my favorite spot back home', 'Only place in NYC that does X like this'. Include personal anecdotes, comparisons to other places, or unique selling points the creator emphasizes ABOUT {name}. Keep it authentic and specific to what the creator actually said ABOUT {name}."
@@ -2914,13 +3040,22 @@ Context (filtered to only include mentions of "{name}"):
         # Extract short vibe keywords from the full context for bubble tags
         vibe_keywords = extract_vibe_keywords(context)
 
+        # Get vibe from GPT response and clean it
+        vibe_raw = j.get("vibe", "").strip()
+        vibe_cleaned = clean_vibe_text(vibe_raw, name)
+        
+        # Get features field (new field for specific amenities/features)
+        features_value = j.get("features", "").strip()
+        
         data = {
             "summary": j.get("summary", "").strip(),
             "when_to_go": j.get("when_to_go", "").strip(),
-            "vibe": context.strip(),  # Raw extracted text for full context display
+            "vibe": vibe_cleaned,  # Use cleaned GPT-extracted vibe, not raw context
             "vibe_keywords": vibe_keywords,  # Short keywords for bubble tags
             "must_try": must_try_value,
             "must_try_field": field_name,  # Store the field name
+            "good_to_know": j.get("good_to_know", "").strip(),  # Add good_to_know field
+            "features": features_value,  # Add features field for specific amenities
             "specials": j.get("specials", "").strip(),
             "comments_summary": j.get("comments_summary", "").strip(),
             "creator_insights": j.get("creator_insights", "").strip(),  # Personal recommendations and comparisons
@@ -2946,6 +3081,8 @@ Context (filtered to only include mentions of "{name}"):
             "vibe_keywords": [],
             "must_try": "",
             "must_try_field": "must_try",
+            "good_to_know": "",
+            "features": "",
             "specials": "",
             "comments_summary": "",
             "creator_insights": "",
@@ -3222,7 +3359,27 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
 
         neighborhood_from_text = _extract_neighborhood_from_text(context_for_neighborhood)
 
-        if neighborhood_from_text:
+        # Also check place name/title for neighborhood hints (e.g., "TEN11 LOUNGE & BAR (NOMAD)")
+        neighborhood_from_name = None
+        if display_name:
+            display_name_lower = display_name.lower()
+            # Check for neighborhood in parentheses or after common separators
+            import re
+            # Look for patterns like "(NOMAD)", "(Nomad)", "- NOMAD", etc.
+            paren_match = re.search(r'\(([^)]+)\)', display_name)
+            if paren_match:
+                paren_content = paren_match.group(1).strip()
+                # Check if it matches a known neighborhood
+                for known_neighborhood in ["NoMad", "Nomad", "NOMAD", "SoHo", "Soho", "NoHo", "Tribeca", "Chelsea", "Gramercy", "Flatiron", "Midtown", "East Village", "West Village"]:
+                    if known_neighborhood.lower() == paren_content.lower():
+                        neighborhood_from_name = known_neighborhood
+                        print(f"   📍 Found neighborhood in place name: {neighborhood_from_name}")
+                        break
+
+        if neighborhood_from_name:
+            final_neighborhood = neighborhood_from_name
+            print(f"   📍 Using neighborhood from place name: {final_neighborhood}")
+        elif neighborhood_from_text:
             final_neighborhood = neighborhood_from_text
             print(f"   📍 Found neighborhood in text: {final_neighborhood}")
         elif neighborhood:
@@ -3250,13 +3407,56 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         result = details_data.get("result", {})
                         address_components = result.get("address_components", [])
                         # Look for neighborhood, sublocality, or locality in address components
+                        # Priority: neighborhood > sublocality > sublocality_level_1 > locality
                         for component in address_components:
                             types = component.get("types", [])
-                            if "neighborhood" in types or "sublocality" in types:
-                                neighborhood_name = component.get("long_name")
-                                if neighborhood_name:
+                            neighborhood_name = component.get("long_name")
+                            if neighborhood_name:
+                                if "neighborhood" in types:
                                     final_neighborhood = neighborhood_name
-                                    print(f"   📍 Found neighborhood from Place Details: {final_neighborhood}")
+                                    print(f"   📍 Found neighborhood from Place Details (neighborhood): {final_neighborhood}")
+                                    break
+                                elif "sublocality" in types and not final_neighborhood:
+                                    final_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details (sublocality): {final_neighborhood}")
+                                elif "sublocality_level_1" in types and not final_neighborhood:
+                                    final_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details (sublocality_level_1): {final_neighborhood}")
+                                elif "locality" in types and not final_neighborhood and neighborhood_name not in ["New York", "Brooklyn", "Queens", "Bronx", "Staten Island"]:
+                                    # Only use locality if it's not a borough name
+                                    final_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details (locality): {final_neighborhood}")
+                        if final_neighborhood:
+                            # Try to match against our known neighborhoods list for consistency
+                            # Import neighborhoods list from _extract_neighborhood_from_address function scope
+                            known_neighborhoods = [
+                                "SoHo", "Soho", "NoHo", "NoMad", "Nomad", "NOMAD", "Tribeca", "TriBeCa", "NoLita", "Nolita",
+                                "East Village", "West Village", "Greenwich Village",
+                                "Lower East Side", "Upper East Side", "Upper West Side",
+                                "Midtown", "Midtown East", "Midtown West", "Hell's Kitchen", "Chelsea", "Flatiron",
+                                "Gramercy", "Murray Hill", "Kips Bay",
+                                "Financial District", "Battery Park City",
+                                "Chinatown", "Little Italy",
+                                "Williamsburg", "Greenpoint", "Bushwick", "Park Slope",
+                                "DUMBO", "Brooklyn Heights", "Carroll Gardens",
+                                "Fort Greene", "Prospect Heights", "Crown Heights",
+                                "Astoria", "Long Island City", "Flushing",
+                                "Nolita", "Bowery", "Lower Manhattan", "Upper Manhattan",
+                                "East Harlem", "Harlem", "Morningside Heights", "Washington Heights",
+                                "Inwood", "Yorkville", "Lenox Hill", "Turtle Bay", "Sutton Place",
+                                "Stuyvesant Town", "Peter Cooper Village", "Alphabet City",
+                                "Lower Manhattan", "Civic Center", "Two Bridges",
+                                "Bedford-Stuyvesant", "Bed-Stuy", "Crown Heights", "Prospect Lefferts Gardens",
+                                "Sunset Park", "Bay Ridge", "Red Hook", "Gowanus", "Cobble Hill",
+                                "Boerum Hill", "Vinegar Hill", "Navy Yard", "Downtown Brooklyn",
+                                "Long Island City", "Astoria", "Sunnyside", "Woodside", "Jackson Heights",
+                                "Elmhurst", "Corona", "Flushing", "Forest Hills", "Rego Park",
+                            ]
+                            final_neighborhood_lower = final_neighborhood.lower()
+                            for known_neighborhood in known_neighborhoods:
+                                if known_neighborhood.lower() in final_neighborhood_lower or final_neighborhood_lower in known_neighborhood.lower():
+                                    final_neighborhood = known_neighborhood
+                                    print(f"   📍 Matched to known neighborhood: {final_neighborhood}")
                                     break
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
@@ -3325,6 +3525,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     "vibe": "",
                     "must_try": "",
                     "must_try_field": "must_try",
+                    "good_to_know": "",
+                    "features": "",
                     "specials": "",
                     "comments_summary": "",
                     "vibe_tags": [],

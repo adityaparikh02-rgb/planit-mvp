@@ -845,6 +845,11 @@ function App() {
                               alt={p.name}
                               className="place-photo"
                               referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                // Hide image if it fails to load instead of showing broken image
+                                e.target.style.display = 'none';
+                                e.target.parentElement.style.display = 'none';
+                              }}
                             />
                           </div>
                         )}
@@ -895,16 +900,7 @@ function App() {
                         <div className="place-info">
                           <h3>{p.name}</h3>
 
-                          {/* Vibe tags directly under name - auto-generated only */}
-                          {p.vibe_tags && p.vibe_tags.length > 0 && (
-                            <div className="vibe-tags-inline">
-                              {p.vibe_tags.map((tag, idx) => (
-                                <span key={idx}>({tag})</span>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Neighborhood/Area - Show location pin if neighborhood OR maps_url exists */}
+                          {/* Neighborhood/Area */}
                           {(p.neighborhood || p.maps_url) && (
                             <p className="neighborhood-field">
                               <MapPin size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
@@ -921,12 +917,38 @@ function App() {
                             </div>
                           )}
 
-                          {/* Full context field */}
-                          {(p.vibe || p.must_try || p.when_to_go) && (
-                            <p className="context-field">
-                              {p.vibe && <><strong>💫 Context:</strong> {p.vibe}</>}
-                              {!p.vibe && p.must_try && <><strong>Must Try:</strong> {p.must_try}</>}
-                              {!p.vibe && !p.must_try && p.when_to_go && <><strong>When to Go:</strong> {p.when_to_go}</>}
+                          {/* Vibe */}
+                          {p.vibe && (
+                            <p className="vibe-field">
+                              <strong>Vibes:</strong> {p.vibe}
+                            </p>
+                          )}
+
+                          {/* When to go */}
+                          {p.when_to_go && (
+                            <p className="when-to-go-field">
+                              <strong>When to go:</strong> {p.when_to_go}
+                            </p>
+                          )}
+
+                          {/* Good to Know */}
+                          {p.good_to_know && (
+                            <p className="good-to-know-field">
+                              <strong>Good to Know:</strong> {p.good_to_know}
+                            </p>
+                          )}
+
+                          {/* What to get */}
+                          {p.must_try && (
+                            <p className="what-to-get-field">
+                              <strong>What to get:</strong> {p.must_try}
+                            </p>
+                          )}
+
+                          {/* Features */}
+                          {p.features && (
+                            <p className="features-field">
+                              <strong>Features:</strong> {p.features}
                             </p>
                           )}
 
@@ -990,32 +1012,12 @@ function App() {
                               </details>
                             </div>
                           )}
-                          <div className="meta">
-                            {p.must_try && (
-                              <p>
-                                <strong>
-                                  {p.must_try_field === "highlights" ? "✨ Highlights:" :
-                                   p.must_try_field === "features" ? "🎯 Features:" :
-                                   "🍴 Must Try:"}
-                                </strong> {p.must_try}
-                              </p>
-                            )}
-                            {p.when_to_go && (
-                              <p>
-                                <strong>🕐 When to Go:</strong> {p.when_to_go}
-                              </p>
-                            )}
-                            {p.vibe && (
-                              <p>
-                                <strong>💫 Vibe:</strong> {p.vibe}
-                              </p>
-                            )}
-                            {p.creator_insights && (
-                              <p className="creator-insights">
-                                {p.creator_insights}
-                              </p>
-                            )}
-                          </div>
+                          {/* Creator insights (if any) */}
+                          {p.creator_insights && (
+                            <p className="creator-insights">
+                              {p.creator_insights}
+                            </p>
+                          )}
                           {p.maps_url && (
                             <a
                               href={p.maps_url}
@@ -1266,12 +1268,38 @@ function App() {
                               </div>
                             )}
 
-                            {/* Full context field */}
-                            {(p.vibe || p.must_try || p.when_to_go) && (
-                              <p className="context-field">
-                                {p.vibe && <><strong>💫 Context:</strong> {p.vibe}</>}
-                                {!p.vibe && p.must_try && <><strong>Must Try:</strong> {p.must_try}</>}
-                                {!p.vibe && !p.must_try && p.when_to_go && <><strong>When to Go:</strong> {p.when_to_go}</>}
+                            {/* Vibe */}
+                            {p.vibe && (
+                              <p className="vibe-field">
+                                <strong>Vibes:</strong> {p.vibe}
+                              </p>
+                            )}
+
+                            {/* When to go */}
+                            {p.when_to_go && (
+                              <p className="when-to-go-field">
+                                <strong>When to go:</strong> {p.when_to_go}
+                              </p>
+                            )}
+
+                            {/* Good to Know */}
+                            {p.good_to_know && (
+                              <p className="good-to-know-field">
+                                <strong>Good to Know:</strong> {p.good_to_know}
+                              </p>
+                            )}
+
+                            {/* What to get */}
+                            {p.must_try && (
+                              <p className="what-to-get-field">
+                                <strong>What to get:</strong> {p.must_try}
+                              </p>
+                            )}
+
+                            {/* Features */}
+                            {p.features && (
+                              <p className="features-field">
+                                <strong>Features:</strong> {p.features}
                               </p>
                             )}
 
@@ -1315,32 +1343,47 @@ function App() {
                                 {p.summary && p.summary !== oneLineSummary && (
                                   <p className="description full-summary">{p.summary}</p>
                                 )}
-                                <div className="meta">
-                                  {p.must_try && (
-                                    <p>
-                                      <strong>
-                                        {p.must_try_field === "highlights" ? "✨ Highlights:" :
-                                         p.must_try_field === "features" ? "🎯 Features:" :
-                                         "🍴 Must Try:"}
-                                      </strong> {p.must_try}
-                                    </p>
-                                  )}
-                                  {p.when_to_go && (
-                                    <p>
-                                      <strong>🕐 When to Go:</strong> {p.when_to_go}
-                                    </p>
-                                  )}
-                                  {p.vibe && (
-                                    <p>
-                                      <strong>💫 Vibe:</strong> {p.vibe}
-                                    </p>
-                                  )}
-                                  {p.creator_insights && (
-                                    <p className="creator-insights">
-                                      {p.creator_insights}
-                                    </p>
-                                  )}
-                                </div>
+                                {/* Vibe */}
+                                {p.vibe && (
+                                  <p className="vibe-field">
+                                    <strong>Vibes:</strong> {p.vibe}
+                                  </p>
+                                )}
+
+                                {/* When to go */}
+                                {p.when_to_go && (
+                                  <p className="when-to-go-field">
+                                    <strong>When to go:</strong> {p.when_to_go}
+                                  </p>
+                                )}
+
+                                {/* Good to Know */}
+                                {p.good_to_know && (
+                                  <p className="good-to-know-field">
+                                    <strong>Good to Know:</strong> {p.good_to_know}
+                                  </p>
+                                )}
+
+                                {/* What to get */}
+                                {p.must_try && (
+                                  <p className="what-to-get-field">
+                                    <strong>What to get:</strong> {p.must_try}
+                                  </p>
+                                )}
+
+                                {/* Features */}
+                                {p.features && (
+                                  <p className="features-field">
+                                    <strong>Features:</strong> {p.features}
+                                  </p>
+                                )}
+
+                                {/* Creator insights */}
+                                {p.creator_insights && (
+                                  <p className="creator-insights">
+                                    {p.creator_insights}
+                                  </p>
+                                )}
                                 {p.other_videos && p.other_videos.length > 0 && (
                                   <div className="other-videos-note">
                                     <details className="tiktok-dropdown">

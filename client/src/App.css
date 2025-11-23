@@ -718,6 +718,11 @@
   color: #fff;
   font-family: inherit;
   line-height: 1.3;
+  /* Ensure name displays fully without truncation */
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-wrap: break-word;
 }
 
 .description {
