@@ -31,6 +31,13 @@ GOOGLE_VISION_SERVICE_ACCOUNT = None
 service_account_json_str = os.getenv("GOOGLE_VISION_SERVICE_ACCOUNT_JSON")
 service_account_path = os.getenv("GOOGLE_VISION_SERVICE_ACCOUNT_PATH")
 
+# Fallback: check for local file if env vars not set
+if not service_account_path:
+    local_file = os.path.join(os.path.dirname(__file__), "google-vision-service-account.json")
+    if os.path.exists(local_file):
+        service_account_path = local_file
+        logger.info(f"📁 Found local Google Vision credentials at {local_file}")
+
 if service_account_json_str:
     try:
         GOOGLE_VISION_SERVICE_ACCOUNT = json.loads(service_account_json_str)
@@ -85,22 +92,24 @@ def _get_access_token():
         return None
 
 
-def extract_text_with_google_vision(image_url: str) -> Optional[str]:
+def extract_text_with_google_vision(image_url: str, detect_language: bool = True) -> Optional[str]:
     """
     Extract text from image using Google Cloud Vision API.
-    
+
     Supports both API key and service account authentication.
-    
+    Google Vision automatically detects language and returns text in original language.
+
     Args:
         image_url: URL of the image to process
-        
+        detect_language: If True, logs the detected language
+
     Returns:
         Extracted text string, or None if failed
     """
     if not GOOGLE_VISION_AVAILABLE:
         logger.warning("Google Cloud Vision not available - missing credentials")
         return None
-    
+
     try:
         # Download image
         response = requests.get(image_url, timeout=30, headers={
@@ -108,11 +117,11 @@ def extract_text_with_google_vision(image_url: str) -> Optional[str]:
         })
         response.raise_for_status()
         image_content = response.content
-        
+
         # Encode image as base64
         import base64
         image_base64 = base64.b64encode(image_content).decode('utf-8')
-        
+
         payload = {
             "requests": [{
                 "image": {
@@ -124,7 +133,7 @@ def extract_text_with_google_vision(image_url: str) -> Optional[str]:
                 }]
             }]
         }
-        
+
         # Use service account if available, otherwise use API key
         headers = {"Content-Type": "application/json"}
         if GOOGLE_VISION_SERVICE_ACCOUNT:
@@ -138,28 +147,36 @@ def extract_text_with_google_vision(image_url: str) -> Optional[str]:
         else:
             # Use API key authentication
             vision_url = f"https://vision.googleapis.com/v1/images:annotate?key={GOOGLE_VISION_API_KEY}"
-        
+
         api_response = requests.post(vision_url, json=payload, headers=headers, timeout=30)
         api_response.raise_for_status()
-        
+
         result = api_response.json()
-        
+
         # Extract text from response
         if "responses" in result and len(result["responses"]) > 0:
             response_data = result["responses"][0]
-            
+
             # Check for errors
             if "error" in response_data:
                 error_msg = response_data["error"].get("message", "Unknown error")
                 logger.error(f"Google Vision API error: {error_msg}")
                 return None
-            
+
             # Extract text annotations
             text_annotations = response_data.get("textAnnotations", [])
             if text_annotations:
                 # First annotation contains all text
                 full_text = text_annotations[0].get("description", "")
-                logger.info(f"✅ Google Vision extracted {len(full_text)} chars")
+
+                # Detect language from the first text annotation
+                if detect_language and "locale" in text_annotations[0]:
+                    detected_language = text_annotations[0]["locale"]
+                    logger.info(f"🌐 Detected language: {detected_language}")
+                    logger.info(f"✅ Google Vision extracted {len(full_text)} chars in {detected_language}")
+                else:
+                    logger.info(f"✅ Google Vision extracted {len(full_text)} chars")
+
                 return full_text.strip()
             else:
                 logger.info("⚠️ Google Vision found no text in image")
@@ -167,7 +184,7 @@ def extract_text_with_google_vision(image_url: str) -> Optional[str]:
         else:
             logger.warning("⚠️ Google Vision API returned unexpected response format")
             return None
-            
+
     except requests.exceptions.RequestException as e:
         logger.error(f"Google Vision API request failed: {e}")
         return None

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart } from "lucide-react";
+import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
 
@@ -30,6 +30,8 @@ function App() {
   const [expandedSavedPlaceIndex, setExpandedSavedPlaceIndex] = useState(null); // For expanded place details in saved lists
   const [editingNoteForPlace, setEditingNoteForPlace] = useState(null); // Which place's note is being edited: {listName, placeIndex}
   const [noteValue, setNoteValue] = useState(""); // Current note value being edited
+  const [selectedVibeFilter, setSelectedVibeFilter] = useState(null); // Currently selected vibe tag for filtering
+  const [userAddedTags, setUserAddedTags] = useState({}); // { placeName: [array of user-added tags] }
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -91,7 +93,79 @@ function App() {
         console.error("Failed to parse localStorage saved places:", e);
       }
     }
+
+    // Load user-added tags from localStorage
+    const localUserTags = localStorage.getItem("planit_user_tags");
+    if (localUserTags) {
+      try {
+        const parsed = JSON.parse(localUserTags);
+        setUserAddedTags(parsed);
+      } catch (e) {
+        console.error("Failed to parse user tags:", e);
+      }
+    }
   }, []);
+
+  // ===== Poll for status updates =====
+  const pollStatus = (extractionId, controller) => {
+    let pollInterval = null;
+    let isStopped = false;
+
+    pollInterval = setInterval(async () => {
+      if (controller.signal.aborted || isStopped) {
+        if (pollInterval) {
+          clearInterval(pollInterval);
+        }
+        return;
+      }
+
+      try {
+        const statusRes = await fetch(`${API_BASE}/api/status/${extractionId}`, {
+          signal: controller.signal
+        });
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          const messages = statusData.messages || [];
+          
+          if (messages.length > 0) {
+            const lastMessage = messages[messages.length - 1].message;
+            // Always update the status display
+            setLoadingStep(lastMessage);
+            
+            // Stop polling if backend indicates completion or we see completion messages
+            if (statusData.completed || lastMessage.includes("Complete") || lastMessage.includes("Finalizing")) {
+              // Keep showing the status for a bit, then stop polling
+              setTimeout(() => {
+                isStopped = true;
+                if (pollInterval) {
+                  clearInterval(pollInterval);
+                }
+              }, 2000); // Show completion status for 2 seconds before stopping
+            }
+          } else if (statusData.completed) {
+            // No messages but marked complete - stop polling
+            isStopped = true;
+            if (pollInterval) {
+              clearInterval(pollInterval);
+            }
+          }
+        }
+      } catch (err) {
+        // Ignore errors during polling (might be cancelled)
+        if (pollInterval) {
+          clearInterval(pollInterval);
+        }
+      }
+    }, 500); // Poll every 500ms
+
+    // Return cleanup function
+    return () => {
+      isStopped = true;
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  };
 
   // ===== Extract TikTok =====
   const handleExtract = async (urlToUse = null, isFromHistory = false) => {
@@ -115,19 +189,22 @@ function App() {
       return;
     }
 
+    // Declare stopPolling in outer scope so it can be accessed in catch block
+    let stopPolling = null;
+
     try {
       console.log(`🌐 Calling API: ${API_BASE}/api/extract`);
-      
+
       // Add timeout for long-running requests (10 minutes for videos with OCR)
       const controller = new AbortController();
       setAbortController(controller); // Store controller for cancel button
       const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 minutes
-      
+
       // Retry logic for connection errors (common with Render free tier sleeping)
       let res;
       let retries = 2;
       let lastError;
-      
+
       for (let attempt = 0; attempt <= retries; attempt++) {
         try {
           if (attempt > 0) {
@@ -135,7 +212,7 @@ function App() {
             setLoadingStep(`Connecting to backend... (attempt ${attempt + 1})`);
             await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds between retries
           }
-          
+
           res = await fetch(`${API_BASE}/api/extract`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -152,24 +229,30 @@ function App() {
           throw fetchError; // Re-throw if no retries left or different error
         }
       }
-      
+
       if (!res) {
         throw lastError || new Error("Failed to fetch");
       }
-      
+
       clearTimeout(timeoutId);
       setAbortController(null); // Clear controller after request completes
-      
+
       console.log(`📡 Response status: ${res.status}`);
-      
+
       // Clone response before reading to allow fallback to text if JSON parsing fails
       const responseClone = res.clone();
-      
+
       // Try to parse JSON, but handle non-JSON errors
       let data;
       try {
         data = await res.json();
         console.log("📦 Response data:", data);
+
+        // Start polling for status if we got an extraction_id
+        if (data.extraction_id) {
+          console.log(`🔄 Starting status polling for extraction ${data.extraction_id}`);
+          stopPolling = pollStatus(data.extraction_id, controller);
+        }
       } catch (parseError) {
         // If JSON parsing fails, read from cloned response as text
         const text = await responseClone.text();
@@ -234,6 +317,11 @@ function App() {
       });
       setResult(cleanData);
 
+      // Stop polling immediately when we get the result
+      if (stopPolling) {
+        stopPolling();
+      }
+
       const title =
         cleanData.summary_title?.replace(/(^"|"$)/g, "") ||
         cleanData.context_summary?.replace(/(^"|"$)/g, "") ||
@@ -264,10 +352,19 @@ function App() {
         }
         return updated;
       });
-      setLoadingStep("");
+      
+      // Keep last status message visible briefly, then clear
+      setTimeout(() => {
+        setLoadingStep("");
+      }, 1000); // Keep status visible for 1 second after completion
     } catch (err) {
       console.error("Extraction error:", err);
       let errorMessage = err.message || "Failed to extract venues. Please try again.";
+
+      // Stop polling on error
+      if (stopPolling) {
+        stopPolling();
+      }
       
       // Better error messages for connection issues
       if (err.name === "AbortError") {
@@ -397,6 +494,80 @@ function App() {
       localStorage.setItem("planit_saved_places", JSON.stringify(updated));
     } catch (e) {
       console.error("Failed to save to localStorage:", e);
+    }
+  };
+
+  // ===== Vibe Tags Functions =====
+  const getAllVibeTags = () => {
+    const tags = new Set();
+    
+    // From current extraction result
+    if (result?.places_extracted) {
+      result.places_extracted.forEach(place => {
+        if (place.vibe_tags && Array.isArray(place.vibe_tags)) {
+          place.vibe_tags.forEach(tag => tags.add(tag));
+        }
+        // Also include user-added tags
+        if (userAddedTags[place.name]) {
+          userAddedTags[place.name].forEach(tag => tags.add(tag));
+        }
+      });
+    }
+    
+    // From saved places
+    Object.values(savedPlaces).forEach(list => {
+      list.forEach(place => {
+        if (place.vibe_tags && Array.isArray(place.vibe_tags)) {
+          place.vibe_tags.forEach(tag => tags.add(tag));
+        }
+        if (userAddedTags[place.name]) {
+          userAddedTags[place.name].forEach(tag => tags.add(tag));
+        }
+      });
+    });
+    
+    return Array.from(tags).sort();
+  };
+
+  const getFilteredPlaces = (places) => {
+    if (!selectedVibeFilter || !places) return places;
+    
+    return places.filter(place => {
+      const placeTags = [
+        ...(place.vibe_tags || []),
+        ...(userAddedTags[place.name] || [])
+      ];
+      return placeTags.includes(selectedVibeFilter);
+    });
+  };
+
+  const handleAddTag = (placeName, tag) => {
+    if (!tag.trim()) return;
+    const updated = { ...userAddedTags };
+    if (!updated[placeName]) updated[placeName] = [];
+    if (!updated[placeName].includes(tag.trim())) {
+      updated[placeName].push(tag.trim());
+      setUserAddedTags(updated);
+      // Save to localStorage
+      try {
+        localStorage.setItem("planit_user_tags", JSON.stringify(updated));
+      } catch (err) {
+        console.error("Failed to save tags:", err);
+      }
+    }
+  };
+
+  const handleRemoveTag = (placeName, tag) => {
+    const updated = { ...userAddedTags };
+    if (!updated[placeName]) return;
+    updated[placeName] = updated[placeName].filter(t => t !== tag);
+    if (updated[placeName].length === 0) delete updated[placeName];
+    setUserAddedTags(updated);
+    // Save to localStorage
+    try {
+      localStorage.setItem("planit_user_tags", JSON.stringify(updated));
+    } catch (err) {
+      console.error("Failed to save tags:", err);
     }
   };
 
@@ -530,7 +701,16 @@ function App() {
               <div className="loading-container">
                 <p className="loading">
                   {loadingStep.includes("Analyzing") && <Search size={16} className="loading-icon" />}
+                  {loadingStep.includes("Detected") && <Eye size={16} className="loading-icon" />}
                   {loadingStep.includes("Downloading") && <Loader2 size={16} className="loading-icon spin" />}
+                  {loadingStep.includes("images") && <Image size={16} className="loading-icon" />}
+                  {loadingStep.includes("Scanning") && <Scan size={16} className="loading-icon spin" />}
+                  {loadingStep.includes("Reading") && <FileText size={16} className="loading-icon spin" />}
+                  {loadingStep.includes("Identifying") && <Search size={16} className="loading-icon spin" />}
+                  {loadingStep.includes("Found") && <MapPin size={16} className="loading-icon" />}
+                  {loadingStep.includes("Mapping") && <MapPinned size={16} className="loading-icon spin" />}
+                  {loadingStep.includes("Finalizing") && <Check size={16} className="loading-icon" />}
+                  {loadingStep.includes("Complete") && <Check size={16} className="loading-icon" />}
                   {loadingStep.includes("Transcribing") && <Loader2 size={16} className="loading-icon spin" />}
                   {loadingStep.includes("Extracting") && <Sparkles size={16} className="loading-icon" />}
                   {loadingStep.includes("Enriching") && <Sparkles size={16} className="loading-icon" />}
@@ -615,11 +795,41 @@ function App() {
                   </>
                 )}
 
+                {/* Vibe Tags Filter Bar */}
+                {result && result.places_extracted && result.places_extracted.length > 0 && getAllVibeTags().length > 0 && (
+                  <div className="vibe-filter-bar">
+                    <div className="vibe-filter-header">
+                      <span className="filter-label">Filter by vibe:</span>
+                      {selectedVibeFilter && (
+                        <button 
+                          className="clear-filter-btn"
+                          onClick={() => setSelectedVibeFilter(null)}
+                        >
+                          Clear filter
+                        </button>
+                      )}
+                    </div>
+                    <div className="vibe-filter-tags">
+                      {getAllVibeTags().map((tag, idx) => (
+                        <button
+                          key={idx}
+                          className={`vibe-filter-chip ${selectedVibeFilter === tag ? 'active' : ''}`}
+                          onClick={() => setSelectedVibeFilter(
+                            selectedVibeFilter === tag ? null : tag
+                          )}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {result.places_extracted && result.places_extracted.length > 0 && (
                   <div
                     className="results-list"
                   >
-                    {result.places_extracted.map((p, i) => {
+                    {getFilteredPlaces(result.places_extracted).map((p, i) => {
                     const isExpanded = expandedIndex === i;
                     const shortDesc =
                       p.summary && p.summary.length > 180
@@ -684,6 +894,43 @@ function App() {
 
                         <div className="place-info">
                           <h3>{p.name}</h3>
+
+                          {/* Vibe tags directly under name - auto-generated only */}
+                          {p.vibe_tags && p.vibe_tags.length > 0 && (
+                            <div className="vibe-tags-inline">
+                              {p.vibe_tags.map((tag, idx) => (
+                                <span key={idx}>({tag})</span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Neighborhood/Area - Show location pin if neighborhood OR maps_url exists */}
+                          {(p.neighborhood || p.maps_url) && (
+                            <p className="neighborhood-field">
+                              <MapPin size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                              {p.neighborhood || 'Location'}
+                            </p>
+                          )}
+
+                          {/* Vibe Keywords as bubble tags */}
+                          {p.vibe_keywords && p.vibe_keywords.length > 0 && (
+                            <div className="vibe-keywords-bubbles">
+                              {p.vibe_keywords.map((keyword, idx) => (
+                                <span key={idx} className="vibe-keyword-bubble">{keyword}</span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Full context field */}
+                          {(p.vibe || p.must_try || p.when_to_go) && (
+                            <p className="context-field">
+                              {p.vibe && <><strong>💫 Context:</strong> {p.vibe}</>}
+                              {!p.vibe && p.must_try && <><strong>Must Try:</strong> {p.must_try}</>}
+                              {!p.vibe && !p.must_try && p.when_to_go && <><strong>When to Go:</strong> {p.when_to_go}</>}
+                            </p>
+                          )}
+
+                          {/* Summary/Description */}
                           {p.summary && (
                             <p className="description">
                               {isExpanded ? p.summary : shortDesc}
@@ -697,15 +944,23 @@ function App() {
                               )}
                             </p>
                           )}
-                          {p.vibe_tags && p.vibe_tags.length > 0 && (
+
+                          {/* Old vibe section removed - tags now inline */}
+                          {false && (!p.vibe_tags || p.vibe_tags.length === 0) && (!userAddedTags[p.name] || userAddedTags[p.name].length === 0) && (
                             <div className="vibe-section">
                               <strong>Vibes:</strong>
-                              <div className="vibe-tags">
-                                {p.vibe_tags.map((tag, idx) => (
-                                  <span key={idx} className="vibe-chip">
-                                    {tag}
-                                  </span>
-                                ))}
+                              <div className="add-tag-input-wrapper">
+                                <input
+                                  type="text"
+                                  className="add-tag-input"
+                                  placeholder="+ Add vibe tag"
+                                  onKeyPress={(e) => {
+                                    if (e.key === 'Enter' && e.target.value.trim()) {
+                                      handleAddTag(p.name, e.target.value.trim());
+                                      e.target.value = '';
+                                    }
+                                  }}
+                                />
                               </div>
                             </div>
                           )}
@@ -757,7 +1012,7 @@ function App() {
                             )}
                             {p.creator_insights && (
                               <p className="creator-insights">
-                                <strong>💡 Creator Insight:</strong> {p.creator_insights}
+                                {p.creator_insights}
                               </p>
                             )}
                           </div>
@@ -984,17 +1239,62 @@ function App() {
                           )}
                           <div className="place-info">
                             <h4>{p.name}</h4>
+
+                            {/* Vibe tags directly under name - auto-generated only */}
+                            {p.vibe_tags && p.vibe_tags.length > 0 && (
+                              <div className="vibe-tags-inline">
+                                {p.vibe_tags.map((tag, idx) => (
+                                  <span key={idx}>({tag})</span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Neighborhood/Area - Show location pin if neighborhood OR maps_url exists */}
+                            {(p.neighborhood || p.maps_url) && (
+                              <p className="neighborhood-field">
+                                <MapPin size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                                {p.neighborhood || 'Location'}
+                              </p>
+                            )}
+
+                            {/* Vibe Keywords as bubble tags */}
+                            {p.vibe_keywords && p.vibe_keywords.length > 0 && (
+                              <div className="vibe-keywords-bubbles">
+                                {p.vibe_keywords.map((keyword, idx) => (
+                                  <span key={idx} className="vibe-keyword-bubble">{keyword}</span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Full context field */}
+                            {(p.vibe || p.must_try || p.when_to_go) && (
+                              <p className="context-field">
+                                {p.vibe && <><strong>💫 Context:</strong> {p.vibe}</>}
+                                {!p.vibe && p.must_try && <><strong>Must Try:</strong> {p.must_try}</>}
+                                {!p.vibe && !p.must_try && p.when_to_go && <><strong>When to Go:</strong> {p.when_to_go}</>}
+                              </p>
+                            )}
+
+                            {/* Summary */}
                             {oneLineSummary && (
                               <p className="description">{oneLineSummary}</p>
                             )}
-                            {p.vibe_tags && p.vibe_tags.length > 0 && (
+
+                            {/* Old vibe section removed */}
+                            {false && (!p.vibe_tags || p.vibe_tags.length === 0) && (!userAddedTags[p.name] || userAddedTags[p.name].length === 0) && (
                               <div className="vibe-section">
-                                <div className="vibe-tags">
-                                  {p.vibe_tags.map((tag, idx) => (
-                                    <span key={idx} className="vibe-chip">
-                                      {tag}
-                                    </span>
-                                  ))}
+                                <div className="add-tag-input-wrapper">
+                                  <input
+                                    type="text"
+                                    className="add-tag-input"
+                                    placeholder="+ Add vibe tag"
+                                    onKeyPress={(e) => {
+                                      if (e.key === 'Enter' && e.target.value.trim()) {
+                                        handleAddTag(p.name, e.target.value.trim());
+                                        e.target.value = '';
+                                      }
+                                    }}
+                                  />
                                 </div>
                               </div>
                             )}
@@ -1037,7 +1337,7 @@ function App() {
                                   )}
                                   {p.creator_insights && (
                                     <p className="creator-insights">
-                                      <strong>💡 Creator Insight:</strong> {p.creator_insights}
+                                      {p.creator_insights}
                                     </p>
                                   )}
                                 </div>

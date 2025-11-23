@@ -100,6 +100,56 @@ CORS(app, resources={
     }
 })
 
+# ─────────────────────────────
+# Status Tracking System
+# ─────────────────────────────
+from threading import Lock
+import uuid
+
+# In-memory storage for extraction status updates
+extraction_status = {}
+status_lock = Lock()
+
+def create_extraction_id():
+    """Generate unique ID for tracking extraction progress."""
+    return str(uuid.uuid4())
+
+def update_status(extraction_id, message):
+    """Update status message for an extraction."""
+    with status_lock:
+        if extraction_id not in extraction_status:
+            extraction_status[extraction_id] = []
+        extraction_status[extraction_id].append({
+            "message": message,
+            "timestamp": datetime.now().isoformat()
+        })
+        print(f"📊 [{extraction_id[:8]}] {message}")
+        
+        # Auto-cleanup old status entries (older than 5 minutes)
+        current_time = datetime.now()
+        for eid in list(extraction_status.keys()):
+            if extraction_status[eid]:
+                try:
+                    last_timestamp_str = extraction_status[eid][-1]["timestamp"]
+                    last_timestamp = datetime.fromisoformat(last_timestamp_str)
+                    if (current_time - last_timestamp).total_seconds() > 300:  # 5 minutes
+                        del extraction_status[eid]
+                        print(f"🧹 Cleaned up old status for {eid[:8]}")
+                except (KeyError, ValueError, TypeError):
+                    # Skip if timestamp format is unexpected
+                    pass
+
+def get_status(extraction_id):
+    """Get all status messages for an extraction."""
+    with status_lock:
+        return extraction_status.get(extraction_id, [])
+
+def clear_status(extraction_id):
+    """Clear status for an extraction after completion."""
+    with status_lock:
+        if extraction_id in extraction_status:
+            del extraction_status[extraction_id]
+
 # Create a proxy-safe HTTP client
 safe_httpx = HttpxClient(trust_env=False, timeout=30.0)
 
@@ -1751,7 +1801,7 @@ def _detect_slide_boundaries(vidcap, total):
             vidcap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ok, img = vidcap.read()
             if not ok:
-                        continue
+                continue
             
             # Downscale for faster comparison
             gray = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (160, 120))
@@ -1768,12 +1818,12 @@ def _detect_slide_boundaries(vidcap, total):
             prev_gray = gray
         
         boundaries.append(total - 1)  # End with last frame
-        
+
         # Convert boundaries to (start, end) tuples
         slide_ranges = []
         for i in range(len(boundaries) - 1):
             slide_ranges.append((boundaries[i], boundaries[i + 1]))
-        
+
         return slide_ranges
     except Exception as e:
         print(f"⚠️ Slide detection failed: {e}, using fallback")
@@ -1866,47 +1916,142 @@ except ImportError as e:
 def _clear_places_cache_if_needed():
     """Clear cache if it gets too large (keep most recent 500 entries)."""
     global _places_cache
+    try:
+        # Ensure _places_cache exists
+        if _places_cache is None:
+            _places_cache = {}
+    except NameError:
+        _places_cache = {}
+    
     if len(_places_cache) > _MAX_CACHE_SIZE:
         keys_to_remove = list(_places_cache.keys())[:len(_places_cache) // 2]
         for key in keys_to_remove:
             del _places_cache[key]
         print(f"🧹 Cleared {len(keys_to_remove)} old cache entries (cache size: {len(_places_cache)})")
 
+def _extract_neighborhood_from_text(text):
+    """Extract neighborhood/area from context text (OCR, caption, etc).
+
+    Looks for neighborhood mentions in the text like "hottest new Soho bar".
+
+    Args:
+        text: Context text from OCR/caption/transcript
+
+    Returns:
+        Neighborhood name (e.g., "SoHo", "East Village") or None
+    """
+    if not text:
+        return None
+
+    # Common NYC neighborhoods to look for
+    neighborhoods = [
+        "SoHo", "NoHo", "Tribeca", "TriBeCa", "NoLita", "Nolita",
+        "East Village", "West Village", "Greenwich Village",
+        "Lower East Side", "Upper East Side", "Upper West Side",
+        "Midtown", "Hell's Kitchen", "Chelsea", "Flatiron",
+        "Gramercy", "Murray Hill", "Kips Bay",
+        "Financial District", "Battery Park City",
+        "Chinatown", "Little Italy",
+        "Williamsburg", "Greenpoint", "Bushwick", "Park Slope",
+        "DUMBO", "Brooklyn Heights", "Carroll Gardens",
+        "Fort Greene", "Prospect Heights", "Crown Heights",
+        "Astoria", "Long Island City", "Flushing",
+    ]
+
+    text_lower = text.lower()
+
+    # Look for neighborhood names in the text
+    for neighborhood in neighborhoods:
+        if neighborhood.lower() in text_lower:
+            return neighborhood
+
+    # If no specific neighborhood found, try to extract borough
+    boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
+    for borough in boroughs:
+        if borough.lower() in text_lower:
+            return borough
+
+    return None
+
+
+def _extract_neighborhood_from_address(address):
+    """Extract neighborhood/area from Google Maps formatted address.
+
+    Args:
+        address: Formatted address from Google Maps
+
+    Returns:
+        Neighborhood name (e.g., "SoHo", "East Village") or None
+    """
+    if not address:
+        return None
+
+    # Common NYC neighborhoods to look for
+    neighborhoods = [
+        "SoHo", "NoHo", "Tribeca", "TriBeCa", "NoLita", "Nolita",
+        "East Village", "West Village", "Greenwich Village",
+        "Lower East Side", "Upper East Side", "Upper West Side",
+        "Midtown", "Hell's Kitchen", "Chelsea", "Flatiron",
+        "Gramercy", "Murray Hill", "Kips Bay",
+        "Financial District", "Battery Park City",
+        "Chinatown", "Little Italy",
+        "Williamsburg", "Greenpoint", "Bushwick", "Park Slope",
+        "DUMBO", "Brooklyn Heights", "Carroll Gardens",
+        "Fort Greene", "Prospect Heights", "Crown Heights",
+        "Astoria", "Long Island City", "Flushing",
+    ]
+
+    address_lower = address.lower()
+
+    for neighborhood in neighborhoods:
+        if neighborhood.lower() in address_lower:
+            return neighborhood
+
+    # If no specific neighborhood found, try to extract borough
+    boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
+    for borough in boroughs:
+        if borough.lower() in address_lower:
+            return borough
+
+    return None
+
+
 def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
-    """Get canonical name, address, place_id, and photos from Google Maps API.
-    
+    """Get canonical name, address, place_id, photos, and neighborhood from Google Maps API.
+
     Uses optimized geocoding service if available (80-95% cost reduction).
     Falls back to basic caching if service not available.
-    
+
     Args:
         place_name: Name of the place to search for
         use_cache: If True, use cached results to avoid redundant API calls
         location_hint: Optional location hint (e.g., "NYC", "Brooklyn")
-    
+
     Returns:
-        Tuple of (canonical_name, address, place_id, photos)
+        Tuple of (canonical_name, address, place_id, photos, neighborhood)
     """
     if not GOOGLE_API_KEY:
         print(f"⚠️ GOOGLE_API_KEY not set - cannot get place info for {place_name}")
-        return None, None, None, None
-    
+        return None, None, None, None, None
+
     # Use optimized geocoding service if available
     if OPTIMIZED_GEOCODING_AVAILABLE and use_cache:
         try:
             service = get_geocoding_service()
             result = service.resolve_single_place(place_name, location_hint)
-            
+
             if result:
                 canonical_name = result.get('canonical_name') or result.get('name', place_name)
                 address = result.get('address') or result.get('formatted_address', '')
                 place_id = result.get('place_id')
                 photos = result.get('photos', [])
-                
+                neighborhood = _extract_neighborhood_from_address(address)
+
                 print(f"✅ Found place (optimized): {canonical_name} (place_id: {place_id[:20] if place_id else 'None'}..., photos: {len(photos) if photos else 0})")
-                return canonical_name, address, place_id, photos
+                return canonical_name, address, place_id, photos, neighborhood
             else:
                 print(f"⚠️ No results found for {place_name} (optimized service)")
-                return None, None, None, None
+                return None, None, None, None, None
         except (ImportError, ValueError, Exception) as e:
             # If optimized service fails, disable it and fall back to basic method
             print(f"⚠️ Optimized geocoding service error: {e} - falling back to basic method")
@@ -1918,8 +2063,13 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
     
     # Fallback to basic caching method
     # Ensure _places_cache is available (should always be, but check for safety)
-    if '_places_cache' not in globals():
-        global _places_cache
+    global _places_cache
+    try:
+        # Try to access _places_cache to ensure it exists
+        if _places_cache is None:
+            _places_cache = {}
+    except NameError:
+        # If _places_cache doesn't exist, create it
         _places_cache = {}
     
     cache_key = place_name.lower().strip()
@@ -1941,8 +2091,8 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
         
         if data.get("status") != "OK":
             print(f"⚠️ Google Places search error for {place_name}: {data.get('status')} - {data.get('error_message', 'Unknown error')}")
-            return None, None, None, None
-        
+            return None, None, None, None, None
+
         res = data.get("results", [])
         if res and len(res) > 0:
             place_info = res[0]
@@ -1950,16 +2100,23 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
             address = place_info.get("formatted_address")
             place_id = place_info.get("place_id")
             photos = place_info.get("photos", [])
-            
-            result = (canonical_name, address, place_id, photos)
-            
+            neighborhood = _extract_neighborhood_from_address(address)
+
+            result = (canonical_name, address, place_id, photos, neighborhood)
+
             # Cache the result
             if use_cache:
+                # Ensure _places_cache exists before accessing
+                try:
+                    if _places_cache is None:
+                        _places_cache = {}
+                except NameError:
+                    _places_cache = {}
                 _places_cache[cache_key] = result
                 if len(_places_cache) > _MAX_CACHE_SIZE:
                     _clear_places_cache_if_needed()
                 print(f"💾 Cached result for: {place_name}")
-            
+
             print(f"✅ Found place: {canonical_name} (place_id: {place_id[:20] if place_id else 'None'}..., photos: {len(photos) if photos else 0})")
             return result
         else:
@@ -1970,7 +2127,7 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
         print(f"⚠️ Failed to get place info from Google for {place_name} - Unexpected error: {e}")
         import traceback
         print(traceback.format_exc())
-    return None, None, None, None
+    return None, None, None, None, None
 
 # ─────────────────────────────
 # Google Places Photo
@@ -2120,10 +2277,14 @@ def _is_ocr_garbled(text):
     # Example: "vee ae ra Me we a a ee ee cf a. ay USSG nn. ib. it ray af fh i SY"
     short_words = sum(1 for w in words if len(w.strip('.,!?;:')) <= 3)
     short_word_ratio = short_words / len(words) if words else 0
-    
-    # If more than 60% of words are 1-3 characters, it's likely garbled
+
+    # If text has SLIDE markers, it's structured OCR from slideshow - be more lenient
+    # (Slideshow OCR often has short words but is still valuable)
+    threshold = 0.90 if has_slide_markers else 0.75
+
+    # If more than threshold% of words are 1-3 characters, it's likely garbled
     # (real text has longer words mixed in)
-    if short_word_ratio > 0.6 and len(words) > 20:
+    if short_word_ratio > threshold and len(words) > 20:
         print(f"   🚫 Garble detection: {short_word_ratio:.1%} of words are 1-3 chars ({short_words}/{len(words)}) - likely garbled OCR")
         return True
     
@@ -2220,14 +2381,14 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     # Parse OCR into slides for slide-aware extraction
     slide_dict = _parse_slide_text(ocr_text)
     is_slideshow = len(slide_dict) > 1
-    
+
     if is_slideshow:
         print(f"📖 SLIDE-AWARE EXTRACTION: Detected {len(slide_dict)} slides")
         print(f"   Extracting places per-slide to maintain context (like reading a book)")
-    
+
     # CRITICAL: Detect if OCR is too garbled to be useful
-    # If OCR has too many special characters/random letters, it's probably corrupted
-    if ocr_text and _is_ocr_garbled(ocr_text):
+    # SKIP garble check if we detected valid SLIDE markers (slideshow is structured content)
+    if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
         print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
         print(f"   Reason: Too many non-alphanumeric characters or random text")
         print(f"   Garbled OCR preview: {ocr_text[:200]}...")
@@ -2311,6 +2472,34 @@ If no venues found, output: (none)
                 print(f"     ❌ Slide extraction failed: {e}")
                 continue
         
+        # Build context for each venue (slide content + following contextual slides)
+        # If a venue is on slide 2, and slide 3 has no venue, slide 3's content belongs to slide 2's venue
+        print(f"\n📖 Building context for each venue (reading like a book)...")
+        venue_to_context = {}
+        slides_sorted = sorted(slide_dict.items())
+
+        for slide_key, venues in sorted(all_venues_per_slide.items()):
+            # Get index of this slide
+            slide_idx = next(i for i, (k, _) in enumerate(slides_sorted) if k == slide_key)
+
+            for venue in venues:
+                # Start with current slide content
+                context_parts = [slide_dict[slide_key]]
+
+                # Collect following slides until next venue appears
+                for j in range(slide_idx + 1, len(slides_sorted)):
+                    next_key, next_text = slides_sorted[j]
+                    # If next slide has no venues, it's contextual content for current venue
+                    if next_key not in all_venues_per_slide:
+                        context_parts.append(next_text)
+                    else:
+                        break  # Stop at next venue
+
+                # Combine all context for this venue
+                full_context = "\n".join(context_parts)
+                venue_to_context[venue] = full_context
+                print(f"   📝 {venue}: {len(full_context)} chars of context from {len(context_parts)} slide(s)")
+
         # Combine venues from all slides (preserving slide info for enrichment)
         all_venues_with_slides = []
         for slide_key, venues in all_venues_per_slide.items():
@@ -2319,13 +2508,13 @@ If no venues found, output: (none)
                     "name": venue,
                     "source_slide": slide_key
                 })
-        
+
         # Create overall summary from caption
         if caption and len(caption) > 10:
             overall_summary = caption[:100] if len(caption) <= 100 else caption[:97] + "..."
         else:
             overall_summary = f"Photo Slideshow ({len(all_venues_per_slide)} slides)"
-        
+
         # Deduplicate venues by name (keeping first occurrence and slide info)
         unique_venues = []
         seen = set()
@@ -2334,20 +2523,20 @@ If no venues found, output: (none)
             if v_lower not in seen and len(v_lower) >= 3:
                 seen.add(v_lower)
                 unique_venues.append(v_dict["name"])  # Return just names for compatibility
-        
+
         print(f"\n📖 Slide-aware extraction complete:")
         print(f"   Total unique venues: {len(unique_venues)}")
         print(f"   Summary: {overall_summary}")
-        
-        # Return tuple: (venue_names, summary, venue_to_slide_mapping)
-        # Build mapping for enrichment later
+
+        # Return tuple: (venue_names, summary, venue_to_slide_mapping, venue_to_context_mapping)
+        # Build mappings for enrichment later
         venue_to_slide = {}
         for v_dict in all_venues_with_slides:
             v_lower = v_dict["name"].lower().strip()
             if v_lower not in venue_to_slide and len(v_lower) >= 3:
                 venue_to_slide[v_dict["name"]] = v_dict["source_slide"]
-        
-        return unique_venues, overall_summary, venue_to_slide
+
+        return unique_venues, overall_summary, venue_to_slide, venue_to_context
     
     # Non-slideshow extraction (fallback to combined text)
     combined_text = "\n".join(x for x in [ocr_text, transcript, caption, comments] if x)
@@ -2543,35 +2732,66 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
 
         print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
-        return unique, summary, {}  # Empty venue_to_slide for non-slideshow videos
+        return unique, summary, {}, {}  # Empty venue_to_slide and venue_to_context for non-slideshow videos
     except Exception as e:
         print("❌ GPT extraction failed:", e)
-        return [], "TikTok Venues", {}
+        return [], "TikTok Venues", {}, {}
 
 # ─────────────────────────────
 # GPT: Enrichment + Vibe Tags
 # ─────────────────────────────
-def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_slide=None, all_venues=None):
+def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_slide=None, slide_context=None, all_venues=None):
     """
     Enrich place information with slide-aware context.
-    If source_slide is provided (e.g., "slide_1"), only use context from that slide.
+    If slide_context is provided, use that pre-built context (reads slides sequentially "like a book").
+    Otherwise, if source_slide is provided (e.g., "slide_1"), only use context from that slide.
     If all_venues is provided, filter context to only include mentions of THIS venue, not others.
     """
-    # Parse slides if OCR has them
-    slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
+    # Helper function to clean slide markers from text
+    def clean_slide_markers(text):
+        """Remove 'SLIDE X:' markers from text."""
+        if not text:
+            return text
+        import re
+        # Remove "SLIDE X:" or "SLIDEX:" patterns (case-insensitive)
+        cleaned = re.sub(r'SLIDE\s*\d+\s*:\s*', '', text, flags=re.IGNORECASE)
+        return cleaned.strip()
     
-    # If we have slide info and this place came from a specific slide, use only that slide's context
-    if source_slide and source_slide in slide_dict:
-        print(f"   🔍 Enriching {name} using context from {source_slide} only (slide-aware)")
-        slide_specific_text = slide_dict[source_slide]
-        raw_context = "\n".join(x for x in [slide_specific_text, caption] if x)
+    # Use pre-built slide context if available (already includes sequential reading)
+    # Slide context is already venue-specific, so we skip the venue filtering below
+    if slide_context:
+        print(f"   📖 Enriching {name} using pre-built slide context ({len(slide_context)} chars)")
+        # Clean slide markers from context
+        cleaned_slide_context = clean_slide_markers(slide_context)
+        context = "\n".join(x for x in [cleaned_slide_context, caption] if x)
+        # Skip venue filtering - slide context is already venue-specific
+        context_is_already_filtered = True
+    elif source_slide:
+        # Fallback: Parse slides if OCR has them
+        slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
+        # If we have slide info and this place came from a specific slide, use only that slide's context
+        if source_slide in slide_dict:
+            print(f"   🔍 Enriching {name} using context from {source_slide} only (slide-aware)")
+            slide_specific_text = slide_dict[source_slide]
+            # Clean slide markers
+            cleaned_slide_text = clean_slide_markers(slide_specific_text)
+            raw_context = "\n".join(x for x in [cleaned_slide_text, caption] if x)
+            context_is_already_filtered = False
+        else:
+            # Fallback: use full context
+            cleaned_ocr = clean_slide_markers(ocr_text) if ocr_text else ""
+            raw_context = "\n".join(x for x in [caption, cleaned_ocr, transcript, comments] if x)
+            context_is_already_filtered = False
     else:
         # Fallback: use full context (for non-slideshow videos or if source_slide not found)
-        raw_context = "\n".join(x for x in [caption, ocr_text, transcript, comments] if x)
-    
+        cleaned_ocr = clean_slide_markers(ocr_text) if ocr_text else ""
+        raw_context = "\n".join(x for x in [caption, cleaned_ocr, transcript, comments] if x)
+        context_is_already_filtered = False
+
     # CRITICAL: Filter context to only include parts relevant to THIS venue
     # This prevents mixing details from other venues mentioned in the same video
-    if all_venues and len(all_venues) > 1:
+    # Skip if context is already venue-specific (from slide_context)
+    if not context_is_already_filtered and all_venues and len(all_venues) > 1:
         print(f"   🎯 Filtering context for {name} (excluding {len(all_venues)-1} other venues)")
         # Split context into sentences/segments
         import re
@@ -2637,9 +2857,10 @@ CRITICAL: Only extract information that is clearly about "{name}".
 - Do NOT include details about other venues (even if they're mentioned in the same context)
 - If context says "at Katana Kitten, try XYZ" but you're analyzing a different venue, do NOT include "at Katana Kitten" in the response
 - Only use information that directly relates to "{name}"
+- IMPORTANT: If this is from a slideshow, ONLY use information from the slide(s) that mention "{name}". Do NOT aggregate information from other slides about different venues.
 
 {{
-  "summary": "2–3 sentence vivid description about {name} specifically (realistic, not fabricated)",
+  "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides.",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Mood or crowd at {name} if present",
   "must_try": "Context-aware field: For RESTAURANTS/FOOD places, list specific dishes, drinks, or menu items to try AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Only include if mentioned SPECIFICALLY for {name}.",
@@ -2690,17 +2911,30 @@ Context (filtered to only include mentions of "{name}"):
                 field_name = "must_try"
             must_try_value = ""
         
+        # Extract short vibe keywords from the full context for bubble tags
+        vibe_keywords = extract_vibe_keywords(context)
+
         data = {
             "summary": j.get("summary", "").strip(),
             "when_to_go": j.get("when_to_go", "").strip(),
-            "vibe": j.get("vibe", "").strip(),
+            "vibe": context.strip(),  # Raw extracted text for full context display
+            "vibe_keywords": vibe_keywords,  # Short keywords for bubble tags
             "must_try": must_try_value,
             "must_try_field": field_name,  # Store the field name
             "specials": j.get("specials", "").strip(),
             "comments_summary": j.get("comments_summary", "").strip(),
             "creator_insights": j.get("creator_insights", "").strip(),  # Personal recommendations and comparisons
         }
-        vibe_text = " ".join(v for v in data.values())
+        # Join only string fields for vibe_tags extraction (skip lists like vibe_keywords)
+        vibe_text = " ".join(filter(None, [
+            data.get("summary", ""),
+            data.get("when_to_go", ""),
+            data.get("vibe", ""),
+            data.get("must_try", ""),
+            data.get("specials", ""),
+            data.get("comments_summary", ""),
+            data.get("creator_insights", "")
+        ]))
         data["vibe_tags"] = extract_vibe_tags(vibe_text)
         return data
     except Exception as e:
@@ -2709,6 +2943,7 @@ Context (filtered to only include mentions of "{name}"):
             "summary": "",
             "when_to_go": "",
             "vibe": "",
+            "vibe_keywords": [],
             "must_try": "",
             "must_try_field": "must_try",
             "specials": "",
@@ -2716,6 +2951,54 @@ Context (filtered to only include mentions of "{name}"):
             "creator_insights": "",
             "vibe_tags": [],
         }
+
+def extract_vibe_keywords(text):
+    """Extract short descriptive keywords from context text for bubble tags.
+
+    Examples: "Lively", "Energetic", "Social", "Cozy", "Romantic"
+    """
+    if not text or len(text.strip()) < 10:
+        return []
+
+    # Common vibe/atmosphere keywords to look for
+    vibe_keywords = [
+        # Energy level
+        "Lively", "Energetic", "Vibrant", "Dynamic", "Buzzing", "Electric",
+        "Chill", "Relaxed", "Calm", "Peaceful", "Laid-back", "Casual",
+
+        # Atmosphere
+        "Cozy", "Intimate", "Romantic", "Charming", "Elegant", "Sophisticated",
+        "Trendy", "Hip", "Modern", "Contemporary", "Stylish", "Chic",
+        "Rustic", "Vintage", "Classic", "Traditional", "Old-school",
+
+        # Social
+        "Social", "Friendly", "Welcoming", "Inviting", "Warm",
+        "Upscale", "Classy", "Fancy", "Luxurious", "Premium",
+        "Casual", "Unpretentious", "Down-to-earth", "Authentic",
+
+        # Activity
+        "Lively", "Crowded", "Popular", "Bustling", "Packed",
+        "Quiet", "Intimate", "Hidden", "Secret", "Local",
+
+        # Mood
+        "Fun", "Playful", "Quirky", "Eclectic", "Unique",
+        "Serious", "Professional", "Polished", "Refined",
+        "Artsy", "Creative", "Bohemian", "Alternative",
+        "Underground", "Dive", "Gritty", "Raw", "Edgy",
+    ]
+
+    text_lower = text.lower()
+    found_keywords = []
+
+    # Look for keywords in the text
+    for keyword in vibe_keywords:
+        if keyword.lower() in text_lower and keyword not in found_keywords:
+            found_keywords.append(keyword)
+            if len(found_keywords) >= 5:  # Limit to 5 keywords
+                break
+
+    return found_keywords
+
 
 def extract_vibe_tags(text):
     if not text.strip():
@@ -2748,7 +3031,7 @@ Return valid JSON list.
 
 def get_place_address(place_name):
     """Get formatted address for a place name using Google Maps API."""
-    _, address, _, _ = get_place_info_from_google(place_name, use_cache=True)
+    _, address, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
     return address
 
 def merge_place_with_cache(place_data, video_url, username=None, video_summary=None):
@@ -2759,7 +3042,7 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
     # If address not already set, get it (and ensure canonical name)
     # Use cache to avoid redundant API calls
     if not place_data.get("address"):
-        canonical_name, address, _, _ = get_place_info_from_google(place_name, use_cache=True)
+        canonical_name, address, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
         if canonical_name and canonical_name.lower() != place_name.lower():
             place_name = canonical_name  # Update to canonical name
             place_data["name"] = canonical_name
@@ -2770,15 +3053,18 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
         # Only check canonical name if we don't have it cached - avoid redundant API call
         # Check cache first
         # Ensure _places_cache is available
-        if '_places_cache' not in globals():
-            global _places_cache
+        global _places_cache
+        try:
+            if _places_cache is None:
+                _places_cache = {}
+        except NameError:
             _places_cache = {}
         cache_key = place_name.lower().strip()
         if cache_key in _places_cache:
-            canonical_name, _, _, _ = _places_cache[cache_key]
+            canonical_name, _, _, _, _ = _places_cache[cache_key]
         else:
             # Only make API call if not in cache
-            canonical_name, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
+            canonical_name, _, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
         if canonical_name and canonical_name.lower() != place_name.lower():
             place_name = canonical_name
             place_data["name"] = canonical_name
@@ -2885,15 +3171,19 @@ def extract_username_from_url(url):
     match = re.search(r"@([^/]+)", url)
     return match.group(1) if match else None
 
-def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text, url, username, context_title, venue_to_slide=None):
+def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text, url, username, context_title, venue_to_slide=None, venue_to_context=None, photo_urls=None):
     """Enrich multiple places in parallel for better performance.
-    
+
     Args:
         venues: List of venue names to enrich
         venue_to_slide: Optional dict mapping venue names to their source slides
+        venue_to_context: Optional dict mapping venue names to their slide-specific context
+        photo_urls: Optional list of photo URLs from TikTok photo post (first image used as thumbnail)
     """
     if venue_to_slide is None:
         venue_to_slide = {}
+    if venue_to_context is None:
+        venue_to_context = {}
     
     places_extracted = []
     
@@ -2901,7 +3191,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         """Enrich a single venue and fetch its photo - runs in parallel."""
         # Get canonical name, address, place_id, and photos from Google Maps (correct spelling)
         # Use cache to avoid redundant API calls
-        canonical_name, address, place_id, photos = get_place_info_from_google(venue_name, use_cache=True)
+        canonical_name, address, place_id, photos, neighborhood = get_place_info_from_google(venue_name, use_cache=True)
         # Use canonical name if available, otherwise use original
         display_name = canonical_name if canonical_name else venue_name
         
@@ -2911,19 +3201,96 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         
         # Get source slide for this venue if available
         source_slide = venue_to_slide.get(venue_name)
-        
-        # Pass source_slide and all_venues to enrichment for slide-aware and venue-specific context
-        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, all_venues=venues)
-        # Use place_id and photos if available for more reliable photo fetching
-        photo = get_photo_url(display_name, place_id=place_id, photos=photos)
+
+        # Get pre-built context for this venue (from sequential slide reading)
+        slide_context = venue_to_context.get(venue_name)
+
+        # Pass source_slide, slide_context, and all_venues to enrichment for slide-aware and venue-specific context
+        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
+
+        # Extract neighborhood from context FIRST (priority: text mentions > Google Maps address)
+        # Use ONLY venue-specific context to avoid cross-contamination from other venues
+        if slide_context:
+            # If we have venue-specific slide context, use ONLY that (most accurate)
+            context_for_neighborhood = slide_context
+        else:
+            # Fallback: use combined context only if we don't have venue-specific context
+            context_for_neighborhood = "\n".join(filter(None, [
+                caption,
+                transcript
+            ]))
+
+        neighborhood_from_text = _extract_neighborhood_from_text(context_for_neighborhood)
+
+        if neighborhood_from_text:
+            final_neighborhood = neighborhood_from_text
+            print(f"   📍 Found neighborhood in text: {final_neighborhood}")
+        elif neighborhood:
+            # Fallback to Google Maps address parsing
+            final_neighborhood = neighborhood
+            print(f"   📍 Found neighborhood from Google Maps: {final_neighborhood}")
+        else:
+            # Try Place Details API to get more detailed neighborhood info
+            final_neighborhood = None
+            if place_id:
+                try:
+                    print(f"   🔍 Trying Place Details API for neighborhood info...")
+                    r = requests.get(
+                        "https://maps.googleapis.com/maps/api/place/details/json",
+                        params={
+                            "place_id": place_id,
+                            "fields": "address_components",
+                            "key": GOOGLE_API_KEY
+                        },
+                        timeout=10
+                    )
+                    r.raise_for_status()
+                    details_data = r.json()
+                    if details_data.get("status") == "OK":
+                        result = details_data.get("result", {})
+                        address_components = result.get("address_components", [])
+                        # Look for neighborhood, sublocality, or locality in address components
+                        for component in address_components:
+                            types = component.get("types", [])
+                            if "neighborhood" in types or "sublocality" in types:
+                                neighborhood_name = component.get("long_name")
+                                if neighborhood_name:
+                                    final_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details: {final_neighborhood}")
+                                    break
+                except Exception as e:
+                    print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
+
+        # Photo priority: 1) TikTok slide photo, 2) Google Maps photo
+        photo = None
+
+        # Try to get photo from the specific slide this venue came from
+        if source_slide and photo_urls:
+            # Extract slide number from source_slide (e.g., "slide_2" -> 1 for 0-indexed)
+            try:
+                slide_num = int(source_slide.split('_')[1]) - 1  # Convert to 0-indexed
+                if 0 <= slide_num < len(photo_urls):
+                    photo = photo_urls[slide_num]
+                    print(f"   📸 Using TikTok slide {slide_num + 1} photo for {display_name}")
+            except (IndexError, ValueError) as e:
+                print(f"   ⚠️ Failed to parse slide number from {source_slide}: {e}")
+
+        # Fallback to Google Maps photo if no TikTok photo
+        if not photo:
+            photo = get_photo_url(display_name, place_id=place_id, photos=photos)
+            if photo:
+                print(f"   📸 Using Google Maps photo for {display_name}")
+
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
             "photo_url": photo or "https://via.placeholder.com/600x400?text=No+Photo",
             "description": intel.get("summary", ""),
             "vibe_tags": intel.get("vibe_tags", []),
+            "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly
             "address": address,  # Also get address while we're at it
-            **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags"]}
+            "neighborhood": final_neighborhood,  # Prioritize text mentions, fallback to Google Maps
+            **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags", "vibe_keywords"]}
         }
         return place_data
     
@@ -3880,6 +4247,33 @@ def extract_photo_post(url):
         return {"photos": [], "caption": ""}
 
 
+@app.route("/api/status/<extraction_id>", methods=["GET"])
+def get_extraction_status(extraction_id):
+    """Get status updates for an ongoing extraction."""
+    try:
+        status_messages = get_status(extraction_id)
+        
+        # Auto-cleanup: if status is empty or very old, return empty
+        # This helps stop unnecessary polling
+        if not status_messages:
+            return jsonify({
+                "extraction_id": extraction_id,
+                "messages": [],
+                "completed": True
+            }), 200
+        
+        # Check if last message indicates completion
+        last_message = status_messages[-1].get("message", "")
+        is_complete = "Finalizing" in last_message or "Complete" in last_message
+        
+        return jsonify({
+            "extraction_id": extraction_id,
+            "messages": status_messages,
+            "completed": is_complete
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/extract", methods=["POST"])
 def extract_api():
     """
@@ -3890,26 +4284,32 @@ def extract_api():
     4. Stream results: Show places as they arrive, then supplement with OCR
     """
     url = request.json.get("video_url")
-    
+
     if not url:
         return jsonify({
             "error": "No video URL provided",
             "message": "Please provide a valid TikTok video URL."
         }), 400
-    
+
+    # Create extraction ID for status tracking
+    extraction_id = create_extraction_id()
+    update_status(extraction_id, "Analyzing TikTok link...")
+
     # ===== AUTO-DETECT SLIDESHOW =====
     is_slideshow = "/photo/" in url.lower()
-    
+
     # ===== PHOTO POST HANDLING =====
     # Detect if the TikTok URL contains /photo/ and use robust extractor
     if is_slideshow:
         print("📸 Detected TikTok photo post - using robust extractor (API16 -> SnapTik -> Playwright)")
+        update_status(extraction_id, "Detected photo slideshow...")
         
         # Clean URL - remove query parameters that might interfere
         clean_url = url.split('?')[0] if '?' in url else url
         if clean_url != url:
             print(f"🔗 Cleaned URL: {url} -> {clean_url}")
-        
+
+        update_status(extraction_id, "Downloading slideshow images...")
         # Use robust extractor (API16 -> SnapTik -> Playwright)
         media = robust_tiktok_extractor(clean_url)
         
@@ -3964,12 +4364,14 @@ def extract_api():
         
         if photo_urls:
             print(f"✅ Extracted {len(photo_urls)} photos, caption: {caption[:100] if caption else 'None'}...")
-            
+            update_status(extraction_id, f"Scanning {len(photo_urls)} images for text...")
+
             # Use new advanced OCR pipeline for slideshow extraction
             ocr_text = ""
-            
+
             if ADVANCED_OCR_AVAILABLE and len(photo_urls) > 0:
                 print(f"🔍 Processing {len(photo_urls)} images with advanced OCR pipeline...")
+                update_status(extraction_id, "Reading text from images...")
                 try:
                     # Use the new high-quality OCR processor on slideshow images
                     image_sources = photo_urls  # Process ALL images (no limit)
@@ -4044,14 +4446,16 @@ def extract_api():
             
             # Pass combined OCR + caption through existing GPT-based place extraction function
             print(f"🤖 Extracting venues from photo post using GPT...")
+            update_status(extraction_id, "Identifying venues and locations...")
             transcript = ""  # No audio for photo posts
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
-            venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
             print(f"🤖 GPT returned {len(venues)} venues: {venues}")
             print(f"🤖 GPT returned title: {context_title}")
             venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
             print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+            update_status(extraction_id, f"Found {len(venues)} venues...")
             
             # Build response with same JSON structure as video extraction
             data = {
@@ -4068,13 +4472,17 @@ def extract_api():
             # Enrich places if any were found
             if venues:
                 print(f"🌟 Enriching {len(venues)} places with Google Maps data...")
+                update_status(extraction_id, f"Mapping {len(venues)} venues with details...")
                 username = extract_username_from_url(url)
                 places_extracted = enrich_places_parallel(
                     venues, transcript, ocr_text, caption, comments_text,
-                    url, username, context_title, venue_to_slide=venue_to_slide
+                    url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context, photo_urls=photo_urls
                 )
                 print(f"✅ Enriched {len(places_extracted)} places successfully")
+                update_status(extraction_id, "Finalizing results...")
                 data["places_extracted"] = places_extracted
+                # Mark as complete - frontend will stop polling
+                update_status(extraction_id, "Complete")
             else:
                 print(f"⚠️ No venues found by GPT extraction")
                 print(f"   This could mean:")
@@ -4082,14 +4490,21 @@ def extract_api():
                 print(f"   - GPT couldn't identify venues in the text")
                 print(f"   - The text was too short or unclear")
                 data["places_extracted"] = []
-            
+
+            # Add extraction_id to response
+            data["extraction_id"] = extraction_id
+
             # Cache the result
             vid = get_tiktok_id(url)
             if vid:
                 cache = load_cache()
                 cache[vid] = data
                 save_cache(cache)
-            
+
+            # Don't clear status immediately - let frontend finish polling first
+            # Status will be cleared after a timeout or when frontend stops polling
+            # clear_status(extraction_id)  # Commented out - let frontend control cleanup
+
             return jsonify(data), 200
         
         # If HTML extraction failed, try to use caption if we got one
@@ -4102,7 +4517,7 @@ def extract_api():
             transcript = ""
             ocr_text = ""
             comments_text = ""
-            venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
             venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
             
             # Build response
@@ -4112,19 +4527,20 @@ def extract_api():
                 "context_summary": context_title or caption or "TikTok Photo Post",
                 "places_extracted": [],
                 "photo_urls": [],  # No photos found
-                "caption_extracted": caption  # Include actual caption for debugging
+                "caption_extracted": caption,  # Include actual caption for debugging
+                "extraction_id": extraction_id,  # Add extraction_id for status polling
             }
             
             if venues:
                 username = extract_username_from_url(url)
                 places_extracted = enrich_places_parallel(
                     venues, transcript, ocr_text, caption, comments_text,
-                    url, username, context_title, venue_to_slide=venue_to_slide
+                    url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context
                 )
                 data["places_extracted"] = places_extracted
             else:
                 data["places_extracted"] = []
-            
+
             # Cache the result
             vid = get_tiktok_id(url)
             if vid:
@@ -4216,6 +4632,7 @@ def extract_api():
             print(traceback.format_exc())
 
     try:
+        update_status(extraction_id, "Downloading video...")
         video_path, meta = download_tiktok(url)
         
         # Extract video ID from metadata if not available from URL (for shortened URLs)
@@ -4289,6 +4706,7 @@ def extract_api():
                 
                 if photo_urls and OCR_AVAILABLE:
                     print(f"🔍 Attempting OCR on {len(photo_urls)} images...")
+                    update_status(extraction_id, f"Scanning {len(photo_urls)} images for text...")
                     for i, photo_url in enumerate(photo_urls):  # Process ALL images
                         try:
                             print(f"📥 Downloading image {i+1} for OCR: {photo_url[:100]}...")
@@ -4347,24 +4765,30 @@ def extract_api():
                 if caption: sources.append("caption")
                 if ocr_text: sources.append("OCR")
                 print(f"📝 Extracting venues from: {', '.join(sources) if sources else 'no sources available'}")
-                venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                update_status(extraction_id, "Identifying venues and locations...")
+                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+                update_status(extraction_id, f"Found {len(venues)} venues...")
                 
                 data = {
                     "video_url": url,
                     "summary_title": context_title or caption or "No venues found",
                     "context_summary": context_title or caption or "No venues found",
-                    "places_extracted": []
+                    "places_extracted": [],
+                    "extraction_id": extraction_id,  # Add extraction_id for status polling
                 }
                 
                 if venues:
+                    update_status(extraction_id, f"Mapping {len(venues)} venues with details...")
                     username = extract_username_from_url(url)
                     places_extracted = enrich_places_parallel(
                         venues, transcript, ocr_text, caption, comments_text,
-                        url, username, context_title, venue_to_slide=venue_to_slide
+                        url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context
                     )
                     data["places_extracted"] = places_extracted
-                
+                    update_status(extraction_id, "Finalizing results...")
+                    update_status(extraction_id, "Complete")
+
                 if vid:
                     cache = load_cache()
                     cache[vid] = data
@@ -4427,6 +4851,7 @@ def extract_api():
 
         # OPTIMIZATION: Extract audio first and transcribe immediately for voiceover videos
         # OCR can be deferred if we have a good transcript
+        update_status(extraction_id, "Extracting audio...")
         audio_path = extract_audio(video_path)
         print(f"✅ Audio extracted: {audio_path}")
         
@@ -4441,6 +4866,7 @@ def extract_api():
             transcript = ""  # No transcript for music
             # For music videos, OCR is critical - run it now
             print("🔍 Running OCR on video frames (music video - OCR is primary source)...")
+            update_status(extraction_id, "Scanning video for text...")
             ocr_text = extract_ocr_text(video_path)
             # Clean up audio file immediately
             if audio_path != video_path and os.path.exists(audio_path):
@@ -4452,6 +4878,7 @@ def extract_api():
         else:
             # It's speech - transcribe first (faster than OCR for voiceover)
             print("🗣️ Speech detected - transcribing audio first (OCR will run only if needed)...")
+            update_status(extraction_id, "Transcribing audio...")
             transcript = transcribe_audio(audio_path)
             print(f"✅ Transcript: {len(transcript)} chars")
             
@@ -4477,6 +4904,7 @@ def extract_api():
             if is_slideshow:
                 print("📸 SLIDESHOW DETECTED - OCR will be primary extraction method")
                 # For slideshows, OCR is essential - run it on multiple slides
+                update_status(extraction_id, "Scanning video for text...")
                 ocr_text = extract_ocr_text(video_path, sample_rate=1)  # Sample every frame
                 print(f"✅ Slideshow OCR: {len(ocr_text)} chars extracted")
             elif transcript_length > 50 and not "music" in transcript.lower():
@@ -4487,6 +4915,7 @@ def extract_api():
             else:
                 # No transcript or very short - run OCR with sampling
                 print(f"⚠️ LIMITED SPEECH ({transcript_length} chars) - Running sampled OCR")
+                update_status(extraction_id, "Scanning video for text...")
                 ocr_text = extract_ocr_text(video_path, sample_rate=0.5)  # Sample 50% of frames
                 print(f"✅ Sampled OCR: {len(ocr_text)} chars extracted")
             
@@ -4506,10 +4935,12 @@ def extract_api():
             except:
                 pass
 
-        venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+        update_status(extraction_id, "Identifying venues and locations...")
+        venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
 
         # Filter out any remaining placeholder-like venues
         venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+        update_status(extraction_id, f"Found {len(venues)} venues...")
         
         if not venues:
             print("⚠️ No valid venues extracted from video")
@@ -4526,21 +4957,26 @@ def extract_api():
                 "context_summary": context_title or caption or "No venues found",
                 "places_extracted": [],
                 "warning": warning_msg if warning_msg else None,
+                "extraction_id": extraction_id,  # Add extraction_id for status polling
             }
             return jsonify(data)
 
         # OPTIMIZATION: Parallelize enrichment and photo fetching for multiple places
+        update_status(extraction_id, f"Mapping {len(venues)} venues with details...")
         username = extract_username_from_url(url)
         places_extracted = enrich_places_parallel(
             venues, transcript, ocr_text, caption, comments_text,
-            url, username, context_title, venue_to_slide=venue_to_slide
+            url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context, photo_urls=None
         )
+        update_status(extraction_id, "Finalizing results...")
+        update_status(extraction_id, "Complete")
 
         data = {
             "video_url": url,
             "summary_title": context_title or caption or "TikTok Venues",
             "context_summary": context_title or caption or "TikTok Venues",
             "places_extracted": places_extracted,
+            "extraction_id": extraction_id,  # Add extraction_id for status polling
         }
 
         if vid:
@@ -4549,12 +4985,17 @@ def extract_api():
             print(f"💾 Cached result for video {vid}")
 
         print(f"✅ Extraction complete — {len(places_extracted)} places found")
+        # Don't clear status immediately - let frontend finish polling first
         return jsonify(data)
 
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
         error_str = str(e)
+        
+        # Log the full error for debugging
+        print(f"❌ Extraction error: {error_str}")
+        print(f"📋 Full traceback:\n{error_trace}")
         
         # Special handling for photo posts when yt-dlp fails
         if is_photo_post and ("Unsupported URL" in error_str or "yt-dlp error" in error_str):
@@ -4565,7 +5006,7 @@ def extract_api():
                 transcript = ""
                 ocr_text = ""
                 comments_text = ""
-                venues, context_title, venue_to_slide = extract_places_and_context(transcript, ocr_text, html_caption, comments_text)
+                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, html_caption, comments_text)
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
                 
                 data = {
@@ -4578,13 +5019,16 @@ def extract_api():
                 }
                 
                 if venues:
+                    update_status(extraction_id, f"Mapping {len(venues)} venues with details...")
                     username = extract_username_from_url(url)
                     places_extracted = enrich_places_parallel(
                         venues, transcript, ocr_text, html_caption, comments_text,
-                        url, username, context_title, venue_to_slide=venue_to_slide
+                        url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context
                     )
                     data["places_extracted"] = places_extracted
-                
+                    update_status(extraction_id, "Finalizing results...")
+                    update_status(extraction_id, "Complete")
+
                 # Cache the result
                 if vid:
                     cache = load_cache()

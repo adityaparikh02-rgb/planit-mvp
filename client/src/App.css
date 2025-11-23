@@ -801,6 +801,95 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
+/* Inline vibe tags (Tag 1), (Tag 2) style */
+.vibe-tags-inline {
+  font-size: 0.85rem;
+  color: #a0a8c0;
+  margin: 4px 0 8px 0;
+  line-height: 1.5;
+}
+
+.vibe-tags-inline span {
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.remove-tag-btn-inline {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+  color: #fff;
+  cursor: pointer;
+  margin-left: 2px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+.remove-tag-btn-inline:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.8);
+}
+
+/* Neighborhood/Area field */
+.neighborhood-field {
+  font-size: 0.85rem;
+  color: #9ba3b8;
+  margin: 6px 0 10px 0;
+  display: flex;
+  align-items: center;
+  line-height: 1.4;
+}
+
+/* Vibe Keywords Bubbles (Spotify-style) */
+.vibe-keywords-bubbles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.vibe-keyword-bubble {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.vibe-keyword-bubble:hover {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: rgba(99, 102, 241, 0.5);
+  transform: translateY(-1px);
+}
+
+/* Context field (Vibe/Must Try/When to Go) */
+.context-field {
+  font-size: 0.9rem;
+  color: #d0d4e0;
+  margin: 8px 0;
+  line-height: 1.4;
+}
+
+.context-field strong {
+  color: #e0e4f0;
+  font-weight: 600;
+}
+
+/* Old vibe tags section (kept for backwards compatibility) */
 .vibe-tags {
   display: flex;
   flex-wrap: wrap;
@@ -809,20 +898,158 @@
 }
 
 .vibe-chip {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
+  color: #e0e0ff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 20px;
   padding: 6px 12px;
   font-size: 0.8rem;
-  font-family: inherit;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 500;
+  transition: all 0.25s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
 }
 
 .vibe-chip:hover {
-  background: rgba(63, 71, 255, 0.15);
-  border-color: rgba(63, 71, 255, 0.3);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(79, 70, 229, 0.3));
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.remove-tag-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  margin-left: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.remove-tag-btn:hover {
+  background: rgba(255, 0, 0, 0.3);
+  color: #fff;
+  transform: scale(1.1);
+}
+
+.add-tag-input-wrapper {
+  margin-top: 8px;
+}
+
+.add-tag-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.9);
+  width: 100%;
+  max-width: 200px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.add-tag-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.add-tag-input:focus {
+  outline: none;
+  border-color: rgba(63, 71, 255, 0.5);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.add-tag-input:focus::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Vibe Filter Bar */
+.vibe-filter-bar {
+  background: rgba(10, 10, 15, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  margin-top: 20px;
+}
+
+.vibe-filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.filter-label {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+.clear-filter-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.clear-filter-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(63, 71, 255, 0.4);
   color: #7E86FF;
+}
+
+.vibe-filter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vibe-filter-chip {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  font-family: inherit;
+}
+
+.vibe-filter-chip:hover {
+  background: rgba(63, 71, 255, 0.2);
+  border-color: rgba(63, 71, 255, 0.4);
+  color: #7E86FF;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(63, 71, 255, 0.2);
+}
+
+.vibe-filter-chip.active {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border-color: #6366f1;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
 }
 
 .maps-link {
@@ -988,25 +1215,23 @@
 .vibe-chip {
   background: rgba(255, 255, 255, 0.12);
   color: #e0e0ff;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 20px;
-  padding: 4px 12px;
+  padding: 6px 12px;
   font-size: 0.8rem;
   font-weight: 500;
   transition: all 0.25s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
 }
 
 .vibe-chip:hover {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(79, 70, 229, 0.3));
+  border-color: rgba(99, 102, 241, 0.5);
   color: #fff;
-  transform: translateY(-2px);
-}
-
-.vibe-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
+  transform: translateY(-1px);
 }
 
 .vibe-tag {

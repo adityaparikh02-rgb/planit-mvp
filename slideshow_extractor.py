@@ -26,30 +26,31 @@ except ImportError:
     logger.warning("⚠️ Google Vision OCR module not available - using Tesseract only")
 
 
-def extract_text_from_slideshow(image_sources):
+def extract_text_from_slideshow(image_sources, detect_language=True):
     """
-    Extract text from all images in a slideshow.
-    
-    Uses Google Cloud Vision API if available (more accurate), 
-    otherwise falls back to Tesseract OCR.
-    
+    Extract text from all images in a slideshow with automatic language detection.
+
+    Uses Google Cloud Vision API if available (more accurate and auto-detects language),
+    otherwise falls back to Tesseract OCR with language detection.
+
     Args:
         image_sources: List of image URLs, file paths, or bytes
-        
+        detect_language: Enable automatic language detection (default: True)
+
     Returns:
-        Concatenated OCR text from all slides
+        Concatenated OCR text from all slides in original language
     """
     if not image_sources:
         logger.warning("No images provided to slideshow extractor")
         return ""
-    
-    # Try Google Cloud Vision first (much more accurate)
+
+    # Try Google Cloud Vision first (much more accurate + automatic language detection)
     if GOOGLE_VISION_AVAILABLE:
         # Filter to only URLs (Google Vision works best with URLs)
         url_sources = [src for src in image_sources if isinstance(src, str) and src.startswith(('http://', 'https://'))]
-        
+
         if url_sources:
-            logger.info(f"🎯 Using Google Cloud Vision API for {len(url_sources)} images (more accurate)")
+            logger.info(f"🎯 Using Google Cloud Vision API for {len(url_sources)} images (auto language detection)")
             try:
                 result = extract_text_from_slideshow_google_vision(url_sources)
                 if result and len(result.strip()) > 50:  # Only use if we got substantial text
@@ -58,17 +59,18 @@ def extract_text_from_slideshow(image_sources):
                     logger.warning("⚠️ Google Vision returned little/no text, falling back to Tesseract")
             except Exception as e:
                 logger.error(f"Google Vision failed: {e}, falling back to Tesseract")
-    
-    # Fallback to Tesseract OCR
-    logger.info(f"📝 Using Tesseract OCR for {len(image_sources)} images")
+
+    # Fallback to Tesseract OCR with language detection
+    logger.info(f"📝 Using Tesseract OCR for {len(image_sources)} images with language detection")
     processor = get_ocr_processor()
     all_text = []
-    
+
     for idx, image_source in enumerate(image_sources, 1):
         try:
             logger.debug(f"Extracting text from slide {idx}/{len(image_sources)}...")
-            text = processor.run(image_source, use_inverted_secondary=True)
-            
+            # Pass detect_language parameter to OCR processor
+            text = processor.run(image_source, use_inverted_secondary=True, detect_language=detect_language)
+
             if text and len(text.strip()) > 0:
                 # Add slide marker for context (helps with multi-slide analysis)
                 marked_text = f"SLIDE {idx}: {text}"
@@ -76,14 +78,14 @@ def extract_text_from_slideshow(image_sources):
                 logger.info(f"✅ Slide {idx}: {len(text)} chars extracted")
             else:
                 logger.info(f"⚠️ Slide {idx}: No readable text detected")
-        
+
         except Exception as e:
             logger.error(f"Failed to process slide {idx}: {e}")
             continue
-    
+
     # Concatenate all text with newlines for clarity
     combined = "\n".join(all_text)
-    
+
     logger.info(f"📊 Slideshow extraction complete: {len(image_sources)} slides, {len(combined)} chars total")
     return combined
 

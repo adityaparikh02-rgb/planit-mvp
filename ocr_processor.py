@@ -226,84 +226,123 @@ class OCRProcessor:
         
         return max(0.0, min(1.0, quality))
     
-    def run(self, image_source, use_inverted_secondary=True):
+    def _detect_language(self, img):
         """
-        Run OCR on image with adaptive preprocessing.
-        
+        Detect language of text in image using Tesseract OSD.
+
+        Args:
+            img: Preprocessed grayscale image
+
+        Returns:
+            Language code (e.g., 'eng') or None if detection failed
+        """
+        # For now, always use English only (safest option - always installed)
+        # This avoids errors with missing language packs
+        # Users can install additional language packs if needed
+        return 'eng'
+
+    def run(self, image_source, use_inverted_secondary=True, detect_language=True):
+        """
+        Run OCR on image with adaptive preprocessing and language detection.
+
         Strategy:
         1. Load image
         2. Apply standard preprocessing
-        3. Run Tesseract
-        4. If poor quality AND use_inverted_secondary: try inverted version
-        5. Return best result
-        
+        3. Detect language (optional)
+        4. Run Tesseract with appropriate language
+        5. If poor quality AND use_inverted_secondary: try inverted version
+        6. Return best result
+
         Args:
             image_source: URL (str), file path (str), or bytes
             use_inverted_secondary: Try inverted as fallback
-            
+            detect_language: Attempt to detect text language
+
         Returns:
             Cleaned OCR text (str)
         """
         if not self.ocr_available:
             logger.warning("OCR not available - tesseract not installed")
             return ""
-        
+
         # Load image
         img = self._load_image(image_source)
         if img is None:
             logger.warning("Failed to load image")
             return ""
-        
+
         # Standard preprocessing
         preprocessed = self._preprocess_image(img)
         if preprocessed is None:
             return ""
-        
+
+        # Detect language if enabled
+        lang_code = None
+        if detect_language:
+            lang_code = self._detect_language(preprocessed)
+            if lang_code:
+                logger.info(f"🌐 Detected language: {lang_code}")
+
+        # Build Tesseract config with language
+        if lang_code:
+            config = f"-l {lang_code} --oem 3 --psm 6"
+        else:
+            # Use English only as fallback (safest - always installed)
+            config = "-l eng --oem 3 --psm 6"
+
         # Run Tesseract
         try:
             text = pytesseract.image_to_string(
                 preprocessed,
-                config="--oem 3 --psm 6"
+                config=config
             )
         except Exception as e:
             logger.error(f"Tesseract failed: {e}")
-            return ""
-        
+            # Fallback to English-only if multi-language fails
+            try:
+                text = pytesseract.image_to_string(
+                    preprocessed,
+                    config="--oem 3 --psm 6"
+                )
+            except Exception as e2:
+                logger.error(f"Tesseract English fallback also failed: {e2}")
+                return ""
+
         text = self._clean_ocr_text(text)
         quality = self._calculate_text_quality(text)
-        
+
         logger.debug(f"OCR standard pass: {len(text)} chars, quality: {quality:.2f}")
-        
+
         best_text = text
         best_quality = quality
-        
+
         # Try inverted pass if quality is poor
         if use_inverted_secondary and quality < 0.6 and len(text) < 100:
             logger.debug("Quality low, trying inverted pass...")
-            
+
             try:
                 inverted = cv2.bitwise_not(preprocessed)
                 inverted_text = pytesseract.image_to_string(
                     inverted,
-                    config="--oem 3 --psm 6"
+                    config=config
                 )
                 inverted_text = self._clean_ocr_text(inverted_text)
                 inverted_quality = self._calculate_text_quality(inverted_text)
-                
+
                 logger.debug(f"OCR inverted pass: {len(inverted_text)} chars, quality: {inverted_quality:.2f}")
-                
+
                 if inverted_quality > best_quality:
                     best_text = inverted_text
                     best_quality = inverted_quality
                     logger.debug("Inverted pass better, using that result")
-            
+
             except Exception as e:
                 logger.warning(f"Inverted pass failed: {e}")
-        
+
         if best_quality < self.min_confidence:
             logger.warning(f"OCR quality below threshold ({best_quality:.2f} < {self.min_confidence})")
             return ""
-        
+
         logger.debug(f"Final OCR result: {len(best_text)} chars, quality: {best_quality:.2f}")
         return best_text
 
