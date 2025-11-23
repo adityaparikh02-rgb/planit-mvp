@@ -271,8 +271,15 @@ function App() {
       }
       
       // Check if there's an error in the response
-      if (data.error) {
+      // Don't treat "Photo extraction failed" as a fatal error - extraction can still succeed
+      if (data.error && !data.error.includes("Photo extraction failed")) {
         throw new Error(data.error);
+      }
+      // If photo extraction failed but we have places, log warning but continue
+      if (data.error && data.error.includes("Photo extraction failed") && data.places_extracted && data.places_extracted.length > 0) {
+        console.warn("⚠️ Photo extraction failed, but places were extracted successfully");
+        // Clear the error so it doesn't show to user
+        data.error = null;
       }
       
       // Check if we got valid data
