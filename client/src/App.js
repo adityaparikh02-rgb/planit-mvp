@@ -1237,6 +1237,10 @@ function App() {
                               src={p.photo_url}
                               alt={p.name}
                               className="place-photo"
+                              onError={(e) => {
+                                // Hide image if it fails to load instead of showing broken image
+                                e.target.style.display = 'none';
+                              }}
                             />
                           )}
                           <div className="place-info">
