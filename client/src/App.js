@@ -278,6 +278,7 @@ function App() {
           console.warn("⚠️ Photo extraction failed, but places were extracted successfully");
           // Clear the error so it doesn't show to user
           data.error = null;
+          setError(""); // Clear error state in UI
         } else if (!data.error.includes("Photo extraction failed")) {
           // Only throw error if it's not photo extraction failure
           throw new Error(data.error);
@@ -285,6 +286,7 @@ function App() {
           // Photo extraction failed and no places - still clear error, show empty result
           console.warn("⚠️ Photo extraction failed and no places found");
           data.error = null;
+          setError(""); // Clear error state in UI
           if (!data.places_extracted) {
             data.places_extracted = [];
           }
