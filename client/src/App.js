@@ -1340,7 +1340,9 @@ function App() {
                             {/* Neighborhood/Area - Show location pin if neighborhood OR maps_url exists */}
                             {(p.neighborhood || p.maps_url) && (
                               <p className="neighborhood-field">
-                                <MapPin size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                                <span style={{ marginRight: '6px', fontSize: '16px' }}>
+                                  {getNeighborhoodEmoji(p.neighborhood)}
+                                </span>
                                 {p.neighborhood || 'Location'}
                               </p>
                             )}
