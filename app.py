@@ -2865,8 +2865,27 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
         return unique, summary, {}, {}  # Empty venue_to_slide and venue_to_context for non-slideshow videos
+    except ValueError as e:
+        # OpenAI API key missing or client initialization failed
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ GPT extraction failed - API key issue: {e}")
+        print(f"📋 Full traceback:\n{error_trace}")
+        print(f"⚠️ OPENAI_API_KEY check: {os.getenv('OPENAI_API_KEY')[:10] if os.getenv('OPENAI_API_KEY') else 'NOT SET'}...")
+        return [], "TikTok Venues", {}, {}
     except Exception as e:
-        print("❌ GPT extraction failed:", e)
+        # Any other error (network, API error, timeout, etc.)
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ GPT extraction failed: {e}")
+        print(f"📋 Full traceback:\n{error_trace}")
+        print(f"⚠️ Error type: {type(e).__name__}")
+        # Check if OpenAI API key is set
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            print(f"⚠️ CRITICAL: OPENAI_API_KEY environment variable is NOT SET!")
+        else:
+            print(f"✅ OPENAI_API_KEY is set (first 10 chars: {api_key[:10]}...)")
         return [], "TikTok Venues", {}, {}
 
 # ─────────────────────────────
@@ -4861,6 +4880,14 @@ def extract_api():
                 print(f"   - The caption/OCR text doesn't contain venue names")
                 print(f"   - GPT couldn't identify venues in the text")
                 print(f"   - The text was too short or unclear")
+                print(f"   - GPT API call failed (check logs above for errors)")
+                # Check OpenAI API key
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    print(f"   ⚠️ CRITICAL: OPENAI_API_KEY environment variable is NOT SET!")
+                    data["warning"] = "OpenAI API key is not configured. Please check Render environment variables."
+                else:
+                    print(f"   ✅ OPENAI_API_KEY is set (first 10 chars: {api_key[:10]}...)")
                 data["places_extracted"] = []
 
             # Add extraction_id to response
