@@ -2770,6 +2770,8 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     Otherwise, if source_slide is provided (e.g., "slide_1"), only use context from that slide.
     If all_venues is provided, filter context to only include mentions of THIS venue, not others.
     """
+    import re  # Import re at function level to avoid scope issues
+    
     # Helper function to clean slide markers from text
     def clean_slide_markers(text):
         """Remove 'SLIDE X:' markers from text."""
@@ -2915,7 +2917,6 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     if not context_is_already_filtered and all_venues and len(all_venues) > 1:
         print(f"   🎯 Filtering context for {name} (excluding {len(all_venues)-1} other venues)")
         # Split context into sentences/segments
-        import re
         sentences = re.split(r'[.!?]\s+', raw_context)
         
         # Keep only sentences that mention THIS venue name (case-insensitive)
