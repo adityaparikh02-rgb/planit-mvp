@@ -3475,58 +3475,16 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # Pass source_slide, slide_context, and all_venues to enrichment for slide-aware and venue-specific context
         intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
 
-        # Extract neighborhood from context FIRST (priority: text mentions > Google Maps address)
-        # Use ONLY venue-specific context to avoid cross-contamination from other venues
-        if slide_context:
-            # If we have venue-specific slide context, use ONLY that (most accurate)
-            context_for_neighborhood = slide_context
-        else:
-            # Fallback: use combined context only if we don't have venue-specific context
-            context_for_neighborhood = "\n".join(filter(None, [
-                caption,
-                transcript
-            ]))
-
-        # Prioritize Google Maps address extraction over text extraction (more reliable)
-        # Only use text extraction if Google Maps didn't find a specific neighborhood
-        if neighborhood:
-            # Google Maps found a neighborhood - use it (most reliable)
-            final_neighborhood = neighborhood
-            print(f"   📍 Found neighborhood from Google Maps: {final_neighborhood}")
-        else:
-            # Google Maps didn't find specific neighborhood - try text extraction
-            neighborhood_from_text = _extract_neighborhood_from_text(context_for_neighborhood)
-            
-            # Also check place name/title for neighborhood hints (e.g., "TEN11 LOUNGE & BAR (NOMAD)")
-            neighborhood_from_name = None
-            if display_name:
-                import re  # Import re for regex matching
-                display_name_lower = display_name.lower()
-                # Check for neighborhood in parentheses or after common separators
-                # Look for patterns like "(NOMAD)", "(Nomad)", "- NOMAD", etc.
-                paren_match = re.search(r'\(([^)]+)\)', display_name)
-                if paren_match:
-                    paren_content = paren_match.group(1).strip()
-                    # Check if it matches a known neighborhood (prioritize longer matches)
-                    known_for_name = ["NoMad", "Nomad", "NOMAD", "SoHo", "Soho", "NoHo", "Tribeca", "Chelsea", "Gramercy", "Flatiron", "Midtown", "Greenwich Village", "West Village", "East Village"]
-                    sorted_known = sorted(known_for_name, key=len, reverse=True)
-                    for known_neighborhood in sorted_known:
-                        if known_neighborhood.lower() == paren_content.lower():
-                            neighborhood_from_name = known_neighborhood
-                            print(f"   📍 Found neighborhood in place name: {neighborhood_from_name}")
-                            break
-
-            if neighborhood_from_name:
-                final_neighborhood = neighborhood_from_name
-                print(f"   📍 Using neighborhood from place name: {final_neighborhood}")
-            elif neighborhood_from_text:
-                final_neighborhood = neighborhood_from_text
-                print(f"   📍 Found neighborhood in text: {final_neighborhood}")
-            else:
-                final_neighborhood = None
+        # PRIORITY ORDER FOR NEIGHBORHOOD EXTRACTION:
+        # 1. Place Details API (most reliable - has address_components)
+        # 2. Place name extraction (from parentheses like "(NOMAD)")
+        # 3. Google Maps address parsing (rarely works but worth trying)
+        # 4. Text extraction (last resort)
         
-        # If we still don't have a neighborhood, try Place Details API
-        if not final_neighborhood and place_id:
+        final_neighborhood = None
+        
+        # PRIORITY 1: Place Details API - call this FIRST, not last!
+        if place_id:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
