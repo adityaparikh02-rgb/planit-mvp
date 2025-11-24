@@ -3517,8 +3517,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                 elif "sublocality_level_1" in types and not final_neighborhood:
                                     final_neighborhood = neighborhood_name
                                     print(f"   📍 Found neighborhood from Place Details (sublocality_level_1): {final_neighborhood}")
-                                elif "locality" in types and not final_neighborhood and neighborhood_name not in ["New York", "Brooklyn", "Queens", "Bronx", "Staten Island"]:
-                                    # Only use locality if it's not a borough name
+                                elif "locality" in types and not final_neighborhood and neighborhood_name not in ["New York", "Brooklyn", "Queens", "Bronx", "Staten Island", "Manhattan"]:
+                                    # Only use locality if it's not a borough name or generic "Manhattan"
                                     final_neighborhood = neighborhood_name
                                     print(f"   📍 Found neighborhood from Place Details (locality): {final_neighborhood}")
                         # Match against known neighborhoods list for consistency
@@ -3601,6 +3601,10 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                             final_neighborhood_lower = final_neighborhood.lower()
                             
                             # Try exact match first, then substring match
+                            # But don't match generic locations like "Manhattan" to "Lower Manhattan"
+                            generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
+                            is_generic = final_neighborhood_lower in [g.lower() for g in generic_locations]
+                            
                             for known_neighborhood in sorted_known:
                                 if known_neighborhood.lower() == final_neighborhood_lower:
                                     final_neighborhood = known_neighborhood
@@ -3608,10 +3612,16 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                     break
                                 elif known_neighborhood.lower() in final_neighborhood_lower:
                                     # Only use substring match if it's a significant portion
-                                    if len(known_neighborhood) >= 4:  # Avoid matching "EV" in "East Village"
+                                    # And don't match generic "Manhattan" to specific neighborhoods
+                                    if len(known_neighborhood) >= 4 and not is_generic:  # Avoid matching "EV" in "East Village" and "Manhattan" to "Lower Manhattan"
                                         final_neighborhood = known_neighborhood
                                         print(f"   📍 Matched to known neighborhood: {final_neighborhood}")
                                         break
+                            
+                            # If we got a generic location like "Manhattan", mark it as None so we can try other sources
+                            if is_generic:
+                                print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
+                                final_neighborhood = None
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
 
