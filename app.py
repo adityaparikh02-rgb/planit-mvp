@@ -3521,9 +3521,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                     # Only use locality if it's not a borough name
                                     final_neighborhood = neighborhood_name
                                     print(f"   📍 Found neighborhood from Place Details (locality): {final_neighborhood}")
+                        # Match against known neighborhoods list for consistency
                         if final_neighborhood:
-                            # Try to match against our known neighborhoods list for consistency
-                            # Import neighborhoods list from _extract_neighborhood_from_address function scope
                             known_neighborhoods = [
                                 # Downtown / Below 14th
                                 "Downtown", "Lower Manhattan",
@@ -3597,12 +3596,22 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                 # Staten Island
                                 "St. George", "St George",
                             ]
+                            # Sort by length (longest first) to prioritize more specific matches
+                            sorted_known = sorted(known_neighborhoods, key=len, reverse=True)
                             final_neighborhood_lower = final_neighborhood.lower()
-                            for known_neighborhood in known_neighborhoods:
-                                if known_neighborhood.lower() in final_neighborhood_lower or final_neighborhood_lower in known_neighborhood.lower():
+                            
+                            # Try exact match first, then substring match
+                            for known_neighborhood in sorted_known:
+                                if known_neighborhood.lower() == final_neighborhood_lower:
                                     final_neighborhood = known_neighborhood
-                                    print(f"   📍 Matched to known neighborhood: {final_neighborhood}")
+                                    print(f"   📍 Exact match to known neighborhood: {final_neighborhood}")
                                     break
+                                elif known_neighborhood.lower() in final_neighborhood_lower:
+                                    # Only use substring match if it's a significant portion
+                                    if len(known_neighborhood) >= 4:  # Avoid matching "EV" in "East Village"
+                                        final_neighborhood = known_neighborhood
+                                        print(f"   📍 Matched to known neighborhood: {final_neighborhood}")
+                                        break
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
 
