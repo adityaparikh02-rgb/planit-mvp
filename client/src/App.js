@@ -9,6 +9,68 @@ const API_BASE = process.env.REACT_APP_API_URL || "https://planit-backend-fbm5.o
 console.log("🔧 API_BASE:", API_BASE);
 console.log("🔧 REACT_APP_API_URL env:", process.env.REACT_APP_API_URL);
 
+// Helper function to get emoji for neighborhood
+const getNeighborhoodEmoji = (neighborhood) => {
+  if (!neighborhood) return '📍';
+  
+  const n = neighborhood.toLowerCase();
+  
+  // Manhattan - Downtown / Below 14th
+  if (n.includes('downtown') || n.includes('lower manhattan') || n.includes('lower east side') || n.includes('les') || 
+      n.includes('east village') || n.includes('ev') || n.includes('alphabet city') || n.includes('noho') || 
+      n.includes('nolita') || n.includes('soho') || n.includes('chinatown') || n.includes('little italy') || 
+      n.includes('two bridges') || n.includes('tribeca') || n.includes('west village') || 
+      n.includes('greenwich village') || n.includes('hudson square') || n.includes('battery park city') || 
+      n.includes('financial district') || n.includes('fidi')) {
+    return '🏙️';
+  }
+  
+  // Manhattan - Midtown-ish
+  if (n.includes('koreatown') || n.includes('k-town') || n.includes('ktown') || n.includes("hell's kitchen") || 
+      n.includes('hells kitchen') || n.includes('midtown west') || n.includes('theater district') || 
+      n.includes('midtown east') || n.includes('murray hill') || n.includes('gramercy') || 
+      n.includes('flatiron') || n.includes('kips bay') || n.includes('chelsea') || n.includes('hudson yards')) {
+    return '🌆';
+  }
+  
+  // Manhattan - Uptown
+  if (n.includes('upper west side') || n.includes('uws') || n.includes('upper east side') || n.includes('ues') || 
+      n.includes('harlem') || n.includes('morningside heights') || n.includes('washington heights') || 
+      n.includes('inwood')) {
+    return '🏛️';
+  }
+  
+  // Brooklyn
+  if (n.includes('williamsburg') || n.includes('greenpoint') || n.includes('bushwick') || 
+      n.includes('brooklyn heights') || n.includes('dumbo') || n.includes('cobble hill') || 
+      n.includes('carroll gardens') || n.includes('boerum hill') || n.includes('gowanus') || 
+      n.includes('park slope') || n.includes('prospect heights') || n.includes('fort greene') || 
+      n.includes('clinton hill') || n.includes('bed-stuy') || n.includes('bedstuy') || 
+      n.includes('bedford-stuyvesant') || n.includes('crown heights') || n.includes('red hook') || 
+      n.includes('sunset park') || n.includes('bay ridge')) {
+    return '🍕';
+  }
+  
+  // Queens
+  if (n.includes('astoria') || n.includes('long island city') || n.includes('lic') || 
+      n.includes('sunnyside') || n.includes('jackson heights') || n.includes('elmhurst') || 
+      n.includes('flushing') || n.includes('forest hills')) {
+    return '🍺';
+  }
+  
+  // Bronx
+  if (n.includes('belmont') || n.includes('arthur avenue') || n.includes('mott haven')) {
+    return '🥂';
+  }
+  
+  // Staten Island
+  if (n.includes('st. george') || n.includes('st george')) {
+    return '🍹';
+  }
+  
+  return '📍'; // Default
+};
+
 function App() {
   const [savedPlaces, setSavedPlaces] = useState({});
   const [activeMenu, setActiveMenu] = useState(null);
@@ -921,7 +983,9 @@ function App() {
                           {/* Neighborhood/Area */}
                           {(p.neighborhood || p.maps_url) && (
                             <p className="neighborhood-field">
-                              <MapPin size={14} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                              <span style={{ marginRight: '6px', fontSize: '16px' }}>
+                                {getNeighborhoodEmoji(p.neighborhood)}
+                              </span>
                               {p.neighborhood || 'Location'}
                             </p>
                           )}
