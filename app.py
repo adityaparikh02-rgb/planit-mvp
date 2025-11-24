@@ -2020,8 +2020,12 @@ def _extract_neighborhood_from_text(text):
 
     text_lower = text.lower()
 
+    # Sort neighborhoods by length (longest first) to prioritize more specific matches
+    # This ensures "Greenwich Village" matches before "East Village" when both could match
+    sorted_neighborhoods = sorted(neighborhoods, key=len, reverse=True)
+
     # Look for neighborhood names in the text
-    for neighborhood in neighborhoods:
+    for neighborhood in sorted_neighborhoods:
         if neighborhood.lower() in text_lower:
             return neighborhood
 
@@ -2123,8 +2127,11 @@ def _extract_neighborhood_from_address(address):
 
     address_lower = address.lower()
 
+    # Sort neighborhoods by length (longest first) to prioritize more specific matches
+    sorted_neighborhoods = sorted(neighborhoods, key=len, reverse=True)
+
     # Check neighborhoods FIRST (prioritize specific neighborhoods over boroughs)
-    for neighborhood in neighborhoods:
+    for neighborhood in sorted_neighborhoods:
         if neighborhood.lower() in address_lower:
             return neighborhood  # Return immediately when found
 

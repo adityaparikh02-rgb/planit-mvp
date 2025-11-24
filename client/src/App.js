@@ -1002,35 +1002,35 @@ function App() {
                           {/* Vibe */}
                           {p.vibe && (
                             <p className="vibe-field">
-                              <strong>Vibes:</strong> {p.vibe}
+                              <strong>✨ Vibes:</strong> {p.vibe}
                             </p>
                           )}
 
                           {/* When to go */}
                           {p.when_to_go && (
                             <p className="when-to-go-field">
-                              <strong>When to go:</strong> {p.when_to_go}
+                              <strong>🕐 When to go:</strong> {p.when_to_go}
                             </p>
                           )}
 
                           {/* Good to Know */}
                           {p.good_to_know && (
                             <p className="good-to-know-field">
-                              <strong>Good to Know:</strong> {p.good_to_know}
+                              <strong>💡 Good to Know:</strong> {p.good_to_know}
                             </p>
                           )}
 
                           {/* What to get */}
                           {p.must_try && (
                             <p className="what-to-get-field">
-                              <strong>What to get:</strong> {p.must_try}
+                              <strong>🍴 What to get:</strong> {p.must_try}
                             </p>
                           )}
 
                           {/* Features */}
                           {p.features && (
                             <p className="features-field">
-                              <strong>Features:</strong> {p.features}
+                              <strong>🎯 Features:</strong> {p.features}
                             </p>
                           )}
 
@@ -1434,35 +1434,35 @@ function App() {
                                 {/* Vibe */}
                                 {p.vibe && (
                                   <p className="vibe-field">
-                                    <strong>Vibes:</strong> {p.vibe}
+                                    <strong>✨ Vibes:</strong> {p.vibe}
                                   </p>
                                 )}
 
                                 {/* When to go */}
                                 {p.when_to_go && (
                                   <p className="when-to-go-field">
-                                    <strong>When to go:</strong> {p.when_to_go}
+                                    <strong>🕐 When to go:</strong> {p.when_to_go}
                                   </p>
                                 )}
 
                                 {/* Good to Know */}
                                 {p.good_to_know && (
                                   <p className="good-to-know-field">
-                                    <strong>Good to Know:</strong> {p.good_to_know}
+                                    <strong>💡 Good to Know:</strong> {p.good_to_know}
                                   </p>
                                 )}
 
                                 {/* What to get */}
                                 {p.must_try && (
                                   <p className="what-to-get-field">
-                                    <strong>What to get:</strong> {p.must_try}
+                                    <strong>🍴 What to get:</strong> {p.must_try}
                                   </p>
                                 )}
 
                                 {/* Features */}
                                 {p.features && (
                                   <p className="features-field">
-                                    <strong>Features:</strong> {p.features}
+                                    <strong>🎯 Features:</strong> {p.features}
                                   </p>
                                 )}
 
