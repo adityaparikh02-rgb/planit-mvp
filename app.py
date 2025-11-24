@@ -4638,6 +4638,24 @@ def extract_photo_post(url):
         return {"photos": [], "caption": ""}
 
 
+@app.route("/api/healthz", methods=["GET"])
+def healthz():
+    """Health check endpoint with environment variable diagnostics."""
+    try:
+        # Check critical environment variables
+        openai_key_set = bool(os.getenv("OPENAI_API_KEY"))
+        google_key_set = bool(os.getenv("GOOGLE_API_KEY"))
+        
+        return jsonify({
+            "status": "ok",
+            "openai_api_key_set": openai_key_set,
+            "google_api_key_set": google_key_set,
+            "ocr_available": OCR_AVAILABLE,
+            "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
 @app.route("/api/status/<extraction_id>", methods=["GET"])
 def get_extraction_status(extraction_id):
     """Get status updates for an ongoing extraction."""
