@@ -3500,10 +3500,9 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 print(f"   📍 Found neighborhood in text: {final_neighborhood}")
             else:
                 final_neighborhood = None
-        else:
-            # Try Place Details API to get more detailed neighborhood info
-            final_neighborhood = None
-            if place_id:
+        
+        # If we still don't have a neighborhood, try Place Details API
+        if not final_neighborhood and place_id:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
