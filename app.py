@@ -2804,14 +2804,30 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         else:
             print(f"📝 Analyzing content ({len(content_to_analyze)} chars): {content_to_analyze[:300]}...")
         
+        # Check if OpenAI API key is set before attempting extraction
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set. Cannot extract venues without OpenAI API access.")
+        
         client = get_openai_client()
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
-        )
-        raw = response.choices[0].message.content.strip()
-        print(f"🤖 GPT raw response: {raw[:500]}...")
+        
+        # Log the content length being sent to GPT
+        content_length = len(content_to_analyze)
+        print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
+        
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+                timeout=30  # Add timeout to prevent hanging
+            )
+            raw = response.choices[0].message.content.strip()
+            print(f"🤖 GPT raw response: {raw[:500]}...")
+        except Exception as api_error:
+            print(f"❌ OpenAI API call failed: {api_error}")
+            print(f"   Error type: {type(api_error).__name__}")
+            raise  # Re-raise to be caught by outer exception handler
 
         match = re.search(r"Summary\s*:\s*(.+)", raw, re.I)
         summary = match.group(1).strip() if match else "TikTok Venues"
@@ -4646,15 +4662,37 @@ def healthz():
         openai_key_set = bool(os.getenv("OPENAI_API_KEY"))
         google_key_set = bool(os.getenv("GOOGLE_API_KEY"))
         
+        # Test OpenAI API connectivity if key is set
+        openai_test = None
+        if openai_key_set:
+            try:
+                client = get_openai_client()
+                # Quick test call
+                test_response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": "Say 'ok'"}],
+                    max_tokens=5,
+                    timeout=5
+                )
+                openai_test = "success" if test_response.choices else "failed"
+            except Exception as e:
+                openai_test = f"error: {str(e)[:100]}"
+        
         return jsonify({
             "status": "ok",
             "openai_api_key_set": openai_key_set,
             "google_api_key_set": google_key_set,
+            "openai_api_test": openai_test,
             "ocr_available": OCR_AVAILABLE,
             "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
         }), 200
     except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
+        import traceback
+        return jsonify({
+            "status": "error", 
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
 
 @app.route("/api/status/<extraction_id>", methods=["GET"])
 def get_extraction_status(extraction_id):
