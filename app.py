@@ -3463,35 +3463,43 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 transcript
             ]))
 
-        neighborhood_from_text = _extract_neighborhood_from_text(context_for_neighborhood)
-
-        # Also check place name/title for neighborhood hints (e.g., "TEN11 LOUNGE & BAR (NOMAD)")
-        neighborhood_from_name = None
-        if display_name:
-            display_name_lower = display_name.lower()
-            # Check for neighborhood in parentheses or after common separators
-            import re
-            # Look for patterns like "(NOMAD)", "(Nomad)", "- NOMAD", etc.
-            paren_match = re.search(r'\(([^)]+)\)', display_name)
-            if paren_match:
-                paren_content = paren_match.group(1).strip()
-                # Check if it matches a known neighborhood
-                for known_neighborhood in ["NoMad", "Nomad", "NOMAD", "SoHo", "Soho", "NoHo", "Tribeca", "Chelsea", "Gramercy", "Flatiron", "Midtown", "East Village", "West Village"]:
-                    if known_neighborhood.lower() == paren_content.lower():
-                        neighborhood_from_name = known_neighborhood
-                        print(f"   📍 Found neighborhood in place name: {neighborhood_from_name}")
-                        break
-
-        if neighborhood_from_name:
-            final_neighborhood = neighborhood_from_name
-            print(f"   📍 Using neighborhood from place name: {final_neighborhood}")
-        elif neighborhood_from_text:
-            final_neighborhood = neighborhood_from_text
-            print(f"   📍 Found neighborhood in text: {final_neighborhood}")
-        elif neighborhood:
-            # Fallback to Google Maps address parsing
+        # Prioritize Google Maps address extraction over text extraction (more reliable)
+        # Only use text extraction if Google Maps didn't find a specific neighborhood
+        if neighborhood:
+            # Google Maps found a neighborhood - use it (most reliable)
             final_neighborhood = neighborhood
             print(f"   📍 Found neighborhood from Google Maps: {final_neighborhood}")
+        else:
+            # Google Maps didn't find specific neighborhood - try text extraction
+            neighborhood_from_text = _extract_neighborhood_from_text(context_for_neighborhood)
+            
+            # Also check place name/title for neighborhood hints (e.g., "TEN11 LOUNGE & BAR (NOMAD)")
+            neighborhood_from_name = None
+            if display_name:
+                import re  # Import re for regex matching
+                display_name_lower = display_name.lower()
+                # Check for neighborhood in parentheses or after common separators
+                # Look for patterns like "(NOMAD)", "(Nomad)", "- NOMAD", etc.
+                paren_match = re.search(r'\(([^)]+)\)', display_name)
+                if paren_match:
+                    paren_content = paren_match.group(1).strip()
+                    # Check if it matches a known neighborhood (prioritize longer matches)
+                    known_for_name = ["NoMad", "Nomad", "NOMAD", "SoHo", "Soho", "NoHo", "Tribeca", "Chelsea", "Gramercy", "Flatiron", "Midtown", "Greenwich Village", "West Village", "East Village"]
+                    sorted_known = sorted(known_for_name, key=len, reverse=True)
+                    for known_neighborhood in sorted_known:
+                        if known_neighborhood.lower() == paren_content.lower():
+                            neighborhood_from_name = known_neighborhood
+                            print(f"   📍 Found neighborhood in place name: {neighborhood_from_name}")
+                            break
+
+            if neighborhood_from_name:
+                final_neighborhood = neighborhood_from_name
+                print(f"   📍 Using neighborhood from place name: {final_neighborhood}")
+            elif neighborhood_from_text:
+                final_neighborhood = neighborhood_from_text
+                print(f"   📍 Found neighborhood in text: {final_neighborhood}")
+            else:
+                final_neighborhood = None
         else:
             # Try Place Details API to get more detailed neighborhood info
             final_neighborhood = None
