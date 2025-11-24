@@ -3046,24 +3046,36 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                     relevant_sentences.append(sentence)
         
         # Also remove sentences that mention OTHER venues
+        # But be less aggressive - if we have slide_context, include all sentences from that slide
         other_venues = [v.lower() for v in all_venues if v.lower() != name_lower]
         filtered_sentences = []
-        for sentence in relevant_sentences:
-            sentence_lower = sentence.lower()
-            # Skip if sentence mentions another venue more prominently than this one
-            mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
-            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
-            
-            if mentions_this and not mentions_other:
-                filtered_sentences.append(sentence)
-            elif mentions_this and mentions_other:
-                # If both mentioned, only keep if this venue appears first or more prominently
-                this_pos = sentence_lower.find(name_lower)
-                other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
-                if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
-                    filtered_sentences.append(sentence)
         
-        context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
+        # If we have slide_context and it's short, use it all (don't filter aggressively)
+        if slide_context and len(slide_context) < 500:
+            # For slide-specific context, be more lenient - include all sentences from the slide
+            filtered_sentences = relevant_sentences if relevant_sentences else sentences[:3]  # At least first 3 sentences
+        else:
+            # For general context, filter more carefully
+            for sentence in relevant_sentences:
+                sentence_lower = sentence.lower()
+                # Skip if sentence mentions another venue more prominently than this one
+                mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
+                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+                
+                if mentions_this and not mentions_other:
+                    filtered_sentences.append(sentence)
+                elif mentions_this and mentions_other:
+                    # If both mentioned, only keep if this venue appears first or more prominently
+                    this_pos = sentence_lower.find(name_lower)
+                    other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
+                    if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
+                        filtered_sentences.append(sentence)
+        
+        # If filtering removed everything but we have slide_context, use slide_context directly
+        if not filtered_sentences and slide_context:
+            context = slide_context
+        else:
+            context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
         if len(filtered_sentences) < len(sentences):
             print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences relevant to {name}")
     else:
@@ -3114,7 +3126,12 @@ Context (filtered to only include mentions of "{name}"):
         raw = r.choices[0].message.content.strip()
         match = re.search(r"\{.*\}", raw, re.S)
         j = json.loads(match.group(0)) if match else {}
-        must_try_value = j.get("must_try", "").strip()
+        # Handle case where GPT returns a list instead of string
+        must_try_raw = j.get("must_try", "")
+        if isinstance(must_try_raw, list):
+            must_try_value = " ".join(str(x) for x in must_try_raw).strip()
+        else:
+            must_try_value = str(must_try_raw).strip() if must_try_raw else ""
         
         # Determine field name based on venue type (prioritize venue type over content keywords)
         if must_try_value:
@@ -3147,24 +3164,31 @@ Context (filtered to only include mentions of "{name}"):
         vibe_keywords = extract_vibe_keywords(context)
 
         # Get vibe from GPT response and clean it
-        vibe_raw = j.get("vibe", "").strip()
+        # Handle case where GPT returns a list instead of string for all fields
+        def safe_get_str(field_name, default=""):
+            value = j.get(field_name, default)
+            if isinstance(value, list):
+                return " ".join(str(x) for x in value).strip()
+            return str(value).strip() if value else default
+        
+        vibe_raw = safe_get_str("vibe", "")
         vibe_cleaned = clean_vibe_text(vibe_raw, name)
         
         # Get features field (new field for specific amenities/features)
-        features_value = j.get("features", "").strip()
+        features_value = safe_get_str("features", "")
         
         data = {
-            "summary": j.get("summary", "").strip(),
-            "when_to_go": j.get("when_to_go", "").strip(),
+            "summary": safe_get_str("summary", ""),
+            "when_to_go": safe_get_str("when_to_go", ""),
             "vibe": vibe_cleaned,  # Use cleaned GPT-extracted vibe, not raw context
             "vibe_keywords": vibe_keywords,  # Short keywords for bubble tags
             "must_try": must_try_value,
             "must_try_field": field_name,  # Store the field name
-            "good_to_know": j.get("good_to_know", "").strip(),  # Add good_to_know field
+            "good_to_know": safe_get_str("good_to_know", ""),  # Add good_to_know field
             "features": features_value,  # Add features field for specific amenities
-            "specials": j.get("specials", "").strip(),
-            "comments_summary": j.get("comments_summary", "").strip(),
-            "creator_insights": j.get("creator_insights", "").strip(),  # Personal recommendations and comparisons
+            "specials": safe_get_str("specials", ""),
+            "comments_summary": safe_get_str("comments_summary", ""),
+            "creator_insights": safe_get_str("creator_insights", ""),  # Personal recommendations and comparisons
         }
         # Join only string fields for vibe_tags extraction (skip lists like vibe_keywords)
         vibe_text = " ".join(filter(None, [
