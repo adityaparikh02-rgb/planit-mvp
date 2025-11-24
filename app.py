@@ -3556,6 +3556,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                 "Kips Bay",
                                 "Chelsea",
                                 "Hudson Yards",
+                                # Islands / Special Areas
+                                "Roosevelt Island",
                                 # Uptown
                                 "Upper West Side", "UWS",
                                 "Upper East Side", "UES",
