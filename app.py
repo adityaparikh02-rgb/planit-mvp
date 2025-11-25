@@ -1973,6 +1973,7 @@ def _extract_neighborhood_from_text(text):
         "Kips Bay",
         "Chelsea",
         "Hudson Yards",
+        "NoMad", "Nomad", "NOMAD",
         # Islands / Special Areas
         "Roosevelt Island",
         # Uptown
@@ -2082,6 +2083,7 @@ def _extract_neighborhood_from_address(address):
         "Kips Bay",
         "Chelsea",
         "Hudson Yards",
+        "NoMad", "Nomad", "NOMAD",
         # Islands / Special Areas
         "Roosevelt Island",
         # Uptown
