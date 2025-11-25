@@ -506,6 +506,54 @@ function App() {
     setActiveTab("home");
   };
 
+  const handleClearHistory = () => {
+    if (window.confirm("Are you sure you want to clear all extraction history?")) {
+      setHistory([]);
+      setCachedResults({});
+      try {
+        localStorage.removeItem("planit_history");
+        localStorage.removeItem("planit_cached_results");
+      } catch (e) {
+        console.error("Failed to clear localStorage:", e);
+      }
+      setShowClearHistoryMenu(false);
+    }
+  };
+
+  const handleDeleteHistoryItem = (index, e) => {
+    e.stopPropagation(); // Prevent triggering handleHistoryClick
+    const item = history[index];
+    if (window.confirm(`Delete "${item.title}" from history?`)) {
+      const updated = history.filter((_, i) => i !== index);
+      setHistory(updated);
+      // Also remove from cached results
+      if (item.url && cachedResults[item.url]) {
+        const updatedCache = { ...cachedResults };
+        delete updatedCache[item.url];
+        setCachedResults(updatedCache);
+        try {
+          localStorage.setItem("planit_cached_results", JSON.stringify(updatedCache));
+        } catch (e) {
+          console.error("Failed to update cached results:", e);
+        }
+      }
+      try {
+        localStorage.setItem("planit_history", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to update history:", e);
+      }
+      setActiveHistoryMenu(null);
+    }
+  };
+
+  const handleRemovePlaceFromResults = (index) => {
+    if (result && result.places_extracted) {
+      const updated = result.places_extracted.filter((_, i) => i !== index);
+      setResult({ ...result, places_extracted: updated });
+      setActiveMenu(null);
+    }
+  };
+
   // Save note for a place in a saved list
   const handleSavePlaceNote = (listName, placeIndex) => {
     const updated = { ...savedPlaces };
