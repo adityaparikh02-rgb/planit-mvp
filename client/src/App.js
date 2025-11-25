@@ -1272,7 +1272,7 @@ function App() {
                       setActiveHistoryMenu(null);
                     }}
                   >
-                    <MoreHorizontal size={20} />
+                    ⋯
                   </button>
                   {showClearHistoryMenu && (
                     <div className="history-menu-popup">
