@@ -4879,6 +4879,28 @@ def healthz():
         openai_key_set = bool(os.getenv("OPENAI_API_KEY"))
         google_key_set = bool(os.getenv("GOOGLE_API_KEY"))
         
+        # Check if required modules are available
+        modules_available = {
+            "ocr_processor": False,
+            "slideshow_extractor": False,
+            "geocoding_service": False,
+        }
+        try:
+            import ocr_processor
+            modules_available["ocr_processor"] = True
+        except ImportError:
+            pass
+        try:
+            import slideshow_extractor
+            modules_available["slideshow_extractor"] = True
+        except ImportError:
+            pass
+        try:
+            import geocoding_service
+            modules_available["geocoding_service"] = True
+        except ImportError:
+            pass
+        
         # Test OpenAI API connectivity if key is set
         openai_test = None
         if openai_key_set:
@@ -4902,6 +4924,7 @@ def healthz():
             "openai_api_test": openai_test,
             "ocr_available": OCR_AVAILABLE,
             "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
+            "modules_available": modules_available,
         }), 200
     except Exception as e:
         import traceback
