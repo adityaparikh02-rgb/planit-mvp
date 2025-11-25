@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
+COPY ocr_processor.py .
+COPY slideshow_extractor.py .
+COPY geocoding_service.py .
 COPY Procfile .
 
 # Expose port (Render will set PORT env var)
