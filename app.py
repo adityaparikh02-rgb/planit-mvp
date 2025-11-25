@@ -3850,6 +3850,32 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
 
+        # PRIORITY 2: Place name extraction (from parentheses like "(NOMAD)")
+        if not final_neighborhood and display_name:
+            paren_match = re.search(r'\(([^)]+)\)', display_name)
+            if paren_match:
+                paren_content = paren_match.group(1).strip()
+                paren_lower = paren_content.lower()
+                # Check if it matches a known neighborhood
+                known_neighborhoods = [
+                    "NoMad", "Nomad", "NOMAD", "NoHo", "Noho", "NOHO",
+                    "SoHo", "Soho", "SOHO", "Nolita", "NoLita", "NOLITA",
+                    "LES", "EV", "UWS", "UES", "FiDi", "FIDI",
+                    "Lower East Side", "East Village", "West Village",
+                    "Greenwich Village", "Upper West Side", "Upper East Side",
+                    "Financial District", "Tribeca", "TriBeCa",
+                    "Chelsea", "Flatiron", "Gramercy", "Midtown East", "Midtown West",
+                    "Hell's Kitchen", "Hells Kitchen", "Koreatown", "K-Town",
+                    "Williamsburg", "Greenpoint", "Bushwick", "DUMBO",
+                    "Astoria", "Long Island City", "LIC",
+                    "Roosevelt Island"
+                ]
+                for known in known_neighborhoods:
+                    if known.lower() == paren_lower or known.lower() in paren_lower or paren_lower in known.lower():
+                        final_neighborhood = known
+                        print(f"   📍 Found neighborhood from place name (parentheses): {final_neighborhood}")
+                        break
+
         # Photo priority: 1) TikTok slide photo, 2) Google Maps photo
         photo = None
 
