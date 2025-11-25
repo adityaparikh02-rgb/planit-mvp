@@ -1573,6 +1573,16 @@
   align-items: center;
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-lg);
+  position: relative;
+}
+
+.saved-header-menu-wrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .saved-header-icon {
@@ -2296,6 +2306,16 @@
   align-items: center;
   gap: var(--spacing-xs);
   margin-bottom: var(--spacing-lg);
+  position: relative;
+}
+
+.saved-header-menu-wrapper {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .saved-header-icon {
