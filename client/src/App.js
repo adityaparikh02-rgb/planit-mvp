@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned, MoreHorizontal, Trash2 } from "lucide-react";
+import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned, MoreHorizontal, Trash2, Square } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
 
@@ -96,6 +96,8 @@ function App() {
   const [userAddedTags, setUserAddedTags] = useState({}); // { placeName: [array of user-added tags] }
   const [activeHistoryMenu, setActiveHistoryMenu] = useState(null); // For history item menus: index or null
   const [showClearHistoryMenu, setShowClearHistoryMenu] = useState(false); // For clear history menu
+  const [selectionMode, setSelectionMode] = useState(false); // Multi-select mode for history
+  const [selectedHistoryItems, setSelectedHistoryItems] = useState(new Set()); // Set of selected history item indices
 
   // Handle share target / deep linking
   useEffect(() => {
