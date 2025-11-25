@@ -124,7 +124,7 @@ def update_status(extraction_id, message):
             "timestamp": datetime.now().isoformat()
         })
         print(f"📊 [{extraction_id[:8]}] {message}")
-        
+
         # Auto-cleanup old status entries (older than 5 minutes)
         current_time = datetime.now()
         for eid in list(extraction_status.keys()):
@@ -2574,14 +2574,25 @@ VenueName2
 If no venues found, output: (none)
 """
                 
+                # Check if OpenAI API key is set before attempting extraction
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY environment variable is not set. Cannot extract venues without OpenAI API access.")
+                
                 client = get_openai_client()
+                
+                try:
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": slide_prompt}],
                     temperature=0.2,  # Very low temperature for consistent extraction
+                        timeout=30  # Add timeout to prevent hanging
                 )
-                
                 slide_response = response.choices[0].message.content.strip()
+                except Exception as api_error:
+                    print(f"     ❌ OpenAI API call failed for slide: {api_error}")
+                    print(f"     Error type: {type(api_error).__name__}")
+                    raise  # Re-raise to be caught by outer exception handler
                 
                 # Parse venues from this slide
                 slide_venues = []
@@ -2816,14 +2827,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-            )
-            raw = response.choices[0].message.content.strip()
-            print(f"🤖 GPT raw response: {raw[:500]}...")
+        )
+        raw = response.choices[0].message.content.strip()
+        print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
@@ -3095,26 +3106,26 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             filtered_sentences = relevant_sentences if relevant_sentences else sentences[:3]  # At least first 3 sentences
         else:
             # For general context, filter more carefully
-            for sentence in relevant_sentences:
-                sentence_lower = sentence.lower()
-                # Skip if sentence mentions another venue more prominently than this one
-                mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
-                
-                if mentions_this and not mentions_other:
+        for sentence in relevant_sentences:
+            sentence_lower = sentence.lower()
+            # Skip if sentence mentions another venue more prominently than this one
+            mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            
+            if mentions_this and not mentions_other:
+                filtered_sentences.append(sentence)
+            elif mentions_this and mentions_other:
+                # If both mentioned, only keep if this venue appears first or more prominently
+                this_pos = sentence_lower.find(name_lower)
+                other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
+                if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
                     filtered_sentences.append(sentence)
-                elif mentions_this and mentions_other:
-                    # If both mentioned, only keep if this venue appears first or more prominently
-                    this_pos = sentence_lower.find(name_lower)
-                    other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
-                    if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
-                        filtered_sentences.append(sentence)
         
         # If filtering removed everything but we have slide_context, use slide_context directly
         if not filtered_sentences and slide_context:
             context = slide_context
         else:
-            context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
+        context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
         if len(filtered_sentences) < len(sentences):
             print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences relevant to {name}")
     else:
@@ -3215,7 +3226,7 @@ Context (filtered to only include mentions of "{name}"):
         
         # Get features field (new field for specific amenities/features)
         features_value = safe_get_str("features", "")
-        
+
         data = {
             "summary": safe_get_str("summary", ""),
             "when_to_go": safe_get_str("when_to_go", ""),
@@ -3662,7 +3673,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                             # If we got a generic location like "Manhattan", mark it as None so we can try other sources
                             if is_generic:
                                 print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
-                                final_neighborhood = None
+            final_neighborhood = None
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
 
@@ -4703,8 +4714,8 @@ def get_extraction_status(extraction_id):
         # Auto-cleanup: if status is empty or very old, return empty
         # This helps stop unnecessary polling
         if not status_messages:
-            return jsonify({
-                "extraction_id": extraction_id,
+        return jsonify({
+            "extraction_id": extraction_id,
                 "messages": [],
                 "completed": True
             }), 200
@@ -5402,8 +5413,17 @@ def extract_api():
             # Check if we had any content to analyze
             has_content = bool(transcript or ocr_text or caption or comments_text)
             warning_msg = ""
-            if not transcript and not ocr_text:
+            
+            # Check OpenAI API key
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                warning_msg = " OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable on Render."
+            elif not transcript and not ocr_text:
                 warning_msg = " This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images, but tesseract is not available on Render."
+            elif not has_content:
+                warning_msg = " No extractable content found (no transcript, OCR text, or caption)."
+            else:
+                warning_msg = " GPT extraction returned no venues. Check Render logs for detailed error messages."
             
             # Return empty result with helpful message
             data = {
@@ -5413,6 +5433,15 @@ def extract_api():
                 "places_extracted": [],
                 "warning": warning_msg if warning_msg else None,
                 "extraction_id": extraction_id,  # Add extraction_id for status polling
+                "debug_info": {
+                    "has_content": has_content,
+                    "openai_key_set": bool(api_key),
+                    "content_lengths": {
+                        "transcript": len(transcript) if transcript else 0,
+                        "ocr_text": len(ocr_text) if ocr_text else 0,
+                        "caption": len(caption) if caption else 0,
+                    }
+                }
             }
             return jsonify(data)
 
