@@ -2661,6 +2661,8 @@ Extract venue names ONLY from THIS SPECIFIC SLIDE's content.
 Do NOT use context from other slides - only what you see here.
 
 IMPORTANT: Extract venue names that appear in THIS slide's text ONLY.
+CRITICAL: Do NOT extract venues mentioned as "team behind", "created by", "made by", or "founded by".
+Only extract venues that are actually being featured/reviewed/visited in this slide.
 
 Slide content:
 {slide_text[:1000]}
@@ -2938,6 +2940,9 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's").
    • Do NOT extract random words from garbled OCR text (e.g., "Danny's" or "Ballerina" if they don't appear in context).
    • If OCR text is too garbled or unclear, prioritize the caption and transcript for venue names.
+   • CRITICAL: Do NOT extract venues that are mentioned as "team behind", "created by", "made by", "founded by", or similar contexts. 
+     For example, if text says "the team behind Sami & Susu made Shifka", extract ONLY "Shifka", NOT "Sami & Susu".
+     Only extract venues that are actually being featured/reviewed/visited, not venues mentioned as creators or previous projects.
    • Be thorough - if the content is about NYC venues, there ARE venues to extract (likely in OCR text)
    • If no venues are found after careful analysis, return an empty list (no venues, just the Summary line).
 {ocr_emphasis}
@@ -3335,7 +3340,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides.",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
-  "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list specific dishes, drinks, or menu items. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Only include if mentioned SPECIFICALLY for {name}.",
+  "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list SPECIFIC dishes, drinks, or menu items mentioned by the creator. Even if they say 'I recommend everything on the menu' or 'everything is good', extract the SPECIFIC dishes they actually tried and mentioned liking (e.g., 'chicken harissa bowl', 'matbucha dip', 'sabik sandwich'). For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. Only include if mentioned SPECIFICALLY for {name}.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required'). Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "specials": "Real deals or special events at {name} if mentioned",
@@ -3852,6 +3857,10 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                 final_neighborhood = None
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
+                    import traceback
+                    print(f"   📋 Place Details API traceback: {traceback.format_exc()[:300]}")
+        else:
+            print(f"   ⚠️ No place_id available for neighborhood extraction")
 
         # PRIORITY 2: Place name extraction (from parentheses like "(NOMAD)")
         if not final_neighborhood and display_name:
