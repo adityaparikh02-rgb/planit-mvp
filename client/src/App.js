@@ -98,6 +98,9 @@ function App() {
   const [showClearHistoryMenu, setShowClearHistoryMenu] = useState(false); // For clear history menu
   const [selectionMode, setSelectionMode] = useState(false); // Multi-select mode for history
   const [selectedHistoryItems, setSelectedHistoryItems] = useState(new Set()); // Set of selected history item indices
+  const [savedListsSelectionMode, setSavedListsSelectionMode] = useState(false); // Multi-select mode for saved lists
+  const [selectedSavedLists, setSelectedSavedLists] = useState(new Set()); // Set of selected saved list names
+  const [showClearSavedMenu, setShowClearSavedMenu] = useState(false); // For clear saved menu
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -629,6 +632,72 @@ function App() {
       setSelectedHistoryItems(new Set());
     } else {
       setSelectedHistoryItems(new Set(history.map((_, i) => i)));
+    }
+  };
+
+  const handleToggleSavedListsSelectionMode = () => {
+    setSavedListsSelectionMode(!savedListsSelectionMode);
+    setSelectedSavedLists(new Set());
+    setShowClearSavedMenu(false);
+  };
+
+  const handleToggleSavedListSelection = (listName, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const newSelected = new Set(selectedSavedLists);
+    if (newSelected.has(listName)) {
+      newSelected.delete(listName);
+    } else {
+      newSelected.add(listName);
+    }
+    setSelectedSavedLists(newSelected);
+  };
+
+  const handleDeleteSelectedSavedLists = () => {
+    if (selectedSavedLists.size === 0) return;
+    
+    const count = selectedSavedLists.size;
+    if (window.confirm(`Delete ${count} list${count > 1 ? 's' : ''}? This will remove all places in ${count > 1 ? 'these lists' : 'this list'}.`)) {
+      const updated = { ...savedPlaces };
+      selectedSavedLists.forEach(listName => {
+        delete updated[listName];
+      });
+      
+      setSavedPlaces(updated);
+      setSelectedSavedLists(new Set());
+      setSavedListsSelectionMode(false);
+      
+      // If the currently selected list was deleted, clear selection
+      if (selectedList && selectedSavedLists.has(selectedList)) {
+        setSelectedList(null);
+      }
+      
+      try {
+        localStorage.setItem("planit_saved_places", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to update localStorage:", e);
+      }
+    }
+  };
+
+  const handleSelectAllSavedLists = () => {
+    const allLists = Object.keys(savedPlaces);
+    if (selectedSavedLists.size === allLists.length) {
+      setSelectedSavedLists(new Set());
+    } else {
+      setSelectedSavedLists(new Set(allLists));
+    }
+  };
+
+  const handleClearAllSavedPlaces = () => {
+    if (window.confirm("Are you sure you want to clear all saved places? This will delete all lists and places.")) {
+      setSavedPlaces({});
+      setSelectedList(null);
+      try {
+        localStorage.removeItem("planit_saved_places");
+      } catch (e) {
+        console.error("Failed to clear localStorage:", e);
+      }
+      setShowClearSavedMenu(false);
     }
   };
 
