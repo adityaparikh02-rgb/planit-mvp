@@ -575,6 +575,63 @@ function App() {
     }
   };
 
+  const handleToggleSelectionMode = () => {
+    setSelectionMode(!selectionMode);
+    setSelectedHistoryItems(new Set());
+    setActiveHistoryMenu(null);
+    setShowClearHistoryMenu(false);
+  };
+
+  const handleToggleHistoryItemSelection = (index, e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const newSelected = new Set(selectedHistoryItems);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedHistoryItems(newSelected);
+  };
+
+  const handleDeleteSelectedHistoryItems = () => {
+    if (selectedHistoryItems.size === 0) return;
+    
+    const count = selectedHistoryItems.size;
+    if (window.confirm(`Delete ${count} item${count > 1 ? 's' : ''} from history?`)) {
+      const indicesToDelete = Array.from(selectedHistoryItems).sort((a, b) => b - a); // Sort descending to delete from end first
+      const updated = history.filter((_, i) => !selectedHistoryItems.has(i));
+      
+      // Remove from cached results
+      const updatedCache = { ...cachedResults };
+      indicesToDelete.forEach(index => {
+        const item = history[index];
+        if (item.url && updatedCache[item.url]) {
+          delete updatedCache[item.url];
+        }
+      });
+      
+      setHistory(updated);
+      setCachedResults(updatedCache);
+      setSelectedHistoryItems(new Set());
+      setSelectionMode(false);
+      
+      try {
+        localStorage.setItem("planit_history", JSON.stringify(updated));
+        localStorage.setItem("planit_cached_results", JSON.stringify(updatedCache));
+      } catch (e) {
+        console.error("Failed to update localStorage:", e);
+      }
+    }
+  };
+
+  const handleSelectAllHistory = () => {
+    if (selectedHistoryItems.size === history.length) {
+      setSelectedHistoryItems(new Set());
+    } else {
+      setSelectedHistoryItems(new Set(history.map((_, i) => i)));
+    }
+  };
+
   // Save note for a place in a saved list
   const handleSavePlaceNote = (listName, placeIndex) => {
     const updated = { ...savedPlaces };
@@ -1244,37 +1301,52 @@ function App() {
                 {history.map((h, i) => (
                   <div
                     key={i}
-                    className="hist-item"
-                    onClick={() => handleHistoryClick(h)}
+                    className={`hist-item ${selectionMode ? 'selection-mode' : ''} ${selectedHistoryItems.has(i) ? 'selected' : ''}`}
+                    onClick={() => {
+                      if (selectionMode) {
+                        handleToggleHistoryItemSelection(i, { stopPropagation: () => {} });
+                      } else {
+                        handleHistoryClick(h);
+                      }
+                    }}
                   >
+                    {selectionMode && (
+                      <div className="hist-checkbox-wrapper">
+                        <div className={`hist-checkbox ${selectedHistoryItems.has(i) ? 'checked' : ''}`}>
+                          {selectedHistoryItems.has(i) && <Check size={16} />}
+                        </div>
+                      </div>
+                    )}
                     <div className="hist-content">
                       <strong className="hist-title">{h.title}</strong>
                       <span className="hist-time">{h.time}</span>
                     </div>
-                    <div className="hist-actions">
-                      <button
-                        className="hist-item-menu-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveHistoryMenu(activeHistoryMenu === i ? null : i);
-                          setShowClearHistoryMenu(false);
-                        }}
-                      >
-                        ⋯
-                      </button>
-                      {activeHistoryMenu === i && (
-                        <div className="hist-item-menu-popup">
-                          <button
-                            onClick={(e) => handleDeleteHistoryItem(i, e)}
-                            className="delete-item-btn"
-                          >
-                            <Trash2 size={14} style={{ marginRight: '8px' }} />
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                      <ChevronRight size={20} className="hist-arrow" />
-                    </div>
+                    {!selectionMode && (
+                      <div className="hist-actions">
+                        <button
+                          className="hist-item-menu-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveHistoryMenu(activeHistoryMenu === i ? null : i);
+                            setShowClearHistoryMenu(false);
+                          }}
+                        >
+                          ⋯
+                        </button>
+                        {activeHistoryMenu === i && (
+                          <div className="hist-item-menu-popup">
+                            <button
+                              onClick={(e) => handleDeleteHistoryItem(i, e)}
+                              className="delete-item-btn"
+                            >
+                              <Trash2 size={14} style={{ marginRight: '8px' }} />
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                        <ChevronRight size={20} className="hist-arrow" />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
