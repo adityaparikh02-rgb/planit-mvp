@@ -123,6 +123,25 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Close menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      // Close place menu if clicking outside
+      if (activeMenu !== null && !e.target.closest('.menu-btn') && !e.target.closest('.menu-popup')) {
+        setActiveMenu(null);
+      }
+      // Close history menus if clicking outside
+      if (activeHistoryMenu !== null && !e.target.closest('.hist-item-menu-btn') && !e.target.closest('.hist-item-menu-popup')) {
+        setActiveHistoryMenu(null);
+      }
+      if (showClearHistoryMenu && !e.target.closest('.history-menu-btn') && !e.target.closest('.history-menu-popup')) {
+        setShowClearHistoryMenu(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [activeMenu, activeHistoryMenu, showClearHistoryMenu]);
+
   // Load saved places and history from API + localStorage
   useEffect(() => {
     // Always load from localStorage first (for persistence across sessions)
