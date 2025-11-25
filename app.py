@@ -2715,32 +2715,88 @@ If no venues found, output: (none)
                 continue
         
         # Build context for each venue (slide content + following contextual slides)
+        # CRITICAL: Make context venue-specific to prevent bleeding between venues
         # If a venue is on slide 2, and slide 3 has no venue, slide 3's content belongs to slide 2's venue
-        print(f"\n📖 Building context for each venue (reading like a book)...")
+        # BUT: Only include slides that actually mention this specific venue
+        print(f"\n📖 Building context for each venue (reading like a book, venue-specific)...")
         venue_to_context = {}
         slides_sorted = sorted(slide_dict.items())
+        
+        # First, collect all venue names for reference (before building context)
+        all_venue_names = []
+        for venues in all_venues_per_slide.values():
+            all_venue_names.extend(venues)
+        all_venue_names_lower = [v.lower() for v in all_venue_names]
 
         for slide_key, venues in sorted(all_venues_per_slide.items()):
             # Get index of this slide
             slide_idx = next(i for i, (k, _) in enumerate(slides_sorted) if k == slide_key)
 
             for venue in venues:
-                # Start with current slide content
-                context_parts = [slide_dict[slide_key]]
+                venue_lower = venue.lower()
+                venue_words = set(venue_lower.split())
+                
+                # Start with current slide content, but filter to venue-specific parts
+                current_slide_text = slide_dict[slide_key]
+                
+                # If multiple venues on same slide, extract only sentences mentioning THIS venue
+                if len(venues) > 1:
+                    sentences = re.split(r'[.!?]\s+', current_slide_text)
+                    venue_specific_sentences = []
+                    for sentence in sentences:
+                        sentence_lower = sentence.lower()
+                        # Check if sentence mentions this venue
+                        if venue_lower in sentence_lower:
+                            venue_specific_sentences.append(sentence)
+                        elif len(venue_words) > 1:
+                            # For multi-word names, check if most words appear
+                            words_found = sum(1 for word in venue_words if word in sentence_lower)
+                            if words_found >= min(2, len(venue_words) - 1):
+                                venue_specific_sentences.append(sentence)
+                    
+                    if venue_specific_sentences:
+                        context_parts = [". ".join(venue_specific_sentences)]
+                    else:
+                        # Fallback: use full slide if no specific sentences found
+                        context_parts = [current_slide_text]
+                else:
+                    # Only one venue on this slide - use full slide content
+                    context_parts = [current_slide_text]
 
                 # Collect following slides until next venue appears
+                # BUT: Only include slides that mention this venue and don't mention other venues
                 for j in range(slide_idx + 1, len(slides_sorted)):
                     next_key, next_text = slides_sorted[j]
-                    # If next slide has no venues, it's contextual content for current venue
-                    if next_key not in all_venues_per_slide:
+                    
+                    # If next slide has venues, stop here
+                    if next_key in all_venues_per_slide:
+                        break
+                    
+                    # Check if this contextual slide mentions the current venue
+                    next_text_lower = next_text.lower()
+                    mentions_venue = (
+                        venue_lower in next_text_lower or
+                        (len(venue_words) > 1 and sum(1 for word in venue_words if word in next_text_lower) >= min(2, len(venue_words) - 1))
+                    )
+                    
+                    # Check if it mentions other venues
+                    mentions_other_venue = any(v_lower in next_text_lower for v_lower in all_venue_names_lower if v_lower != venue_lower)
+                    
+                    # Only include if it mentions the venue and doesn't mention other venues
+                    # OR if it's clearly contextual (short, descriptive) and doesn't mention other venues
+                    if mentions_venue and not mentions_other_venue:
+                        context_parts.append(next_text)
+                    elif not mentions_other_venue and len(next_text) < 200:
+                        # Short contextual slide that doesn't mention other venues - include it
                         context_parts.append(next_text)
                     else:
-                        break  # Stop at next venue
+                        # Stop if we hit content that mentions other venues or doesn't relate to this venue
+                        break
 
                 # Combine all context for this venue
                 full_context = "\n".join(context_parts)
                 venue_to_context[venue] = full_context
-                print(f"   📝 {venue}: {len(full_context)} chars of context from {len(context_parts)} slide(s)")
+                print(f"   📝 {venue}: {len(full_context)} chars of context from {len(context_parts)} slide(s) (venue-specific)")
 
         # Combine venues from all slides (preserving slide info for enrichment)
         all_venues_with_slides = []
@@ -3199,10 +3255,30 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         other_venues = [v.lower() for v in all_venues if v.lower() != name_lower]
         filtered_sentences = []
         
-        # If we have slide_context and it's short, use it all (don't filter aggressively)
-        if slide_context and len(slide_context) < 500:
-            # For slide-specific context, be more lenient - include all sentences from the slide
-            filtered_sentences = relevant_sentences if relevant_sentences else sentences[:3]  # At least first 3 sentences
+        # CRITICAL: When we have slide_context, it's already venue-specific, so filter aggressively
+        # Only include sentences that actually mention THIS venue and don't mention OTHER venues
+        if slide_context:
+            # For slide-specific context, filter VERY aggressively to prevent bleeding
+            # Only keep sentences that mention THIS venue and explicitly exclude sentences mentioning OTHER venues
+            for sentence in relevant_sentences:
+                sentence_lower = sentence.lower()
+                # Skip if sentence mentions another venue (be strict)
+                mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
+                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+
+                # Only include if it mentions this venue AND doesn't mention other venues
+                if mentions_this and not mentions_other:
+                    filtered_sentences.append(sentence)
+                # If both mentioned, be very strict - only keep if this venue is clearly the focus
+                elif mentions_this and mentions_other:
+                    this_pos = sentence_lower.find(name_lower)
+                    other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
+                    this_count = sentence_lower.count(name_lower)
+                    other_counts = [sentence_lower.count(v) for v in other_venues if v in sentence_lower]
+                    max_other_count = max(other_counts, default=0)
+                    # Very strict: this venue must appear first AND be mentioned significantly more
+                    if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count > max_other_count)):
+                        filtered_sentences.append(sentence)
         else:
             # For general context, filter more carefully
             for sentence in relevant_sentences:
