@@ -142,6 +142,9 @@ function App() {
       if (showClearHistoryMenu && !e.target.closest('.history-menu-btn') && !e.target.closest('.history-menu-popup')) {
         setShowClearHistoryMenu(false);
       }
+      if (showClearSavedMenu && !e.target.closest('.history-menu-btn') && !e.target.closest('.history-menu-popup')) {
+        setShowClearSavedMenu(false);
+      }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
@@ -1431,6 +1434,66 @@ function App() {
                 <div className="saved-header-wrapper">
                   <MapPin size={24} className="saved-header-icon" />
                   <h2 className="saved-header">Your Saved Lists</h2>
+                  {Object.keys(savedPlaces).length > 0 && (
+                    <div className="saved-header-menu-wrapper">
+                      {savedListsSelectionMode ? (
+                        <div className="selection-mode-actions">
+                          <button
+                            className="select-all-btn"
+                            onClick={handleSelectAllSavedLists}
+                          >
+                            {selectedSavedLists.size === Object.keys(savedPlaces).length ? 'Deselect All' : 'Select All'}
+                          </button>
+                          <button
+                            className="delete-selected-btn"
+                            onClick={handleDeleteSelectedSavedLists}
+                            disabled={selectedSavedLists.size === 0}
+                          >
+                            <Trash2 size={16} style={{ marginRight: '6px' }} />
+                            Delete ({selectedSavedLists.size})
+                          </button>
+                          <button
+                            className="cancel-selection-btn"
+                            onClick={handleToggleSavedListsSelectionMode}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            className="selection-mode-toggle-btn"
+                            onClick={handleToggleSavedListsSelectionMode}
+                          >
+                            Select
+                          </button>
+                          <button
+                            className="history-menu-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowClearSavedMenu(!showClearSavedMenu);
+                            }}
+                          >
+                            ⋯
+                          </button>
+                          {showClearSavedMenu && (
+                            <div className="history-menu-popup">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleClearAllSavedPlaces();
+                                }}
+                                className="delete-history-btn"
+                              >
+                                <Trash2 size={16} style={{ marginRight: '8px' }} />
+                                Clear All Saved Places
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {Object.keys(savedPlaces).length === 0 ? (
                   <div className="empty-state">
@@ -1442,14 +1505,23 @@ function App() {
                     {Object.entries(savedPlaces).map(([list, places], idx) => (
                       <div 
                         key={idx} 
-                        className="hist-item"
+                        className={`hist-item ${savedListsSelectionMode ? 'selection-mode' : ''} ${selectedSavedLists.has(list) ? 'selected' : ''}`}
                         onClick={() => {
-                          if (editingListName !== list) {
+                          if (savedListsSelectionMode) {
+                            handleToggleSavedListSelection(list, { stopPropagation: () => {} });
+                          } else if (editingListName !== list) {
                             setSelectedList(list);
                           }
                         }}
                       >
-                        {editingListName === list ? (
+                        {savedListsSelectionMode && (
+                          <div className="hist-checkbox-wrapper">
+                            <div className={`hist-checkbox ${selectedSavedLists.has(list) ? 'checked' : ''}`}>
+                              {selectedSavedLists.has(list) && <Check size={16} />}
+                            </div>
+                          </div>
+                        )}
+                        {!savedListsSelectionMode && editingListName === list ? (
                           <div className="list-name-edit" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="text"
