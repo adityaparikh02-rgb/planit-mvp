@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned, MoreVertical, Trash2 } from "lucide-react";
+import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned, MoreHorizontal, Trash2 } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
 
@@ -1213,7 +1213,7 @@ function App() {
                       setActiveHistoryMenu(null);
                     }}
                   >
-                    <MoreVertical size={20} />
+                    <MoreHorizontal size={20} />
                   </button>
                   {showClearHistoryMenu && (
                     <div className="history-menu-popup">
@@ -1258,7 +1258,7 @@ function App() {
                           setShowClearHistoryMenu(false);
                         }}
                       >
-                        <MoreVertical size={18} />
+                        ⋯
                       </button>
                       {activeHistoryMenu === i && (
                         <div className="hist-item-menu-popup">

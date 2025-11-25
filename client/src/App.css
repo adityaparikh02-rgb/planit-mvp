@@ -166,8 +166,8 @@
 .history-menu-btn {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  border-radius: 24px;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   width: 36px;
   height: 36px;
@@ -176,12 +176,15 @@
   justify-content: center;
   transition: all 0.3s ease;
   padding: 0;
+  font-size: 20px;
 }
 
 .history-menu-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
   border-color: rgba(63, 71, 255, 0.3);
   color: rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(63, 71, 255, 0.15), 0 0 0 1px rgba(63, 71, 255, 0.1);
 }
 
 .history-menu-popup {
@@ -229,23 +232,26 @@
 .hist-item-menu-btn {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: 24px;
   color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s ease;
   padding: 0;
   flex-shrink: 0;
+  font-size: 20px;
 }
 
 .hist-item-menu-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
   border-color: rgba(63, 71, 255, 0.3);
   color: rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(63, 71, 255, 0.15), 0 0 0 1px rgba(63, 71, 255, 0.1);
 }
 
 .hist-item-menu-popup {
