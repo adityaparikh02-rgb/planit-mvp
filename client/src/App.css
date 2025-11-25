@@ -161,6 +161,104 @@
   position: absolute;
   top: 0;
   right: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.selection-mode-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.selection-mode-toggle-btn,
+.select-all-btn,
+.cancel-selection-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.selection-mode-toggle-btn:hover,
+.select-all-btn:hover,
+.cancel-selection-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(63, 71, 255, 0.3);
+}
+
+.delete-selected-btn {
+  background: rgba(255, 107, 107, 0.15);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 20px;
+  color: #ff6b6b;
+  cursor: pointer;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+}
+
+.delete-selected-btn:hover:not(:disabled) {
+  background: rgba(255, 107, 107, 0.25);
+  border-color: rgba(255, 107, 107, 0.5);
+  color: #ff5252;
+}
+
+.delete-selected-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hist-item.selection-mode {
+  cursor: pointer;
+}
+
+.hist-item.selection-mode:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hist-item.selected {
+  background: rgba(63, 71, 255, 0.1);
+  border-color: rgba(63, 71, 255, 0.4);
+}
+
+.hist-checkbox-wrapper {
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.hist-checkbox {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.hist-checkbox.checked {
+  background: linear-gradient(135deg, #3F47FF 0%, #7E86FF 100%);
+  border-color: #7E86FF;
+  color: white;
+}
+
+.hist-item.selected .hist-checkbox {
+  border-color: rgba(63, 71, 255, 0.6);
 }
 
 .history-menu-btn {
