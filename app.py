@@ -4956,6 +4956,14 @@ def extract_api():
                 else:
                     print(f"   ✅ OPENAI_API_KEY is set (first 10 chars: {api_key[:10]}...)")
                 data["places_extracted"] = []
+                data["debug_info"] = {
+                    "has_content": bool(ocr_text or caption),
+                    "openai_key_set": bool(api_key),
+                    "content_lengths": {
+                        "ocr_text": len(ocr_text) if ocr_text else 0,
+                        "caption": len(caption) if caption else 0,
+                    }
+                }
 
             # Add extraction_id to response
             data["extraction_id"] = extraction_id
