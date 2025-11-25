@@ -2148,6 +2148,105 @@ def _extract_neighborhood_from_address(address):
     return None
 
 
+def infer_nyc_neighborhood_from_address(address, venue_name=""):
+    """
+    Infer NYC neighborhood from address and venue name using geographic knowledge.
+
+    STRICT RULES:
+    - Always return one of the allowed neighborhoods
+    - Do NOT invent new neighborhoods
+    - If unsure, pick the closest correct neighborhood by NYC geography
+    - Never return boroughs (like "Manhattan"), only neighborhoods
+
+    Args:
+        address: Google Maps address string
+        venue_name: Venue name (may contain neighborhood hints)
+
+    Returns:
+        Neighborhood string from allowed list, or None if can't determine
+    """
+    if not address:
+        return None
+
+    # Combine address and venue name for matching
+    combined_text = f"{address} {venue_name}".lower()
+
+    # Define allowed neighborhoods with geographic aliases and street boundaries
+    nyc_neighborhoods = {
+        # Lower Manhattan
+        "Lower East Side": ["lower east side", "les", "ludlow", "orchard street", "essex", "delancey"],
+        "East Village": ["east village", "ev", "st marks", "avenue a", "avenue b", "tompkins square"],
+        "West Village": ["west village", "christopher street", "bleecker street", "hudson street", "jane street", "charles street"],
+        "Greenwich Village": ["greenwich village", "washington square", "macdougal", "minetta"],
+        "SoHo": ["soho", "spring street soho", "broome street soho", "prince street soho", "wooster", "mercer street"],
+        "Nolita": ["nolita", "elizabeth street", "mott street nolita", "kenmare"],
+        "NoHo": ["noho", "bond street", "great jones"],
+        "Little Italy": ["little italy", "mulberry street", "mott street little italy"],
+        "Chinatown": ["chinatown", "canal street", "bayard", "pell street", "doyers"],
+        "Tribeca": ["tribeca", "franklin street", "harrison street", "chambers street tribeca"],
+        "FiDi": ["financial district", "fidi", "wall street", "broad street", "stone street", "water street fidi"],
+        "Lower Manhattan": ["battery park", "bowling green"],
+
+        # Midtown
+        "Chelsea": ["chelsea", "8th avenue chelsea", "9th avenue chelsea", "10th avenue chelsea", "w 23rd", "w 22nd", "w 21st", "w 20th", "w 19th"],
+        "Flatiron": ["flatiron", "broadway flatiron", "5th avenue flatiron", "madison square"],
+        "Gramercy": ["gramercy", "park avenue south", "irving place", "e 23rd", "e 22nd", "e 21st", "e 20th", "e 19th"],
+        "Midtown East": ["midtown east", "lexington avenue", "3rd avenue midtown", "e 50th", "e 49th", "e 48th", "e 47th", "e 46th", "e 45th", "e 44th", "e 43rd", "e 42nd midtown"],
+        "Midtown West": ["midtown west", "w 50th", "w 49th", "w 48th", "w 47th", "w 46th", "w 45th", "w 44th", "w 43rd", "w 42nd midtown", "8th avenue midtown", "9th avenue midtown"],
+        "Hell's Kitchen": ["hell's kitchen", "hells kitchen", "9th avenue hell's", "10th avenue hell's", "w 57th", "w 56th", "w 55th", "w 54th", "w 53rd", "w 52nd", "w 51st"],
+
+        # Uptown
+        "Upper East Side": ["upper east side", "ues", "park avenue upper", "madison avenue upper", "lexington upper", "e 86th", "e 85th", "e 84th", "e 83rd", "e 82nd", "e 81st", "e 80th", "e 79th", "e 78th", "e 77th", "e 76th", "e 75th", "e 74th", "e 73rd", "e 72nd", "e 71st", "e 70th", "e 69th", "e 68th", "e 67th", "e 66th", "e 65th"],
+        "Upper West Side": ["upper west side", "uws", "amsterdam avenue", "columbus avenue", "w 86th", "w 85th", "w 84th", "w 83rd", "w 82nd", "w 81st", "w 80th", "w 79th", "w 78th", "w 77th", "w 76th", "w 75th", "w 74th", "w 73rd", "w 72nd", "w 71st", "w 70th", "w 69th", "w 68th", "w 67th", "w 66th", "w 65th"],
+        "Harlem": ["harlem", "125th street", "lenox avenue", "malcolm x boulevard", "frederick douglass"],
+
+        # Brooklyn
+        "Bushwick": ["bushwick", "knickerbocker", "myrtle avenue bushwick", "flushing avenue bushwick"],
+        "Williamsburg": ["williamsburg", "bedford avenue", "n 6th", "n 7th", "n 8th", "berry street"],
+        "Greenpoint": ["greenpoint", "manhattan avenue", "franklin street greenpoint"],
+
+        # Queens
+        "Long Island City": ["long island city", "lic", "jackson avenue", "court square", "hunters point"],
+        "Astoria": ["astoria", "steinway", "31st avenue", "30th avenue", "broadway astoria"],
+    }
+
+    # Try exact neighborhood matches first
+    for neighborhood, patterns in nyc_neighborhoods.items():
+        for pattern in patterns:
+            if pattern in combined_text:
+                return neighborhood
+
+    # If no match, use zip code as fallback
+    zip_to_neighborhood = {
+        # Manhattan
+        "10002": "Lower East Side", "10003": "East Village", "10009": "East Village",
+        "10012": "SoHo", "10013": "Tribeca", "10014": "West Village",
+        "10004": "FiDi", "10005": "FiDi", "10006": "FiDi", "10007": "Tribeca",
+        "10010": "Gramercy", "10011": "Chelsea", "10016": "Gramercy",
+        "10017": "Midtown East", "10018": "Midtown West", "10019": "Hell's Kitchen",
+        "10021": "Upper East Side", "10022": "Midtown East", "10023": "Upper West Side",
+        "10024": "Upper West Side", "10025": "Upper West Side",
+        "10028": "Upper East Side", "10029": "Harlem",
+        "10128": "Upper East Side", "10075": "Upper East Side",
+
+        # Brooklyn
+        "11206": "Bushwick", "11211": "Williamsburg", "11222": "Greenpoint",
+
+        # Queens
+        "11101": "Long Island City", "11102": "Astoria", "11103": "Astoria",
+    }
+
+    # Extract zip code from address
+    import re
+    zip_match = re.search(r'\b(\d{5})\b', address)
+    if zip_match:
+        zip_code = zip_match.group(1)
+        if zip_code in zip_to_neighborhood:
+            return zip_to_neighborhood[zip_code]
+
+    return None
+
+
 def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
     """Get canonical name, address, place_id, photos, and neighborhood from Google Maps API.
 
@@ -2582,13 +2681,13 @@ If no venues found, output: (none)
                 client = get_openai_client()
                 
                 try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": slide_prompt}],
-                    temperature=0.2,  # Very low temperature for consistent extraction
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": slide_prompt}],
+                        temperature=0.2,  # Very low temperature for consistent extraction
                         timeout=30  # Add timeout to prevent hanging
-                )
-                slide_response = response.choices[0].message.content.strip()
+                    )
+                    slide_response = response.choices[0].message.content.strip()
                 except Exception as api_error:
                     print(f"     ❌ OpenAI API call failed for slide: {api_error}")
                     print(f"     Error type: {type(api_error).__name__}")
@@ -2827,14 +2926,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-        )
-        raw = response.choices[0].message.content.strip()
-        print(f"🤖 GPT raw response: {raw[:500]}...")
+            )
+            raw = response.choices[0].message.content.strip()
+            print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
@@ -3106,28 +3205,28 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             filtered_sentences = relevant_sentences if relevant_sentences else sentences[:3]  # At least first 3 sentences
         else:
             # For general context, filter more carefully
-        for sentence in relevant_sentences:
-            sentence_lower = sentence.lower()
-            # Skip if sentence mentions another venue more prominently than this one
-            mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
-            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
-            
-            if mentions_this and not mentions_other:
-                filtered_sentences.append(sentence)
-            elif mentions_this and mentions_other:
-                # If both mentioned, only keep if this venue appears first or more prominently
-                this_pos = sentence_lower.find(name_lower)
-                other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
-                if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
+            for sentence in relevant_sentences:
+                sentence_lower = sentence.lower()
+                # Skip if sentence mentions another venue more prominently than this one
+                mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
+                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+
+                if mentions_this and not mentions_other:
                     filtered_sentences.append(sentence)
-        
+                elif mentions_this and mentions_other:
+                    # If both mentioned, only keep if this venue appears first or more prominently
+                    this_pos = sentence_lower.find(name_lower)
+                    other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
+                    if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
+                        filtered_sentences.append(sentence)
+
         # If filtering removed everything but we have slide_context, use slide_context directly
         if not filtered_sentences and slide_context:
             context = slide_context
         else:
-        context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
-        if len(filtered_sentences) < len(sentences):
-            print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences relevant to {name}")
+            context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
+            if len(filtered_sentences) < len(sentences):
+                print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences relevant to {name}")
     else:
         context = raw_context
     
@@ -3154,7 +3253,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
 {{
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides.",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
-  "vibe": "Clean, concise description of the mood/atmosphere at {name}. CRITICAL: Remove ALL hashtags, OCR garbage, random text fragments, and venue names. Do NOT include: hashtags (#holidaybar), garbled OCR (REX TAREX SAN MAL), venue name, or 'the vibes:' prefix. Example: 'Year-round rooftop' not '#holidaybar REX TAREX Daintree the vibes: Year-round rooftop'. Keep it short, clean, and descriptive.",
+  "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
   "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list specific dishes, drinks, or menu items. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Only include if mentioned SPECIFICALLY for {name}.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required'). Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
@@ -3240,17 +3339,10 @@ Context (filtered to only include mentions of "{name}"):
             "comments_summary": safe_get_str("comments_summary", ""),
             "creator_insights": safe_get_str("creator_insights", ""),  # Personal recommendations and comparisons
         }
-        # Join only string fields for vibe_tags extraction (skip lists like vibe_keywords)
-        vibe_text = " ".join(filter(None, [
-            data.get("summary", ""),
-            data.get("when_to_go", ""),
-            data.get("vibe", ""),
-            data.get("must_try", ""),
-            data.get("specials", ""),
-            data.get("comments_summary", ""),
-            data.get("creator_insights", "")
-        ]))
-        data["vibe_tags"] = extract_vibe_tags(vibe_text)
+        # Extract vibe_tags from the ORIGINAL slide context, not GPT-generated summaries
+        # This ensures tags are specific to each venue's slide, not generic
+        # Use the actual OCR text from the slide for more accurate tag extraction
+        data["vibe_tags"] = extract_vibe_tags(context)
         return data
     except Exception as e:
         print(f"⚠️ Enrichment failed for {name}:", e)
@@ -3285,7 +3377,7 @@ def extract_vibe_keywords(text):
 
         # Atmosphere
         "Cozy", "Intimate", "Romantic", "Charming", "Elegant", "Sophisticated",
-        "Trendy", "Hip", "Modern", "Contemporary", "Stylish", "Chic",
+        "Trendy", "Hip", "Modern", "Contemporary", "Stylish", "Chic", "Sexy",
         "Rustic", "Vintage", "Classic", "Traditional", "Old-school",
 
         # Social
@@ -3302,6 +3394,9 @@ def extract_vibe_keywords(text):
         "Serious", "Professional", "Polished", "Refined",
         "Artsy", "Creative", "Bohemian", "Alternative",
         "Underground", "Dive", "Gritty", "Raw", "Edgy",
+
+        # Special features
+        "Rooftop", "Views", "Scenic", "Waterfront", "Outdoor",
     ]
 
     text_lower = text.lower()
@@ -3673,7 +3768,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                             # If we got a generic location like "Manhattan", mark it as None so we can try other sources
                             if is_generic:
                                 print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
-            final_neighborhood = None
+                                final_neighborhood = None
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
 
@@ -3697,6 +3792,13 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if photo:
                 print(f"   📸 Using Google Maps photo for {display_name}")
 
+        # SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
+        if not final_neighborhood and address:
+            inferred_neighborhood = infer_nyc_neighborhood_from_address(address, display_name)
+            if inferred_neighborhood:
+                final_neighborhood = inferred_neighborhood
+                print(f"   🧠 Inferred neighborhood from address: {final_neighborhood}")
+
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
@@ -3705,7 +3807,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             "vibe_tags": intel.get("vibe_tags", []),
             "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly
             "address": address,  # Also get address while we're at it
-            "neighborhood": final_neighborhood,  # Prioritize text mentions, fallback to Google Maps
+            "neighborhood": final_neighborhood,  # Prioritize text mentions, fallback to Google Maps, then inferred
             **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags", "vibe_keywords"]}
         }
         return place_data
@@ -4714,8 +4816,8 @@ def get_extraction_status(extraction_id):
         # Auto-cleanup: if status is empty or very old, return empty
         # This helps stop unnecessary polling
         if not status_messages:
-        return jsonify({
-            "extraction_id": extraction_id,
+            return jsonify({
+                "extraction_id": extraction_id,
                 "messages": [],
                 "completed": True
             }), 200
