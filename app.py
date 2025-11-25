@@ -5158,17 +5158,27 @@ def extract_api():
                 api_key = os.getenv("OPENAI_API_KEY")
                 if not api_key:
                     print(f"   ⚠️ CRITICAL: OPENAI_API_KEY environment variable is NOT SET!")
+                    data["error"] = "No venues found in this video. OpenAI API key is not configured. Please check Render environment variables."
                     data["warning"] = "OpenAI API key is not configured. Please check Render environment variables."
                 else:
                     print(f"   ✅ OPENAI_API_KEY is set (first 10 chars: {api_key[:10]}...)")
+                    # Check if GPT extraction actually ran
+                    if not ocr_text and not caption:
+                        data["error"] = "No venues found in this video. No extractable text found (no caption or OCR text)."
+                    else:
+                        data["error"] = "No venues found in this video. The video might not mention specific venue names, or they couldn't be extracted."
                 data["places_extracted"] = []
                 data["debug_info"] = {
                     "has_content": bool(ocr_text or caption),
                     "openai_key_set": bool(api_key),
+                    "ocr_available": OCR_AVAILABLE,
+                    "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
                     "content_lengths": {
                         "ocr_text": len(ocr_text) if ocr_text else 0,
                         "caption": len(caption) if caption else 0,
-                    }
+                    },
+                    "caption_preview": caption[:200] if caption else None,
+                    "ocr_preview": ocr_text[:200] if ocr_text else None,
                 }
 
             # Add extraction_id to response
@@ -5631,12 +5641,16 @@ def extract_api():
             # Check OpenAI API key
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
+                error_msg = "No venues found in this video. OpenAI API key is not configured. Please check Render environment variables."
                 warning_msg = " OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable on Render."
             elif not transcript and not ocr_text:
-                warning_msg = " This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images, but tesseract is not available on Render."
+                error_msg = "No venues found in this video. This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images."
+                warning_msg = " This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images, but tesseract may not be available on Render."
             elif not has_content:
+                error_msg = "No venues found in this video. No extractable content found (no transcript, OCR text, or caption)."
                 warning_msg = " No extractable content found (no transcript, OCR text, or caption)."
             else:
+                error_msg = "No venues found in this video. The video might not mention specific venue names, or they couldn't be extracted."
                 warning_msg = " GPT extraction returned no venues. Check Render logs for detailed error messages."
             
             # Return empty result with helpful message
@@ -5645,16 +5659,21 @@ def extract_api():
                 "summary_title": context_title or caption or "No venues found",
                 "context_summary": context_title or caption or "No venues found",
                 "places_extracted": [],
+                "error": error_msg,
                 "warning": warning_msg if warning_msg else None,
                 "extraction_id": extraction_id,  # Add extraction_id for status polling
                 "debug_info": {
                     "has_content": has_content,
                     "openai_key_set": bool(api_key),
+                    "ocr_available": OCR_AVAILABLE,
+                    "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
                     "content_lengths": {
                         "transcript": len(transcript) if transcript else 0,
                         "ocr_text": len(ocr_text) if ocr_text else 0,
                         "caption": len(caption) if caption else 0,
-                    }
+                    },
+                    "caption_preview": caption[:200] if caption else None,
+                    "ocr_preview": ocr_text[:200] if ocr_text else None,
                 }
             }
             return jsonify(data)
