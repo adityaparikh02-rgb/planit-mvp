@@ -1575,7 +1575,7 @@ function App() {
                                 {places.length} place{places.length !== 1 ? "s" : ""}
                               </span>
                             </div>
-                            <ChevronRight size={20} className="hist-arrow" />
+                            {!savedListsSelectionMode && <ChevronRight size={20} className="hist-arrow" />}
                           </>
                         )}
                       </div>
