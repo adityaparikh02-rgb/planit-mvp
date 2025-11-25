@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned } from "lucide-react";
+import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned, MoreVertical, Trash2 } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
 
@@ -94,6 +94,8 @@ function App() {
   const [noteValue, setNoteValue] = useState(""); // Current note value being edited
   const [selectedVibeFilter, setSelectedVibeFilter] = useState(null); // Currently selected vibe tag for filtering
   const [userAddedTags, setUserAddedTags] = useState({}); // { placeName: [array of user-added tags] }
+  const [activeHistoryMenu, setActiveHistoryMenu] = useState(null); // For history item menus: index or null
+  const [showClearHistoryMenu, setShowClearHistoryMenu] = useState(false); // For clear history menu
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -974,6 +976,14 @@ function App() {
                             >
                               ➕ Add to New List
                             </button>
+                            <div className="menu-divider"></div>
+                            <button
+                              className="remove-place-btn"
+                              onClick={() => handleRemovePlaceFromResults(i)}
+                            >
+                              <Trash2 size={14} style={{ marginRight: '8px' }} />
+                              Remove from Results
+                            </button>
                           </div>
                         )}
 
@@ -1124,7 +1134,37 @@ function App() {
         {/* HISTORY */}
         {activeTab === "history" && (
           <div className="history-page">
-            <h2 className="history-header">Extraction History</h2>
+            <div className="history-header-wrapper">
+              <h2 className="history-header">Extraction History</h2>
+              {history.length > 0 && (
+                <div className="history-header-menu-wrapper">
+                  <button
+                    className="history-menu-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowClearHistoryMenu(!showClearHistoryMenu);
+                      setActiveHistoryMenu(null);
+                    }}
+                  >
+                    <MoreVertical size={20} />
+                  </button>
+                  {showClearHistoryMenu && (
+                    <div className="history-menu-popup">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleClearHistory();
+                        }}
+                        className="delete-history-btn"
+                      >
+                        <Trash2 size={16} style={{ marginRight: '8px' }} />
+                        Clear All History
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             {history.length === 0 ? (
               <div className="empty-state">
                 <p className="empty-text">No extractions yet</p>
@@ -1142,7 +1182,30 @@ function App() {
                       <strong className="hist-title">{h.title}</strong>
                       <span className="hist-time">{h.time}</span>
                     </div>
-                    <ChevronRight size={20} className="hist-arrow" />
+                    <div className="hist-actions">
+                      <button
+                        className="hist-item-menu-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveHistoryMenu(activeHistoryMenu === i ? null : i);
+                          setShowClearHistoryMenu(false);
+                        }}
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+                      {activeHistoryMenu === i && (
+                        <div className="hist-item-menu-popup">
+                          <button
+                            onClick={(e) => handleDeleteHistoryItem(i, e)}
+                            className="delete-item-btn"
+                          >
+                            <Trash2 size={14} style={{ marginRight: '8px' }} />
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                      <ChevronRight size={20} className="hist-arrow" />
+                    </div>
                   </div>
                 ))}
               </div>
