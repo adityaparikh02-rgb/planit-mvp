@@ -2995,6 +2995,9 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
+            import traceback
+            print(f"   Full traceback:")
+            print(traceback.format_exc())
             raise  # Re-raise to be caught by outer exception handler
 
         match = re.search(r"Summary\s*:\s*(.+)", raw, re.I)
@@ -5137,11 +5140,20 @@ def extract_api():
             transcript = ""  # No audio for photo posts
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
-            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-            print(f"🤖 GPT returned {len(venues)} venues: {venues}")
-            print(f"🤖 GPT returned title: {context_title}")
-            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-            print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+            try:
+                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                print(f"🤖 GPT returned {len(venues)} venues: {venues}")
+                print(f"🤖 GPT returned title: {context_title}")
+                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+                print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+            except Exception as extract_error:
+                print(f"❌ extract_places_and_context failed: {extract_error}")
+                import traceback
+                print(traceback.format_exc())
+                venues = []
+                context_title = caption or "TikTok Photo Post"
+                venue_to_slide = {}
+                venue_to_context = {}
             update_status(extraction_id, f"Found {len(venues)} venues...")
             
             # Build response with same JSON structure as video extraction
