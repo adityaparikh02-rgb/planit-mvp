@@ -3908,12 +3908,37 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if photo:
                 print(f"   📸 Using Google Maps photo for {display_name}")
 
-        # SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
+        # PRIORITY 3: Google Maps address parsing
         if not final_neighborhood and address:
+            print(f"   🔍 Trying Google Maps address parsing for neighborhood...")
+            parsed_neighborhood = _extract_neighborhood_from_address(address)
+            if parsed_neighborhood:
+                final_neighborhood = parsed_neighborhood
+                print(f"   📍 Found neighborhood from address parsing: {final_neighborhood}")
+        
+        # PRIORITY 4: Text extraction (from context)
+        if not final_neighborhood:
+            print(f"   🔍 Trying text extraction for neighborhood...")
+            combined_text_for_neighborhood = " ".join([x for x in [caption, ocr_text, transcript] if x])
+            if combined_text_for_neighborhood:
+                text_neighborhood = _extract_neighborhood_from_text(combined_text_for_neighborhood)
+                if text_neighborhood:
+                    final_neighborhood = text_neighborhood
+                    print(f"   📍 Found neighborhood from text: {final_neighborhood}")
+        
+        # PRIORITY 5: SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
+        if not final_neighborhood and address:
+            print(f"   🔍 Trying NYC geography inference for neighborhood...")
             inferred_neighborhood = infer_nyc_neighborhood_from_address(address, display_name)
             if inferred_neighborhood:
                 final_neighborhood = inferred_neighborhood
                 print(f"   🧠 Inferred neighborhood from address: {final_neighborhood}")
+        
+        # Final check - log if still no neighborhood
+        if not final_neighborhood:
+            print(f"   ⚠️ Could not determine neighborhood for {display_name}")
+            print(f"      Address: {address}")
+            print(f"      Place ID: {place_id}")
 
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
