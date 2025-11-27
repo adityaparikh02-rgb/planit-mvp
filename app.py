@@ -3362,7 +3362,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
 - IMPORTANT: If this is from a slideshow, ONLY use information from the slide(s) that mention "{name}". Do NOT aggregate information from other slides about different venues.
 
 {{
-  "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides.",
+  "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar').",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
   "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list SPECIFIC dishes, drinks, or menu items mentioned by the creator. Even if they say 'I recommend everything on the menu' or 'everything is good', extract the SPECIFIC dishes they actually tried and mentioned liking (e.g., 'chicken harissa bowl', 'matbucha dip', 'sabik sandwich'). For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. Only include if mentioned SPECIFICALLY for {name}.",
@@ -3370,7 +3370,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "specials": "Real deals or special events at {name} if mentioned",
   "comments_summary": "Short insight from comments about {name} if available",
-  "creator_insights": "Capture personal recommendations, comparisons, or unique context from the creator SPECIFICALLY about {name}. Examples: 'I'm from California and this is the only burger comparable to In-N-Out', 'This place reminds me of my favorite spot back home', 'Only place in NYC that does X like this'. Include personal anecdotes, comparisons to other places, or unique selling points the creator emphasizes ABOUT {name}. Keep it authentic and specific to what the creator actually said ABOUT {name}."
+  "creator_insights": "Capture personal recommendations, comparisons, or unique context from the creator SPECIFICALLY about {name}. This is where first-person opinions should go (e.g., 'quickly become our favorite', 'we rank every meal'). Examples: 'I'm from California and this is the only burger comparable to In-N-Out', 'This place reminds me of my favorite spot back home', 'Only place in NYC that does X like this', 'Has quickly become our favorite wine bar', 'We rank them an 8.7'. Include personal anecdotes, ratings, comparisons to other places, or unique selling points the creator emphasizes ABOUT {name}. Keep the creator's authentic voice and first-person language here - this will be shown in a 'Show More' section."
 }}
 
 Context (filtered to only include mentions of "{name}"):
@@ -3968,15 +3968,24 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 print(f"   📍 Found neighborhood from address parsing: {final_neighborhood}")
 
         # PRIORITY 4: SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
-        # Skip text extraction (PRIORITY 4) since it applies global TikTok caption/title to all venues
-        # This was causing "West Village" (from "Hidden Wine Bars in West Village") to be applied to all venues
         if not final_neighborhood and address:
             print(f"   🔍 Trying NYC geography inference for neighborhood...")
             inferred_neighborhood = infer_nyc_neighborhood_from_address(address, display_name)
             if inferred_neighborhood:
                 final_neighborhood = inferred_neighborhood
                 print(f"   🧠 Inferred neighborhood from address: {final_neighborhood}")
-        
+
+        # PRIORITY 5: TEXT EXTRACTION (last resort, single-venue videos only)
+        # Only use text extraction if this is the ONLY venue in the video (to avoid applying global caption to all venues)
+        # This handles cases where Google Maps APIs don't have neighborhood data but the TikTok title/caption does
+        if not final_neighborhood and len(venues) == 1:
+            print(f"   🔍 Trying text extraction from caption/title (single venue only)...")
+            # Try caption first (most reliable)
+            text_neighborhood = _extract_neighborhood_from_text(caption)
+            if text_neighborhood:
+                final_neighborhood = text_neighborhood
+                print(f"   📍 Found neighborhood from caption: {final_neighborhood}")
+
         # Final check - log if still no neighborhood
         if not final_neighborhood:
             print(f"   ⚠️ Could not determine neighborhood for {display_name}")
