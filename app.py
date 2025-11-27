@@ -3477,6 +3477,7 @@ def extract_vibe_keywords(text):
         return []
 
     # Common vibe/atmosphere keywords to look for
+    # ONLY POSITIVE, APPEALING descriptors - removed negative words like "Serious", "Crowded", "Packed", "Gritty", "Raw"
     vibe_keywords = [
         # Energy level
         "Lively", "Energetic", "Vibrant", "Dynamic", "Buzzing", "Electric",
@@ -3492,18 +3493,24 @@ def extract_vibe_keywords(text):
         "Upscale", "Classy", "Fancy", "Luxurious", "Premium",
         "Casual", "Unpretentious", "Down-to-earth", "Authentic",
 
-        # Activity
-        "Lively", "Crowded", "Popular", "Bustling", "Packed",
+        # Activity - removed "Crowded", "Packed", "Bustling" (negative connotation)
+        "Popular", "Lively",
         "Quiet", "Intimate", "Hidden", "Secret", "Local",
 
-        # Mood
+        # Mood - removed "Serious" and other negative words
         "Fun", "Playful", "Quirky", "Eclectic", "Unique",
-        "Serious", "Professional", "Polished", "Refined",
+        "Polished", "Refined",
         "Artsy", "Creative", "Bohemian", "Alternative",
-        "Underground", "Dive", "Gritty", "Raw", "Edgy",
+        "Underground", "Dive", "Edgy",
 
         # Special features
         "Rooftop", "Views", "Scenic", "Waterfront", "Outdoor",
+
+        # Cuisine types (for venue categorization)
+        "Wine Bar", "Cocktail Bar", "Greek", "Italian", "French", "Spanish",
+        "Japanese", "Mexican", "Thai", "Indian", "Chinese", "Korean",
+        "Mediterranean", "American", "Seafood", "Steakhouse", "Sushi",
+        "Pizza", "Pasta", "Tapas", "Ramen", "Burger",
     ]
 
     text_lower = text.lower()
@@ -3949,18 +3956,10 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if parsed_neighborhood:
                 final_neighborhood = parsed_neighborhood
                 print(f"   📍 Found neighborhood from address parsing: {final_neighborhood}")
-        
-        # PRIORITY 4: Text extraction (from context)
-        if not final_neighborhood:
-            print(f"   🔍 Trying text extraction for neighborhood...")
-            combined_text_for_neighborhood = " ".join([x for x in [caption, ocr_text, transcript] if x])
-            if combined_text_for_neighborhood:
-                text_neighborhood = _extract_neighborhood_from_text(combined_text_for_neighborhood)
-                if text_neighborhood:
-                    final_neighborhood = text_neighborhood
-                    print(f"   📍 Found neighborhood from text: {final_neighborhood}")
-        
-        # PRIORITY 5: SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
+
+        # PRIORITY 4: SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
+        # Skip text extraction (PRIORITY 4) since it applies global TikTok caption/title to all venues
+        # This was causing "West Village" (from "Hidden Wine Bars in West Village") to be applied to all venues
         if not final_neighborhood and address:
             print(f"   🔍 Trying NYC geography inference for neighborhood...")
             inferred_neighborhood = infer_nyc_neighborhood_from_address(address, display_name)
