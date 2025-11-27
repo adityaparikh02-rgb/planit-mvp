@@ -2250,7 +2250,7 @@ def infer_nyc_neighborhood_from_address(address, venue_name=""):
 
 
 def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
-    """Get canonical name, address, place_id, photos, and neighborhood from Google Maps API.
+    """Get canonical name, address, place_id, photos, neighborhood, and price_level from Google Maps API.
 
     Uses optimized geocoding service if available (80-95% cost reduction).
     Falls back to basic caching if service not available.
@@ -2261,11 +2261,12 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
         location_hint: Optional location hint (e.g., "NYC", "Brooklyn")
 
     Returns:
-        Tuple of (canonical_name, address, place_id, photos, neighborhood)
+        Tuple of (canonical_name, address, place_id, photos, neighborhood, price_level)
+        price_level: 0-4 (0=Free, 1=Inexpensive, 2=Moderate, 3=Expensive, 4=Very Expensive) or None
     """
     if not GOOGLE_API_KEY:
         print(f"⚠️ GOOGLE_API_KEY not set - cannot get place info for {place_name}")
-        return None, None, None, None, None
+        return None, None, None, None, None, None
 
     # Use optimized geocoding service if available
     if OPTIMIZED_GEOCODING_AVAILABLE and use_cache:
@@ -2278,13 +2279,15 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
                 address = result.get('address') or result.get('formatted_address', '')
                 place_id = result.get('place_id')
                 photos = result.get('photos', [])
-                neighborhood = _extract_neighborhood_from_address(address)
+                # Don't extract neighborhood here - let Place Details API handle it (more accurate)
+                neighborhood = None
+                price_level = result.get('price_level')  # May not be in optimized service
 
-                print(f"✅ Found place (optimized): {canonical_name} (place_id: {place_id[:20] if place_id else 'None'}..., photos: {len(photos) if photos else 0})")
-                return canonical_name, address, place_id, photos, neighborhood
+                print(f"✅ Found place (optimized): {canonical_name} (place_id: {place_id[:20] if place_id else 'None'}..., photos: {len(photos) if photos else 0}, price_level: {price_level})")
+                return canonical_name, address, place_id, photos, neighborhood, price_level
             else:
                 print(f"⚠️ No results found for {place_name} (optimized service)")
-                return None, None, None, None, None
+                return None, None, None, None, None, None
         except (ImportError, ValueError, Exception) as e:
             # If optimized service fails, disable it and fall back to basic method
             print(f"⚠️ Optimized geocoding service error: {e} - falling back to basic method")
@@ -2324,7 +2327,7 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
         
         if data.get("status") != "OK":
             print(f"⚠️ Google Places search error for {place_name}: {data.get('status')} - {data.get('error_message', 'Unknown error')}")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         res = data.get("results", [])
         if res and len(res) > 0:
@@ -2333,9 +2336,11 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
             address = place_info.get("formatted_address")
             place_id = place_info.get("place_id")
             photos = place_info.get("photos", [])
-            neighborhood = _extract_neighborhood_from_address(address)
+            # Don't extract neighborhood here - let Place Details API handle it (more accurate)
+            neighborhood = None
+            price_level = place_info.get("price_level")  # 0-4 or None
 
-            result = (canonical_name, address, place_id, photos, neighborhood)
+            result = (canonical_name, address, place_id, photos, neighborhood, price_level)
 
             # Cache the result
             if use_cache:
@@ -2350,7 +2355,7 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
                     _clear_places_cache_if_needed()
                 print(f"💾 Cached result for: {place_name}")
 
-            print(f"✅ Found place: {canonical_name} (place_id: {place_id[:20] if place_id else 'None'}..., photos: {len(photos) if photos else 0})")
+            print(f"✅ Found place: {canonical_name} (place_id: {place_id[:20] if place_id else 'None'}..., photos: {len(photos) if photos else 0}, price_level: {price_level})")
             return result
         else:
             print(f"⚠️ No results found for {place_name}")
@@ -2360,7 +2365,38 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
         print(f"⚠️ Failed to get place info from Google for {place_name} - Unexpected error: {e}")
         import traceback
         print(traceback.format_exc())
-    return None, None, None, None, None
+    return None, None, None, None, None, None
+
+# ─────────────────────────────
+# Price Level Helper
+# ─────────────────────────────
+def price_level_to_dollars(price_level):
+    """
+    Convert Google Maps price_level (0-4) to dollar signs.
+
+    Args:
+        price_level: Integer 0-4 or None
+            0 = Free
+            1 = Inexpensive ($)
+            2 = Moderate ($$)
+            3 = Expensive ($$$)
+            4 = Very Expensive ($$$$)
+
+    Returns:
+        String like "$", "$$", "$$$", "$$$$" or None
+    """
+    if price_level is None:
+        return None
+
+    price_map = {
+        0: None,  # Free - don't show anything
+        1: "$",
+        2: "$$",
+        3: "$$$",
+        4: "$$$$"
+    }
+
+    return price_map.get(price_level)
 
 # ─────────────────────────────
 # Google Places Photo
@@ -3201,14 +3237,14 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         return cleaned.strip()
     
     # Use pre-built slide context if available (already includes sequential reading)
-    # Slide context is already venue-specific, so we skip the venue filtering below
+    # NOTE: We still need to filter slide_context to prevent bleeding between venues on the same slide
     if slide_context:
         print(f"   📖 Enriching {name} using pre-built slide context ({len(slide_context)} chars)")
         # Clean slide markers from context
         cleaned_slide_context = clean_slide_markers(slide_context)
-        context = "\n".join(x for x in [cleaned_slide_context, caption] if x)
-        # Skip venue filtering - slide context is already venue-specific
-        context_is_already_filtered = True
+        raw_context = "\n".join(x for x in [cleaned_slide_context, caption] if x)
+        # IMPORTANT: Don't skip filtering - slide context may still contain other venue mentions
+        context_is_already_filtered = False
     elif source_slide:
         # Fallback: Parse slides if OCR has them
         slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
@@ -3260,59 +3296,43 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 if re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower):
                     relevant_sentences.append(sentence)
         
-        # Also remove sentences that mention OTHER venues
-        # But be less aggressive - if we have slide_context, include all sentences from that slide
+        # Remove sentences that mention OTHER venues
+        # Filter AGGRESSIVELY to prevent context bleeding between venues
         other_venues = [v.lower() for v in all_venues if v.lower() != name_lower]
         filtered_sentences = []
-        
-        # CRITICAL: When we have slide_context, it's already venue-specific, so filter aggressively
-        # Only include sentences that actually mention THIS venue and don't mention OTHER venues
-        if slide_context:
-            # For slide-specific context, filter VERY aggressively to prevent bleeding
-            # Only keep sentences that mention THIS venue and explicitly exclude sentences mentioning OTHER venues
-            for sentence in relevant_sentences:
-                sentence_lower = sentence.lower()
-                # Skip if sentence mentions another venue (be strict)
-                mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
 
-                # Only include if it mentions this venue AND doesn't mention other venues
-                if mentions_this and not mentions_other:
+        # CRITICAL: Filter very aggressively to prevent bleeding
+        # Only keep sentences that mention THIS venue and explicitly exclude sentences mentioning OTHER venues
+        for sentence in relevant_sentences:
+            sentence_lower = sentence.lower()
+            # Skip if sentence mentions another venue (be strict)
+            mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+
+            # Only include if it mentions this venue AND doesn't mention other venues
+            if mentions_this and not mentions_other:
+                filtered_sentences.append(sentence)
+                print(f"      ✓ Kept: '{sentence[:80]}...'")
+            # If both mentioned, be VERY strict - only keep if this venue is clearly the focus
+            elif mentions_this and mentions_other:
+                this_pos = sentence_lower.find(name_lower)
+                other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
+                this_count = sentence_lower.count(name_lower)
+                other_counts = [sentence_lower.count(v) for v in other_venues if v in sentence_lower]
+                max_other_count = max(other_counts, default=0)
+                # Very strict: this venue must appear first AND be mentioned significantly more
+                if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count > max_other_count)):
                     filtered_sentences.append(sentence)
-                # If both mentioned, be very strict - only keep if this venue is clearly the focus
-                elif mentions_this and mentions_other:
-                    this_pos = sentence_lower.find(name_lower)
-                    other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
-                    this_count = sentence_lower.count(name_lower)
-                    other_counts = [sentence_lower.count(v) for v in other_venues if v in sentence_lower]
-                    max_other_count = max(other_counts, default=0)
-                    # Very strict: this venue must appear first AND be mentioned significantly more
-                    if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count > max_other_count)):
-                        filtered_sentences.append(sentence)
-        else:
-            # For general context, filter more carefully
-            for sentence in relevant_sentences:
-                sentence_lower = sentence.lower()
-                # Skip if sentence mentions another venue more prominently than this one
-                mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+                    print(f"      ✓ Kept (primary): '{sentence[:80]}...'")
+                else:
+                    print(f"      ✗ Dropped (mentions other venues): '{sentence[:80]}...'")
+            else:
+                print(f"      ✗ Dropped (doesn't mention venue): '{sentence[:80]}...'")
 
-                if mentions_this and not mentions_other:
-                    filtered_sentences.append(sentence)
-                elif mentions_this and mentions_other:
-                    # If both mentioned, only keep if this venue appears first or more prominently
-                    this_pos = sentence_lower.find(name_lower)
-                    other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
-                    if this_pos != -1 and (not other_positions or this_pos < min(other_positions)):
-                        filtered_sentences.append(sentence)
-
-        # If filtering removed everything but we have slide_context, use slide_context directly
-        if not filtered_sentences and slide_context:
-            context = slide_context
-        else:
-            context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
-            if len(filtered_sentences) < len(sentences):
-                print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences relevant to {name}")
+        # Use filtered sentences or fall back to raw context if filtering removed everything
+        context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
+        if len(filtered_sentences) < len(sentences):
+            print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences kept for {name}")
     else:
         context = raw_context
     
@@ -3428,7 +3448,8 @@ Context (filtered to only include mentions of "{name}"):
         # Extract vibe_tags from the ORIGINAL slide context, not GPT-generated summaries
         # This ensures tags are specific to each venue's slide, not generic
         # Use the actual OCR text from the slide for more accurate tag extraction
-        data["vibe_tags"] = extract_vibe_tags(context)
+        # Pass venue name to ensure unique, context-specific tags
+        data["vibe_tags"] = extract_vibe_tags(context, venue_name=name)
         return data
     except Exception as e:
         print(f"⚠️ Enrichment failed for {name}:", e)
@@ -3498,24 +3519,36 @@ def extract_vibe_keywords(text):
     return found_keywords
 
 
-def extract_vibe_tags(text):
+def extract_vibe_tags(text, venue_name=None):
     if not text.strip():
         return []
+
+    venue_context = f" for {venue_name}" if venue_name else ""
     prompt = f"""
-Extract up to 6 concise vibe tags from this text for a restaurant, bar, or café.
-Use short single words/phrases like:
-["Cozy","Date Night","Lively","Romantic","Happy Hour","Brunch","Authentic","Trendy"]
+Extract up to 6 unique, POSITIVE vibe tags from this text{venue_context}.
+Tags should be SHORT (1-2 words) and capture the SPECIFIC atmosphere, style, or features mentioned in the text.
+
+CRITICAL: Only use POSITIVE, APPEALING descriptors. NEVER use negative words like "Crowded", "Loud", "Busy", "Packed", "Expensive", etc.
+
+Focus on what makes THIS place unique:
+- Atmosphere: Cozy, Lively, Intimate, Energetic, Chill, Upscale, Vibrant, Relaxed
+- Best for: Date Night, Groups, Solo, Brunch, Late Night, Happy Hour
+- Style: Trendy, Classic, Authentic, Modern, Casual, Fancy, Hip, Stylish
+- Features: Outdoor, Rooftop, Live Music, DJ, Games, Dancing, Cocktails
+
+Extract tags that are SPECIFIC to what's written in the text. Each venue should have different tags based on its unique characteristics.
 
 Text: {text}
-Return valid JSON list.
+
+Return ONLY a valid JSON list of 3-6 unique POSITIVE tags.
 """
     try:
         client = get_openai_client()
         r = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=40,
+            temperature=0.7,  # Increased from 0.3 for more variety
+            max_tokens=50,  # Increased from 40 to allow for longer tag lists
         )
         raw = r.choices[0].message.content.strip()
         return json.loads(raw) if raw.startswith("[") else []
@@ -3529,7 +3562,7 @@ Return valid JSON list.
 
 def get_place_address(place_name):
     """Get formatted address for a place name using Google Maps API."""
-    _, address, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
+    _, address, _, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
     return address
 
 def merge_place_with_cache(place_data, video_url, username=None, video_summary=None):
@@ -3540,7 +3573,7 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
     # If address not already set, get it (and ensure canonical name)
     # Use cache to avoid redundant API calls
     if not place_data.get("address"):
-        canonical_name, address, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
+        canonical_name, address, _, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
         if canonical_name and canonical_name.lower() != place_name.lower():
             place_name = canonical_name  # Update to canonical name
             place_data["name"] = canonical_name
@@ -3559,10 +3592,10 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
             _places_cache = {}
         cache_key = place_name.lower().strip()
         if cache_key in _places_cache:
-            canonical_name, _, _, _, _ = _places_cache[cache_key]
+            canonical_name, _, _, _, _, _ = _places_cache[cache_key]
         else:
             # Only make API call if not in cache
-            canonical_name, _, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
+            canonical_name, _, _, _, _, _ = get_place_info_from_google(place_name, use_cache=True)
         if canonical_name and canonical_name.lower() != place_name.lower():
             place_name = canonical_name
             place_data["name"] = canonical_name
@@ -3687,9 +3720,10 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
     
     def enrich_and_fetch_photo(venue_name):
         """Enrich a single venue and fetch its photo - runs in parallel."""
-        # Get canonical name, address, place_id, and photos from Google Maps (correct spelling)
+        # Get canonical name, address, place_id, photos, neighborhood, and price_level from Google Maps (correct spelling)
         # Use cache to avoid redundant API calls
-        canonical_name, address, place_id, photos, neighborhood = get_place_info_from_google(venue_name, use_cache=True)
+        # For MVP, bias results towards NYC to avoid confusion with non-NYC venues
+        canonical_name, address, place_id, photos, neighborhood, price_level = get_place_info_from_google(venue_name, use_cache=True, location_hint="NYC")
         # Use canonical name if available, otherwise use original
         display_name = canonical_name if canonical_name else venue_name
         
@@ -3940,6 +3974,9 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             print(f"      Address: {address}")
             print(f"      Place ID: {place_id}")
 
+        # Convert price_level to dollar signs
+        price = price_level_to_dollars(price_level)
+
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
@@ -3949,6 +3986,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly
             "address": address,  # Also get address while we're at it
             "neighborhood": final_neighborhood,  # Prioritize text mentions, fallback to Google Maps, then inferred
+            "price": price,  # Price level from Google Maps ($, $$, $$$, $$$$)
             **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags", "vibe_keywords"]}
         }
         return place_data
@@ -3992,8 +4030,34 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 }
                 merged_place = merge_place_with_cache(place_data, url, username, context_title)
                 places_extracted.append(merged_place)
-    
-    return places_extracted
+
+    # Filter to keep only NYC venues (MVP requirement)
+    nyc_places = []
+    for place in places_extracted:
+        address = place.get("address", "").lower()
+        neighborhood = place.get("neighborhood", "").lower()
+
+        # Check if address or neighborhood indicates NYC
+        nyc_indicators = ["new york", "ny", "manhattan", "brooklyn", "queens", "bronx", "staten island"]
+        non_nyc_indicators = ["nj", "new jersey", "elwood", "jersey"]
+
+        is_nyc = any(indicator in address or indicator in neighborhood for indicator in nyc_indicators)
+        is_non_nyc = any(indicator in address or indicator in neighborhood for indicator in non_nyc_indicators)
+
+        if is_nyc and not is_non_nyc:
+            nyc_places.append(place)
+            print(f"   ✅ Kept NYC venue: {place.get('name')}")
+        elif not is_nyc and not is_non_nyc:
+            # If unclear, keep it (assume NYC for MVP)
+            nyc_places.append(place)
+            print(f"   ⚠️ Kept venue with unclear location: {place.get('name')}")
+        else:
+            print(f"   ❌ Filtered out non-NYC venue: {place.get('name')} ({address or neighborhood})")
+
+    if len(nyc_places) < len(places_extracted):
+        print(f"🗽 NYC Filter: Kept {len(nyc_places)}/{len(places_extracted)} venues")
+
+    return nyc_places
 
 # ─────────────────────────────
 # Authentication Endpoints
