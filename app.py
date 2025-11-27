@@ -3330,9 +3330,14 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 print(f"      ✗ Dropped (doesn't mention venue): '{sentence[:80]}...'")
 
         # Use filtered sentences or fall back to raw context if filtering removed everything
-        context = ". ".join(filtered_sentences) if filtered_sentences else raw_context
-        if len(filtered_sentences) < len(sentences):
+        if filtered_sentences:
+            context = ". ".join(filtered_sentences)
             print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences kept for {name}")
+        else:
+            # No venue-specific sentences found - use full raw context as fallback
+            # This can happen with uncommon venue names or abbreviated names in OCR
+            context = raw_context
+            print(f"   ⚠️ No venue-specific sentences found for {name} - using full context as fallback")
     else:
         context = raw_context
     
@@ -3516,9 +3521,14 @@ def extract_vibe_keywords(text):
     text_lower = text.lower()
     found_keywords = []
 
-    # Look for keywords in the text
+    # Look for keywords in the text using word boundary matching to avoid false positives
+    # E.g., "casual" won't match "occasionally" or "casual drink" in a sentence about something else
+    import re
     for keyword in vibe_keywords:
-        if keyword.lower() in text_lower and keyword not in found_keywords:
+        keyword_lower = keyword.lower()
+        # Use word boundary matching for better precision
+        # Match whole words only, case-insensitive
+        if re.search(r'\b' + re.escape(keyword_lower) + r'\b', text_lower) and keyword not in found_keywords:
             found_keywords.append(keyword)
             if len(found_keywords) >= 5:  # Limit to 5 keywords
                 break
