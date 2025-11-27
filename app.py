@@ -4043,8 +4043,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
     # Filter to keep only NYC venues (MVP requirement)
     nyc_places = []
     for place in places_extracted:
-        address = place.get("address", "").lower()
-        neighborhood = place.get("neighborhood", "").lower()
+        address = (place.get("address") or "").lower()
+        neighborhood = (place.get("neighborhood") or "").lower()
 
         # Check if address or neighborhood indicates NYC
         nyc_indicators = ["new york", "ny", "manhattan", "brooklyn", "queens", "bronx", "staten island"]
