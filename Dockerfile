@@ -22,9 +22,13 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Playwright browsers (chromium only to save space)
+RUN playwright install --with-deps chromium
+
 # Copy application code
 COPY app.py .
 COPY ocr_processor.py .
+COPY google_vision_ocr.py .
 COPY slideshow_extractor.py .
 COPY geocoding_service.py .
 COPY Procfile .
