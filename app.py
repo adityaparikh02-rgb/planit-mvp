@@ -3365,15 +3365,27 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         context = raw_context
     
     # Filter out garbled sentences before sending to GPT
-    context = filter_garbled_sentences(context)
-    
+    # But preserve original context as fallback if filtering removes too much
+    filtered_context = filter_garbled_sentences(context)
+
+    # Safety check: if filtering removed too much content, use original context
+    if len(filtered_context.strip()) < 20:
+        print(f"   ⚠️ Garbled filtering removed too much content for {name} - using unfiltered context")
+        context = context  # Keep original
+    else:
+        context = filtered_context
+
+    # Final safety check: ensure we have meaningful context
+    if len(context.strip()) < 10:
+        print(f"   ❌ WARNING: Very little context available for {name} ({len(context)} chars) - GPT extraction may be incomplete")
+
     context_lower = context.lower()
-    
+
     # Determine venue type from context
     is_bar = any(word in context_lower for word in ["bar", "cocktail", "drinks", "happy hour", "bartender", "mixology", "lounge", "pub"])
     is_restaurant = any(word in context_lower for word in ["restaurant", "dining", "food", "menu", "chef", "cuisine", "eatery", "bistro", "cafe", "café"])
     is_club = any(word in context_lower for word in ["club", "nightclub", "dj", "dance", "nightlife", "party", "music venue"])
-    
+
     prompt = f"""
 Analyze the TikTok context for "{name}" ONLY. Return JSON with details SPECIFICALLY about "{name}".
 
