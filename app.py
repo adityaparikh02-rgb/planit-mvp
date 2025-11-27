@@ -3185,6 +3185,29 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         return '. '.join(good_sentences)
     
     # Helper function to clean vibe text
+    def normalize_brand_names(text):
+        """Normalize brand name mentions in extracted text.
+
+        Replaces variations of 'belly' (the dining app) with 'Beli'.
+        """
+        if not text:
+            return text
+        import re
+
+        # Replace "belly list" with "Beli" (case-insensitive)
+        text = re.sub(r'\bbelly\s+list\b', 'Beli', text, flags=re.IGNORECASE)
+
+        # Replace standalone "belly" when used in app/rating context
+        # Common patterns: "on belly", "belly rating", "via belly", "using belly", etc.
+        text = re.sub(r'\bon\s+belly\b', 'on Beli', text, flags=re.IGNORECASE)
+        text = re.sub(r'\bbelly\s+rating\b', 'Beli rating', text, flags=re.IGNORECASE)
+        text = re.sub(r'\bvia\s+belly\b', 'via Beli', text, flags=re.IGNORECASE)
+        text = re.sub(r'\busing\s+belly\b', 'using Beli', text, flags=re.IGNORECASE)
+        text = re.sub(r'\bcheck\s+out\s+belly\b', 'check out Beli', text, flags=re.IGNORECASE)
+        text = re.sub(r'\brank.*\s+on\s+belly\b', lambda m: m.group(0).replace('belly', 'Beli').replace('Belly', 'Beli'), text, flags=re.IGNORECASE)
+
+        return text
+
     def clean_vibe_text(vibe_text, venue_name):
         """Remove venue name, hashtags, garbled text, and 'the vibes:' prefixes from vibe text."""
         if not vibe_text:
@@ -3428,8 +3451,11 @@ Context (filtered to only include mentions of "{name}"):
         def safe_get_str(field_name, default=""):
             value = j.get(field_name, default)
             if isinstance(value, list):
-                return " ".join(str(x) for x in value).strip()
-            return str(value).strip() if value else default
+                text = " ".join(str(x) for x in value).strip()
+            else:
+                text = str(value).strip() if value else default
+            # Normalize brand names (belly → Beli)
+            return normalize_brand_names(text)
         
         vibe_raw = safe_get_str("vibe", "")
         vibe_cleaned = clean_vibe_text(vibe_raw, name)
