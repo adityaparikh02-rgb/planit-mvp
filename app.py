@@ -2325,11 +2325,12 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
         return cached_result
     
     try:
-        # Try without location first (more flexible)
-        print(f"🔍 Searching Google Places for: {place_name}")
+        # Add "NYC" to search query for better matching (e.g., "Vee Ray's NYC")
+        search_query = f"{place_name} NYC" if "NYC" not in place_name.upper() and "New York" not in place_name else place_name
+        print(f"🔍 Searching Google Places for: {search_query}")
         r = requests.get(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
-            params={"query": place_name, "key": GOOGLE_API_KEY},
+            params={"query": search_query, "key": GOOGLE_API_KEY},
             timeout=10
         )
         r.raise_for_status()
@@ -2475,12 +2476,13 @@ def get_photo_url(name, place_id=None, photos=None):
             import traceback
             print(traceback.format_exc())
     
-    # Fallback: search by name
+    # Fallback: search by name with NYC
     try:
-        print(f"🔍 Fallback: Searching for photo by name: {name}")
+        search_query = f"{name} NYC" if "NYC" not in name.upper() and "New York" not in name else name
+        print(f"🔍 Fallback: Searching for photo by name: {search_query}")
         r = requests.get(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
-            params={"query": name, "key": GOOGLE_API_KEY}, 
+            params={"query": search_query, "key": GOOGLE_API_KEY}, 
             timeout=10
         )
         r.raise_for_status()
@@ -4157,12 +4159,21 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if photo:
                 print(f"   📸 Using Google Maps photo for {display_name}")
         
-        # Final fallback: Try searching by name if still no photo
+        # Additional fallback: Try searching by name with NYC if still no photo
         if not photo:
-            print(f"   🔍 No photo found yet, trying additional search for {display_name}...")
-            photo = get_photo_url(display_name, place_id=None, photos=None)
+            print(f"   🔍 No photo found yet, trying search with NYC for {display_name}...")
+            search_name = f"{display_name} NYC" if "NYC" not in display_name.upper() and "New York" not in display_name else display_name
+            photo = get_photo_url(search_name, place_id=None, photos=None)
             if photo:
-                print(f"   📸 Got photo via fallback search for {display_name}")
+                print(f"   📸 Got photo via NYC search for {display_name}")
+        
+        # Last resort: Try original venue name if canonical name didn't work
+        if not photo and display_name != venue_name:
+            print(f"   🔍 Trying original venue name for photo: {venue_name}...")
+            search_name = f"{venue_name} NYC" if "NYC" not in venue_name.upper() and "New York" not in venue_name else venue_name
+            photo = get_photo_url(search_name, place_id=None, photos=None)
+            if photo:
+                print(f"   📸 Got photo via original name search for {venue_name}")
 
         # PRIORITY 4: Google Maps address parsing
         if not final_neighborhood and address:
@@ -4179,6 +4190,19 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if inferred_neighborhood:
                 final_neighborhood = inferred_neighborhood
                 print(f"   🧠 Inferred neighborhood from address: {final_neighborhood}")
+        
+        # PRIORITY 5.5: Try extracting from address components more directly
+        if not final_neighborhood and address:
+            # Try to find street names that indicate neighborhoods
+            address_parts = address.split(',')
+            for part in address_parts:
+                part_clean = part.strip()
+                # Check if any part matches a known neighborhood
+                neighborhood_match = _extract_neighborhood_from_text(part_clean)
+                if neighborhood_match and neighborhood_match not in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]:
+                    final_neighborhood = neighborhood_match
+                    print(f"   📍 Found neighborhood from address component: {final_neighborhood}")
+                    break
 
         # PRIORITY 6: Extract from venue name itself (e.g., "Soho Wine Bar" -> "SoHo")
         if not final_neighborhood and display_name:
@@ -4199,15 +4223,14 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     print(f"   📍 Using borough as neighborhood: {final_neighborhood}")
                     break
         
-        # Ultimate fallback: Set to "NYC" if still no neighborhood (better than "Location")
+        
+        # Log if still no neighborhood (but don't set to "NYC" - let frontend handle it)
         if not final_neighborhood:
             print(f"   ⚠️ Could not determine neighborhood for {display_name}")
             print(f"      Address: {address or 'None (Google API may have failed)'}")
             print(f"      Place ID: {place_id or 'None (Google API may have failed)'}")
             print(f"      Title/Caption text: {neighborhood_source_text[:100] if neighborhood_source_text else 'None'}")
-            # Set to NYC as fallback instead of None
-            final_neighborhood = "NYC"
-            print(f"   📍 Using 'NYC' as fallback neighborhood")
+            # Don't set to "NYC" - let it be None so frontend can show address
             # If Google API completely failed, this is a critical issue
             if not address and not place_id:
                 print(f"   ❌ CRITICAL: Google Places API failed - no address or place_id available")
