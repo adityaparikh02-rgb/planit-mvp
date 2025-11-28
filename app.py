@@ -5783,7 +5783,7 @@ def extract_api():
                 print(f"🤖 GPT returned title: {context_title}")
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
                 print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
-                except Exception as extract_error:
+            except Exception as extract_error:
                     print(f"❌ extract_places_and_context failed: {extract_error}")
                 import traceback
                 print(traceback.format_exc())
