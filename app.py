@@ -2686,13 +2686,13 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     
     if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
         if has_other_content:
-        print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
-        print(f"   Reason: Too many non-alphanumeric characters or random text")
-        print(f"   Garbled OCR preview: {ocr_text[:200]}...")
-        print(f"   Will use caption/transcript only instead")
+            print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
+            print(f"   Reason: Too many non-alphanumeric characters or random text")
+            print(f"   Garbled OCR preview: {ocr_text[:200]}...")
+            print(f"   Will use caption/transcript only instead")
             # If OCR is garbled AND we have other content, ignore it - it will confuse GPT
-        ocr_text = ""  # Ignore garbled OCR completely
-        slide_dict = {}  # Clear slide dict
+            ocr_text = ""  # Ignore garbled OCR completely
+            slide_dict = {}  # Clear slide dict
         else:
             print("⚠️ OCR text appears garbled BUT it's the only content source - KEEPING IT")
             print(f"   Reason: No transcript or caption available, so we'll try to extract from OCR anyway")
@@ -3869,7 +3869,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             else:
                 display_name = canonical_name
                 if canonical_lower != original_lower:
-                    print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+            print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         else:
             display_name = venue_name
         
@@ -3910,7 +3910,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         if place_id:
             if not GOOGLE_API_KEY:
                 print(f"   ⚠️ Skipping Place Details API - GOOGLE_API_KEY not set")
-            else:
+        else:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
@@ -4045,7 +4045,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         # If it's already generic, skip matching and try fallbacks
                         if is_generic:
                             print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
-                            final_neighborhood = None
+            final_neighborhood = None
                         else:
                             matched = False
                             for known_neighborhood in sorted_known:
