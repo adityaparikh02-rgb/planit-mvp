@@ -1075,8 +1075,8 @@ function App() {
                   </>
                 )}
 
-                {/* Vibe Tags Filter Bar */}
-                {result && result.places_extracted && result.places_extracted.length > 0 && getAllVibeTags().length > 0 && (
+                {/* Vibe Tags Filter Bar - Only show for saved/history views, not initial extraction */}
+                {result && result.places_extracted && result.places_extracted.length > 0 && getAllVibeTags().length > 0 && (viewingHistory || selectedList) && (
                   <div className="vibe-filter-bar">
                     <div className="vibe-filter-header">
                       <span className="filter-label">Filter by vibe:</span>
@@ -1656,8 +1656,38 @@ function App() {
                   </div>
                 </div>
                 
+                {/* Vibe Tags Filter Bar for Saved Lists */}
+                {selectedList && savedPlaces[selectedList] && savedPlaces[selectedList].length > 0 && getAllVibeTags().length > 0 && (
+                  <div className="vibe-filter-bar">
+                    <div className="vibe-filter-header">
+                      <span className="filter-label">Filter by vibe:</span>
+                      {selectedVibeFilter && (
+                        <button 
+                          className="clear-filter-btn"
+                          onClick={() => setSelectedVibeFilter(null)}
+                        >
+                          Clear filter
+                        </button>
+                      )}
+                    </div>
+                    <div className="vibe-filter-tags">
+                      {getAllVibeTags().map((tag, idx) => (
+                        <button
+                          key={idx}
+                          className={`vibe-filter-chip ${selectedVibeFilter === tag ? 'active' : ''}`}
+                          onClick={() => setSelectedVibeFilter(
+                            selectedVibeFilter === tag ? null : tag
+                          )}
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
                 <div className="saved-list-places">
-                    {savedPlaces[selectedList]?.map((p, i) => {
+                    {getFilteredPlaces(savedPlaces[selectedList] || []).map((p, i) => {
                       const isExpanded = expandedSavedPlaceIndex === i;
                       // Get first sentence or first 120 characters as one-line summary
                       const oneLineSummary = p.summary 
