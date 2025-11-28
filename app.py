@@ -2736,13 +2736,13 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     
     if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
         if has_other_content:
-            print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
-            print(f"   Reason: Too many non-alphanumeric characters or random text")
-            print(f"   Garbled OCR preview: {ocr_text[:200]}...")
-            print(f"   Will use caption/transcript only instead")
+        print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
+        print(f"   Reason: Too many non-alphanumeric characters or random text")
+        print(f"   Garbled OCR preview: {ocr_text[:200]}...")
+        print(f"   Will use caption/transcript only instead")
             # If OCR is garbled AND we have other content, ignore it - it will confuse GPT
-            ocr_text = ""  # Ignore garbled OCR completely
-            slide_dict = {}  # Clear slide dict
+        ocr_text = ""  # Ignore garbled OCR completely
+        slide_dict = {}  # Clear slide dict
         else:
             print("⚠️ OCR text appears garbled BUT it's the only content source - KEEPING IT")
             print(f"   Reason: No transcript or caption available, so we'll try to extract from OCR anyway")
