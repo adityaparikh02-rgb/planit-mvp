@@ -3550,6 +3550,31 @@ Context (filtered to only include mentions of "{name}"):
                 data["vibe_tags"].append("Vegan")
                 print(f"   ✅ Added 'Vegan' tag for {name}")
         
+        # Add cuisine type tag if explicitly mentioned (e.g., "Indian", "Italian", "Chinese")
+        cuisine_types = {
+            "Indian": ["indian", "curry", "biryani", "naan", "tandoor", "masala", "dal", "samosa"],
+            "Italian": ["italian", "pasta", "pizza", "risotto", "gnocchi", "carbonara", "parmesan", "mozzarella"],
+            "Chinese": ["chinese", "dim sum", "dumpling", "szechuan", "kung pao", "lo mein", "fried rice"],
+            "Japanese": ["japanese", "sushi", "ramen", "sashimi", "tempura", "teriyaki", "udon", "yakitori"],
+            "Mexican": ["mexican", "taco", "burrito", "quesadilla", "guacamole", "enchilada", "mole"],
+            "Thai": ["thai", "pad thai", "tom yum", "curry", "basil", "coconut milk"],
+            "Korean": ["korean", "kbbq", "kimchi", "bulgogi", "bibimbap", "korean bbq"],
+            "French": ["french", "bistro", "brasserie", "croissant", "coq au vin", "bouillabaisse"],
+            "Greek": ["greek", "gyro", "souvlaki", "tzatziki", "feta", "olive"],
+            "Mediterranean": ["mediterranean", "hummus", "falafel", "pita", "tzatziki"],
+            "American": ["american", "burger", "bbq", "southern", "cajun", "creole"],
+            "Seafood": ["seafood", "oyster", "lobster", "crab", "shrimp", "fish"],
+            "Pizza": ["pizza", "pie", "slice", "neapolitan", "margherita"],
+            "Steakhouse": ["steakhouse", "steak", "ribeye", "filet", "wagyu"],
+        }
+        
+        for cuisine, keywords in cuisine_types.items():
+            if any(keyword in context_lower for keyword in keywords):
+                if cuisine not in data["vibe_tags"]:
+                    data["vibe_tags"].append(cuisine)
+                    print(f"   ✅ Added '{cuisine}' cuisine tag for {name}")
+                    break  # Only add one cuisine type
+        
         return data
     except Exception as e:
         print(f"⚠️ Enrichment failed for {name}:", e)
@@ -4224,13 +4249,39 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     break
         
         
+        # Final fallback: If we have an address but no neighborhood, try to extract from the full address string
+        if not final_neighborhood and address:
+            print(f"   🔍 Last resort: Parsing full address string for neighborhood...")
+            # Try the full address as one string
+            full_address_neighborhood = _extract_neighborhood_from_text(address)
+            if full_address_neighborhood and full_address_neighborhood not in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]:
+                final_neighborhood = full_address_neighborhood
+                print(f"   📍 Found neighborhood from full address: {final_neighborhood}")
+            # Also try infer_nyc_neighborhood_from_address one more time with full address
+            elif not final_neighborhood:
+                inferred = infer_nyc_neighborhood_from_address(address, display_name)
+                if inferred:
+                    final_neighborhood = inferred
+                    print(f"   📍 Inferred neighborhood from full address: {final_neighborhood}")
+        
         # Log if still no neighborhood (but don't set to "NYC" - let frontend handle it)
         if not final_neighborhood:
             print(f"   ⚠️ Could not determine neighborhood for {display_name}")
             print(f"      Address: {address or 'None (Google API may have failed)'}")
             print(f"      Place ID: {place_id or 'None (Google API may have failed)'}")
             print(f"      Title/Caption text: {neighborhood_source_text[:100] if neighborhood_source_text else 'None'}")
-            # Don't set to "NYC" - let it be None so frontend can show address
+            # If we have an address, try one more time to extract neighborhood from it
+            if address:
+                # Try splitting address and checking each part
+                address_parts = address.replace(',', ' ').split()
+                for part in address_parts:
+                    part_clean = part.strip('.,;')
+                    if len(part_clean) > 3:  # Skip short parts
+                        test_neighborhood = _extract_neighborhood_from_text(part_clean)
+                        if test_neighborhood and test_neighborhood not in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York", "NY"]:
+                            final_neighborhood = test_neighborhood
+                            print(f"   📍 Found neighborhood from address part '{part_clean}': {final_neighborhood}")
+                            break
             # If Google API completely failed, this is a critical issue
             if not address and not place_id:
                 print(f"   ❌ CRITICAL: Google Places API failed - no address or place_id available")
