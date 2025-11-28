@@ -2180,6 +2180,54 @@ def infer_nyc_neighborhood_from_address(address, venue_name=""):
     if not address:
         return None
 
+    # First, try to extract neighborhood from street address using street numbers
+    # This handles addresses like "35 E 76th St" -> Upper East Side
+    street_match = re.search(r'(\d+)\s*(?:E|W|East|West)?\s*(\d+)(?:st|nd|rd|th)', address, re.I)
+    if street_match:
+        street_num = int(street_match.group(2))
+        street_dir = street_match.group(1) if street_match.group(1) else ""
+        address_lower = address.lower()
+        
+        # Upper East Side: 60th-96th St, east of Central Park
+        if 60 <= street_num <= 96 and ('east' in address_lower or 'e ' in address_lower or 'east ' in address_lower):
+            return "Upper East Side"
+        # Upper West Side: 60th-110th St, west of Central Park
+        elif 60 <= street_num <= 110 and ('west' in address_lower or 'w ' in address_lower or 'west ' in address_lower):
+            return "Upper West Side"
+        # Midtown East: 34th-59th St, east side
+        elif 34 <= street_num <= 59 and ('east' in address_lower or 'e ' in address_lower or 'east ' in address_lower):
+            return "Midtown East"
+        # Midtown West: 34th-59th St, west side
+        elif 34 <= street_num <= 59 and ('west' in address_lower or 'w ' in address_lower or 'west ' in address_lower):
+            return "Midtown West"
+        # Chelsea: 14th-34th St, west side
+        elif 14 <= street_num <= 34 and ('west' in address_lower or 'w ' in address_lower or 'west ' in address_lower or 'chelsea' in address_lower):
+            return "Chelsea"
+        # Gramercy/Murray Hill: 14th-34th St, east side
+        elif 14 <= street_num <= 34 and ('east' in address_lower or 'e ' in address_lower or 'east ' in address_lower):
+            if street_num <= 23:
+                return "Gramercy"
+            else:
+                return "Murray Hill"
+        # Below 14th St - various neighborhoods
+        elif street_num < 14:
+            if 'east' in address_lower or 'e ' in address_lower:
+                return "East Village"
+            elif 'west' in address_lower or 'w ' in address_lower:
+                return "West Village"
+    
+    # Check for specific streets/avenues that indicate neighborhoods
+    address_lower = address.lower()
+    if 'vanderbilt' in address_lower or 'grand central' in address_lower:
+        return "Midtown East"
+    if 'madison' in address_lower and ('70' in address or '77' in address or '76' in address):
+        return "Upper East Side"
+    if 'park avenue' in address_lower or 'park ave' in address_lower:
+        if any(str(n) in address for n in range(50, 100)):
+            return "Upper East Side"
+        elif any(str(n) in address for n in range(34, 50)):
+            return "Midtown East"
+    
     # Combine address and venue name for matching
     combined_text = f"{address} {venue_name}".lower()
 
@@ -2757,13 +2805,13 @@ If no venues found, output: (none)
                 client = get_openai_client()
                 
                 try:
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[{"role": "user", "content": slide_prompt}],
-                        temperature=0.2,  # Very low temperature for consistent extraction
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": slide_prompt}],
+                    temperature=0.2,  # Very low temperature for consistent extraction
                         timeout=30  # Add timeout to prevent hanging
-                    )
-                    slide_response = response.choices[0].message.content.strip()
+                )
+                slide_response = response.choices[0].message.content.strip()
                 except Exception as api_error:
                     print(f"     ❌ OpenAI API call failed for slide: {api_error}")
                     print(f"     Error type: {type(api_error).__name__}")
@@ -3068,14 +3116,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-            )
-            raw = response.choices[0].message.content.strip()
-            print(f"🤖 GPT raw response: {raw[:500]}...")
+        )
+        raw = response.choices[0].message.content.strip()
+        print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
@@ -3250,6 +3298,70 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         text = re.sub(r'\brank.*\s+on\s+belly\b', lambda m: m.group(0).replace('belly', 'Beli').replace('Belly', 'Beli'), text, flags=re.IGNORECASE)
 
         return text
+
+    def extract_cuisine_from_google_types(place_types):
+        """
+        Extract cuisine type from Google Maps place types.
+        Returns a single cuisine category based on Google Maps types field.
+
+        Args:
+            place_types: List of Google Maps types (e.g., ['italian_restaurant', 'restaurant', 'food'])
+
+        Returns:
+            String cuisine category (e.g., 'Italian', 'Japanese') or None
+        """
+        if not place_types or not isinstance(place_types, list):
+            return None
+
+        # Google Maps type to cuisine category mapping
+        # Based on official Google Places API types
+        cuisine_mapping = {
+            # Asian cuisines
+            'chinese_restaurant': 'Chinese',
+            'japanese_restaurant': 'Japanese',
+            'korean_restaurant': 'Korean',
+            'thai_restaurant': 'Thai',
+            'vietnamese_restaurant': 'Vietnamese',
+            'indian_restaurant': 'Indian',
+            'asian_restaurant': 'Asian',
+
+            # European cuisines
+            'italian_restaurant': 'Italian',
+            'french_restaurant': 'French',
+            'greek_restaurant': 'Greek',
+            'spanish_restaurant': 'Spanish',
+            'german_restaurant': 'German',
+
+            # Mediterranean & Middle Eastern
+            'mediterranean_restaurant': 'Mediterranean',
+            'middle_eastern_restaurant': 'Middle Eastern',
+            'turkish_restaurant': 'Turkish',
+            'lebanese_restaurant': 'Lebanese',
+
+            # Americas
+            'mexican_restaurant': 'Mexican',
+            'american_restaurant': 'American',
+            'brazilian_restaurant': 'Brazilian',
+            'latin_american_restaurant': 'Latin American',
+
+            # Specific food types
+            'pizza_restaurant': 'Pizza',
+            'sushi_restaurant': 'Sushi',
+            'ramen_restaurant': 'Ramen',
+            'steak_house': 'Steakhouse',
+            'seafood_restaurant': 'Seafood',
+            'hamburger_restaurant': 'Burger',
+            'sandwich_shop': 'Sandwiches',
+        }
+
+        # Check each type in order of priority
+        for place_type in place_types:
+            if place_type in cuisine_mapping:
+                cuisine = cuisine_mapping[place_type]
+                print(f"   🍽️ Found cuisine from Google Maps: {cuisine} (type: {place_type})")
+                return cuisine
+
+        return None
 
     def clean_vibe_text(vibe_text, venue_name):
         """Remove venue name, hashtags, garbled text, and 'the vibes:' prefixes from vibe text."""
@@ -3549,32 +3661,10 @@ Context (filtered to only include mentions of "{name}"):
             if "Vegan" not in data["vibe_tags"]:
                 data["vibe_tags"].append("Vegan")
                 print(f"   ✅ Added 'Vegan' tag for {name}")
-        
-        # Add cuisine type tag if explicitly mentioned (e.g., "Indian", "Italian", "Chinese")
-        cuisine_types = {
-            "Indian": ["indian", "curry", "biryani", "naan", "tandoor", "masala", "dal", "samosa"],
-            "Italian": ["italian", "pasta", "pizza", "risotto", "gnocchi", "carbonara", "parmesan", "mozzarella"],
-            "Chinese": ["chinese", "dim sum", "dumpling", "szechuan", "kung pao", "lo mein", "fried rice"],
-            "Japanese": ["japanese", "sushi", "ramen", "sashimi", "tempura", "teriyaki", "udon", "yakitori"],
-            "Mexican": ["mexican", "taco", "burrito", "quesadilla", "guacamole", "enchilada", "mole"],
-            "Thai": ["thai", "pad thai", "tom yum", "curry", "basil", "coconut milk"],
-            "Korean": ["korean", "kbbq", "kimchi", "bulgogi", "bibimbap", "korean bbq"],
-            "French": ["french", "bistro", "brasserie", "croissant", "coq au vin", "bouillabaisse"],
-            "Greek": ["greek", "gyro", "souvlaki", "tzatziki", "feta", "olive"],
-            "Mediterranean": ["mediterranean", "hummus", "falafel", "pita", "tzatziki"],
-            "American": ["american", "burger", "bbq", "southern", "cajun", "creole"],
-            "Seafood": ["seafood", "oyster", "lobster", "crab", "shrimp", "fish"],
-            "Pizza": ["pizza", "pie", "slice", "neapolitan", "margherita"],
-            "Steakhouse": ["steakhouse", "steak", "ribeye", "filet", "wagyu"],
-        }
-        
-        for cuisine, keywords in cuisine_types.items():
-            if any(keyword in context_lower for keyword in keywords):
-                if cuisine not in data["vibe_tags"]:
-                    data["vibe_tags"].append(cuisine)
-                    print(f"   ✅ Added '{cuisine}' cuisine tag for {name}")
-                    break  # Only add one cuisine type
-        
+
+        # Note: Cuisine types are now extracted from Google Maps Place Details API
+        # (see extract_cuisine_from_google_types function and place_types_from_google)
+
         return data
     except Exception as e:
         print(f"⚠️ Enrichment failed for {name}:", e)
@@ -3633,10 +3723,11 @@ def extract_vibe_keywords(text):
         "Rooftop", "Views", "Scenic", "Waterfront", "Outdoor",
 
         # Cuisine types (for venue categorization)
+        # Excluded: Chinese, Korean, American, Pizza, Burger (too generic)
         "Wine Bar", "Cocktail Bar", "Greek", "Italian", "French", "Spanish",
-        "Japanese", "Mexican", "Thai", "Indian", "Chinese", "Korean",
-        "Mediterranean", "American", "Seafood", "Steakhouse", "Sushi",
-        "Pizza", "Pasta", "Tapas", "Ramen", "Burger",
+        "Japanese", "Mexican", "Thai", "Indian",
+        "Mediterranean", "Seafood", "Steakhouse", "Sushi",
+        "Pasta", "Tapas", "Ramen",
     ]
 
     text_lower = text.lower()
@@ -3908,7 +3999,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             else:
                 display_name = canonical_name
                 if canonical_lower != original_lower:
-                    print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+            print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         else:
             display_name = venue_name
         
@@ -3922,41 +4013,44 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
 
         # PRIORITY ORDER FOR NEIGHBORHOOD EXTRACTION:
-        # 1. Title/Caption extraction (title often explicitly states location like "in Soho" or "Lower East Side")
-        # 2. Place Details API (most reliable - has address_components)
+        # 1. Google Maps Place Details API (most reliable - factual data with specific neighborhoods)
+        # 2. Title/Caption extraction (but defer to Google if Google is more specific)
         # 3. Place name extraction (from parentheses like "(NOMAD)")
         # 4. Google Maps address parsing (rarely works but worth trying)
         # 5. NYC geography inference
-        
+
         final_neighborhood = None
-        
-        # PRIORITY 1: Title/Caption extraction - title often explicitly states location
+        text_extracted_neighborhood = None  # Store text-extracted neighborhood separately
+        google_maps_neighborhood = None  # Store Google Maps neighborhood separately
+        place_types_from_google = []  # Store Google Maps place types for cuisine extraction
+
+        # STEP 1: Extract neighborhood from title/caption (but don't finalize yet)
         # Use combined text (context_title + caption) for neighborhood extraction
         # Example: "The Cutest New Spot in Soho" or "Discovering the Newest Wine Bar in the Lower East Side"
         neighborhood_source_text = combined_text_for_neighborhood
-        
-        if not final_neighborhood and neighborhood_source_text:
-            print(f"   🔍 Trying text extraction from caption/title FIRST (title often explicitly states location)...")
+
+        if neighborhood_source_text:
+            print(f"   🔍 Extracting neighborhood from caption/title...")
             text_neighborhood = _extract_neighborhood_from_text(neighborhood_source_text)
-            # Only use if it's a specific neighborhood (not a borough)
+            # Only store if it's a specific neighborhood (not a borough)
             if text_neighborhood and text_neighborhood not in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]:
-                final_neighborhood = text_neighborhood
-                print(f"   📍 Found neighborhood from title/caption (PRIORITY 1): {final_neighborhood}")
+                text_extracted_neighborhood = text_neighborhood
+                print(f"   📍 Found neighborhood from title/caption: {text_extracted_neighborhood}")
             elif text_neighborhood:
                 print(f"   ⚠️ Skipping borough-level neighborhood '{text_neighborhood}' from title")
         
-        # PRIORITY 2: Place Details API - call this SECOND (title takes precedence)
+        # STEP 2: Get neighborhood from Place Details API (Google Maps - most reliable)
         if place_id:
             if not GOOGLE_API_KEY:
                 print(f"   ⚠️ Skipping Place Details API - GOOGLE_API_KEY not set")
-            else:
+        else:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
                         "https://maps.googleapis.com/maps/api/place/details/json",
                         params={
                             "place_id": place_id,
-                            "fields": "address_components,formatted_address,business_status",
+                            "fields": "address_components,formatted_address,business_status,types",
                             "key": GOOGLE_API_KEY
                         },
                         timeout=10
@@ -3970,6 +4064,10 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         address_components = result.get("address_components", [])
                         # Get business_status to check if permanently closed
                         business_status = result.get("business_status")
+                        # Get place types from Google Maps (for cuisine categorization)
+                        place_types_from_google = result.get("types", [])
+                        if place_types_from_google:
+                            print(f"   🏷️ Google Maps types: {', '.join(place_types_from_google[:10])}")
                         # Also get formatted_address from Place Details (might be more accurate)
                         place_details_address = result.get("formatted_address")
                         if place_details_address and not address:
@@ -3989,21 +4087,21 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                     continue
                                 
                                 if "neighborhood" in types:
-                                    final_neighborhood = neighborhood_name
-                                    print(f"   📍 Found neighborhood from Place Details (neighborhood): {final_neighborhood}")
+                                    google_maps_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details (neighborhood): {google_maps_neighborhood}")
                                     break
-                                elif "sublocality" in types and not final_neighborhood:
-                                    final_neighborhood = neighborhood_name
-                                    print(f"   📍 Found neighborhood from Place Details (sublocality): {final_neighborhood}")
-                                elif "sublocality_level_1" in types and not final_neighborhood:
-                                    final_neighborhood = neighborhood_name
-                                    print(f"   📍 Found neighborhood from Place Details (sublocality_level_1): {final_neighborhood}")
-                                elif "locality" in types and not final_neighborhood:
+                                elif "sublocality" in types and not google_maps_neighborhood:
+                                    google_maps_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details (sublocality): {google_maps_neighborhood}")
+                                elif "sublocality_level_1" in types and not google_maps_neighborhood:
+                                    google_maps_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details (sublocality_level_1): {google_maps_neighborhood}")
+                                elif "locality" in types and not google_maps_neighborhood:
                                     # Only use locality if it's not a borough name or generic "Manhattan"
-                                    final_neighborhood = neighborhood_name
-                                    print(f"   📍 Found neighborhood from Place Details (locality): {final_neighborhood}")
-                        # Match against known neighborhoods list for consistency
-                        if final_neighborhood:
+                                    google_maps_neighborhood = neighborhood_name
+                                    print(f"   📍 Found neighborhood from Place Details (locality): {google_maps_neighborhood}")
+                        # Match Google Maps neighborhood against known neighborhoods list for consistency
+                        if google_maps_neighborhood:
                             known_neighborhoods = [
                             # Downtown / Below 14th
                             "Downtown", "Lower Manhattan",
@@ -4081,38 +4179,38 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         ]
                         # Sort by length (longest first) to prioritize more specific matches
                         sorted_known = sorted(known_neighborhoods, key=len, reverse=True)
-                        final_neighborhood_lower = final_neighborhood.lower()
-                        
+                        google_neighborhood_lower = google_maps_neighborhood.lower()
+
                         # Try exact match first, then substring match
                         # But don't match generic locations like "Manhattan" to "Lower Manhattan"
                         generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
-                        is_generic = final_neighborhood_lower in [g.lower() for g in generic_locations]
-                        
+                        is_generic = google_neighborhood_lower in [g.lower() for g in generic_locations]
+
                         # If it's already generic, skip matching and try fallbacks
                         if is_generic:
-                            print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
-                            final_neighborhood = None
-                        else:
+                            print(f"   ⚠️ Place Details returned generic location '{google_maps_neighborhood}', will try other sources")
+                            google_maps_neighborhood = None
+        else:
                             matched = False
                             for known_neighborhood in sorted_known:
                                 known_lower = known_neighborhood.lower()
-                                if known_lower == final_neighborhood_lower:
-                                    final_neighborhood = known_neighborhood
-                                    print(f"   📍 Exact match to known neighborhood: {final_neighborhood}")
+                                if known_lower == google_neighborhood_lower:
+                                    google_maps_neighborhood = known_neighborhood
+                                    print(f"   📍 Google Maps exact match to known neighborhood: {google_maps_neighborhood}")
                                     matched = True
                                     break
-                                elif known_lower in final_neighborhood_lower or final_neighborhood_lower in known_lower:
+                                elif known_lower in google_neighborhood_lower or google_neighborhood_lower in known_lower:
                                     # Use substring match if it's a significant portion (>= 4 chars)
                                     # This handles cases like "Lower East Side" matching "Lower East Side, Manhattan"
                                     if len(known_neighborhood) >= 4:
-                                        final_neighborhood = known_neighborhood
-                                        print(f"   📍 Matched to known neighborhood: {final_neighborhood}")
+                                        google_maps_neighborhood = known_neighborhood
+                                        print(f"   📍 Google Maps matched to known neighborhood: {google_maps_neighborhood}")
                                         matched = True
                                         break
-                            
+
                             # If no match found, keep the original neighborhood name (might be valid but not in our list)
                             if not matched:
-                                print(f"   ⚠️ Neighborhood '{final_neighborhood}' not in known list, keeping as-is")
+                                print(f"   ⚠️ Google Maps neighborhood '{google_maps_neighborhood}' not in known list, keeping as-is")
                     else:
                         # Handle non-OK API response statuses
                         error_message = details_data.get("error_message", "No error message provided")
@@ -4177,7 +4275,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # Photo priority: 1) TikTok slide photo, 2) Google Maps photo
         # Skip photo if permanently closed
         photo = None
-        
+
         # Check if permanently closed - if so, skip photo fetching
         is_permanently_closed = business_status == "CLOSED_PERMANENTLY"
         if is_permanently_closed:
@@ -4306,12 +4404,50 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # Convert price_level to dollar signs
         price = price_level_to_dollars(price_level)
 
+        # Add cuisine type from Google Maps to vibe_tags (if available)
+        vibe_tags = intel.get("vibe_tags", []).copy()  # Make a copy to avoid modifying original
+        if place_types_from_google:
+            # Extract cuisine from Google Maps place types
+            cuisine_map = {
+                "restaurant": None,  # Too generic
+                "bar": None,  # Too generic
+                "cafe": None,  # Too generic
+                "meal_takeaway": None,  # Too generic
+                "food": None,  # Too generic
+                "establishment": None,  # Too generic
+                "point_of_interest": None,  # Too generic
+                # Specific cuisines
+                "indian_restaurant": "Indian",
+                "italian_restaurant": "Italian",
+                "chinese_restaurant": "Chinese",
+                "japanese_restaurant": "Japanese",
+                "mexican_restaurant": "Mexican",
+                "thai_restaurant": "Thai",
+                "korean_restaurant": "Korean",
+                "french_restaurant": "French",
+                "greek_restaurant": "Greek",
+                "mediterranean_restaurant": "Mediterranean",
+                "american_restaurant": "American",
+                "seafood_restaurant": "Seafood",
+                "steak_house": "Steakhouse",
+                "pizza_restaurant": "Pizza",
+                "sushi_restaurant": "Sushi",
+            }
+            google_cuisine = None
+            for place_type in place_types_from_google:
+                if place_type in cuisine_map and cuisine_map[place_type]:
+                    google_cuisine = cuisine_map[place_type]
+                    break
+            if google_cuisine and google_cuisine not in vibe_tags:
+                vibe_tags.append(google_cuisine)
+                print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine}")
+
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
             "photo_url": photo or "https://via.placeholder.com/600x400?text=No+Photo",
             "description": intel.get("summary", ""),
-            "vibe_tags": intel.get("vibe_tags", []),
+            "vibe_tags": vibe_tags,  # Use updated vibe_tags with Google Maps cuisine
             "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly
             "address": address,  # Also get address while we're at it
             "neighborhood": final_neighborhood,  # Prioritize text mentions, fallback to Google Maps, then inferred
@@ -5410,7 +5546,7 @@ def get_extraction_status(extraction_id):
         # Auto-cleanup: if status is empty or very old, return empty
         # This helps stop unnecessary polling
         if not status_messages:
-            return jsonify({
+        return jsonify({
             "extraction_id": extraction_id,
                 "messages": [],
                 "completed": True
@@ -5642,11 +5778,11 @@ def extract_api():
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
             try:
-                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-                print(f"🤖 GPT returned {len(venues)} venues: {venues}")
-                print(f"🤖 GPT returned title: {context_title}")
-                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-                print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            print(f"🤖 GPT returned {len(venues)} venues: {venues}")
+            print(f"🤖 GPT returned title: {context_title}")
+            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+            print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
             except Exception as extract_error:
                 print(f"❌ extract_places_and_context failed: {extract_error}")
                 import traceback
