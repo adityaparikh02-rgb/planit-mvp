@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate PlanIt Favicons</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      margin: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      background: #4F46E5;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #6366f1;
+    }
+  </style>
+</head>
+<body>
+  <h1>PlanIt Favicon Generator</h1>
+  <p>This page will generate PNG favicon files from the PlanIt logo SVG.</p>
+  
+  <div id="previews"></div>
+  
+  <div>
+    <button onclick="generateAll()">Generate All Favicon Files</button>
+  </div>
+  
+  <script>
+    const svgLogo = `
+      <svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100" height="100" rx="22" fill="#4F46E5" />
+        <g opacity="0.5">
+          <circle cx="50" cy="50" r="36" stroke="#FFFFFF" stroke-width="3.5" fill="none" />
+          <ellipse cx="50" cy="50" rx="10" ry="36" stroke="#FFFFFF" stroke-width="3" fill="none" />
+          <ellipse cx="50" cy="50" rx="20" ry="36" stroke="#FFFFFF" stroke-width="3" fill="none" />
+          <ellipse cx="50" cy="50" rx="28" ry="36" stroke="#FFFFFF" stroke-width="2.5" fill="none" />
+          <ellipse cx="50" cy="50" rx="36" ry="10" stroke="#FFFFFF" stroke-width="3" fill="none" />
+          <ellipse cx="50" cy="50" rx="36" ry="20" stroke="#FFFFFF" stroke-width="3" fill="none" />
+          <ellipse cx="50" cy="50" rx="36" ry="28" stroke="#FFFFFF" stroke-width="2.5" fill="none" />
+        </g>
+      </svg>
+    `;
+    
+    const sizes = [
+      { name: 'favicon-16x16.png', size: 16 },
+      { name: 'favicon-32x32.png', size: 32 },
+      { name: 'apple-touch-icon.png', size: 180 },
+      { name: 'logo192.png', size: 192 },
+      { name: 'logo512.png', size: 512 }
+    ];
+    
+    function generateCanvas(size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      
+      const img = new Image();
+      const svgBlob = new Blob([svgLogo], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(svgBlob);
+      
+      img.onload = function() {
+        ctx.drawImage(img, 0, 0, size, size);
+        URL.revokeObjectURL(url);
+      };
+      
+      img.src = url;
+      return canvas;
+    }
+    
+    function downloadCanvas(canvas, filename) {
+      canvas.toBlob(function(blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+    
+    function generateAll() {
+      sizes.forEach(({ name, size }) => {
+        setTimeout(() => {
+          const canvas = generateCanvas(size);
+          setTimeout(() => {
+            downloadCanvas(canvas, name);
+          }, 500);
+        }, sizes.indexOf({ name, size }) * 1000);
+      });
+    }
+    
+    // Show previews
+    sizes.forEach(({ name, size }) => {
+      const div = document.createElement('div');
+      div.innerHTML = `<h3>${name} (${size}x${size})</h3>`;
+      const canvas = generateCanvas(size);
+      div.appendChild(canvas);
+      document.getElementById('previews').appendChild(div);
+    });
+  </script>
+</body>
+</html>
+
