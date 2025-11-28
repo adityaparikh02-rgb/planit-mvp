@@ -2736,7 +2736,7 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     
     if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
         if has_other_content:
-            print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
+        print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
         print(f"   Reason: Too many non-alphanumeric characters or random text")
         print(f"   Garbled OCR preview: {ocr_text[:200]}...")
         print(f"   Will use caption/transcript only instead")
@@ -2805,13 +2805,13 @@ If no venues found, output: (none)
                 client = get_openai_client()
                 
                 try:
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[{"role": "user", "content": slide_prompt}],
-                        temperature=0.2,  # Very low temperature for consistent extraction
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": slide_prompt}],
+                    temperature=0.2,  # Very low temperature for consistent extraction
                         timeout=30  # Add timeout to prevent hanging
-                    )
-                    slide_response = response.choices[0].message.content.strip()
+                )
+                slide_response = response.choices[0].message.content.strip()
                 except Exception as api_error:
                     print(f"     ❌ OpenAI API call failed for slide: {api_error}")
                     print(f"     Error type: {type(api_error).__name__}")
@@ -3116,14 +3116,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-            )
-            raw = response.choices[0].message.content.strip()
-            print(f"🤖 GPT raw response: {raw[:500]}...")
+        )
+        raw = response.choices[0].message.content.strip()
+        print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
