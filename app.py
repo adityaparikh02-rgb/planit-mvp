@@ -2686,13 +2686,13 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     
     if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
         if has_other_content:
-            print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
-            print(f"   Reason: Too many non-alphanumeric characters or random text")
-            print(f"   Garbled OCR preview: {ocr_text[:200]}...")
-            print(f"   Will use caption/transcript only instead")
+        print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
+        print(f"   Reason: Too many non-alphanumeric characters or random text")
+        print(f"   Garbled OCR preview: {ocr_text[:200]}...")
+        print(f"   Will use caption/transcript only instead")
             # If OCR is garbled AND we have other content, ignore it - it will confuse GPT
-            ocr_text = ""  # Ignore garbled OCR completely
-            slide_dict = {}  # Clear slide dict
+        ocr_text = ""  # Ignore garbled OCR completely
+        slide_dict = {}  # Clear slide dict
         else:
             print("⚠️ OCR text appears garbled BUT it's the only content source - KEEPING IT")
             print(f"   Reason: No transcript or caption available, so we'll try to extract from OCR anyway")
@@ -2755,13 +2755,13 @@ If no venues found, output: (none)
                 client = get_openai_client()
                 
                 try:
-                    response = client.chat.completions.create(
+                response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": slide_prompt}],
                     temperature=0.2,  # Very low temperature for consistent extraction
                         timeout=30  # Add timeout to prevent hanging
-                    )
-                    slide_response = response.choices[0].message.content.strip()
+                )
+                slide_response = response.choices[0].message.content.strip()
                 except Exception as api_error:
                     print(f"     ❌ OpenAI API call failed for slide: {api_error}")
                     print(f"     Error type: {type(api_error).__name__}")
@@ -3066,14 +3066,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-            )
-            raw = response.choices[0].message.content.strip()
-            print(f"🤖 GPT raw response: {raw[:500]}...")
+        )
+        raw = response.choices[0].message.content.strip()
+        print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
@@ -3539,6 +3539,15 @@ Context (filtered to only include mentions of "{name}"):
         # Use the actual OCR text from the slide for more accurate tag extraction
         # Pass venue name to ensure unique, context-specific tags
         data["vibe_tags"] = extract_vibe_tags(context, venue_name=name)
+        
+        # Add "Vegan" tag if explicitly mentioned in the context
+        context_lower = context.lower()
+        vegan_indicators = ["vegan", "plant-based", "plant based"]
+        if any(indicator in context_lower for indicator in vegan_indicators):
+            if "Vegan" not in data["vibe_tags"]:
+                data["vibe_tags"].append("Vegan")
+                print(f"   ✅ Added 'Vegan' tag for {name}")
+        
         return data
     except Exception as e:
         print(f"⚠️ Enrichment failed for {name}:", e)
@@ -3869,7 +3878,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             else:
                 display_name = canonical_name
                 if canonical_lower != original_lower:
-                    print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+            print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         else:
             display_name = venue_name
         
@@ -3910,7 +3919,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         if place_id:
             if not GOOGLE_API_KEY:
                 print(f"   ⚠️ Skipping Place Details API - GOOGLE_API_KEY not set")
-            else:
+        else:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
@@ -4045,7 +4054,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         # If it's already generic, skip matching and try fallbacks
                         if is_generic:
                             print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
-                            final_neighborhood = None
+            final_neighborhood = None
                         else:
                             matched = False
                             for known_neighborhood in sorted_known:
@@ -4147,6 +4156,13 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             photo = get_photo_url(display_name, place_id=place_id, photos=photos)
             if photo:
                 print(f"   📸 Using Google Maps photo for {display_name}")
+        
+        # Final fallback: Try searching by name if still no photo
+        if not photo:
+            print(f"   🔍 No photo found yet, trying additional search for {display_name}...")
+            photo = get_photo_url(display_name, place_id=None, photos=None)
+            if photo:
+                print(f"   📸 Got photo via fallback search for {display_name}")
 
         # PRIORITY 4: Google Maps address parsing
         if not final_neighborhood and address:
@@ -4172,16 +4188,29 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 final_neighborhood = name_neighborhood
                 print(f"   📍 Found neighborhood from venue name: {final_neighborhood}")
         
-        # Final check - log if still no neighborhood
+        # Final fallback: Extract borough from address if neighborhood still missing
+        if not final_neighborhood and address:
+            print(f"   🔍 Final fallback: Trying to extract borough from address...")
+            address_lower = address.lower()
+            boroughs = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]
+            for borough in boroughs:
+                if borough.lower() in address_lower:
+                    final_neighborhood = borough
+                    print(f"   📍 Using borough as neighborhood: {final_neighborhood}")
+                    break
+        
+        # Ultimate fallback: Set to "NYC" if still no neighborhood (better than "Location")
         if not final_neighborhood:
             print(f"   ⚠️ Could not determine neighborhood for {display_name}")
             print(f"      Address: {address or 'None (Google API may have failed)'}")
             print(f"      Place ID: {place_id or 'None (Google API may have failed)'}")
             print(f"      Title/Caption text: {neighborhood_source_text[:100] if neighborhood_source_text else 'None'}")
+            # Set to NYC as fallback instead of None
+            final_neighborhood = "NYC"
+            print(f"   📍 Using 'NYC' as fallback neighborhood")
             # If Google API completely failed, this is a critical issue
             if not address and not place_id:
                 print(f"   ❌ CRITICAL: Google Places API failed - no address or place_id available")
-                print(f"      This venue will show 'Location' instead of a neighborhood")
                 print(f"      Check Google API key configuration and API status")
 
         # Convert price_level to dollar signs
@@ -5291,7 +5320,7 @@ def get_extraction_status(extraction_id):
         # Auto-cleanup: if status is empty or very old, return empty
         # This helps stop unnecessary polling
         if not status_messages:
-            return jsonify({
+        return jsonify({
             "extraction_id": extraction_id,
                 "messages": [],
                 "completed": True
@@ -5523,11 +5552,11 @@ def extract_api():
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
             try:
-                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-                print(f"🤖 GPT returned {len(venues)} venues: {venues}")
-                print(f"🤖 GPT returned title: {context_title}")
-                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-                print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            print(f"🤖 GPT returned {len(venues)} venues: {venues}")
+            print(f"🤖 GPT returned title: {context_title}")
+            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+            print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
             except Exception as extract_error:
                 print(f"❌ extract_places_and_context failed: {extract_error}")
                 import traceback

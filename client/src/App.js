@@ -41,31 +41,31 @@ const getNeighborhoodEmoji = (neighborhood) => {
   }
   
   // Brooklyn
-  if (n.includes('williamsburg') || n.includes('greenpoint') || n.includes('bushwick') || 
-      n.includes('brooklyn heights') || n.includes('dumbo') || n.includes('cobble hill') || 
-      n.includes('carroll gardens') || n.includes('boerum hill') || n.includes('gowanus') || 
-      n.includes('park slope') || n.includes('prospect heights') || n.includes('fort greene') || 
-      n.includes('clinton hill') || n.includes('bed-stuy') || n.includes('bedstuy') || 
-      n.includes('bedford-stuyvesant') || n.includes('crown heights') || n.includes('red hook') || 
+  if (n.includes('williamsburg') || n.includes('greenpoint') || n.includes('bushwick') ||
+      n.includes('brooklyn heights') || n.includes('dumbo') || n.includes('cobble hill') ||
+      n.includes('carroll gardens') || n.includes('boerum hill') || n.includes('gowanus') ||
+      n.includes('park slope') || n.includes('prospect heights') || n.includes('fort greene') ||
+      n.includes('clinton hill') || n.includes('bed-stuy') || n.includes('bedstuy') ||
+      n.includes('bedford-stuyvesant') || n.includes('crown heights') || n.includes('red hook') ||
       n.includes('sunset park') || n.includes('bay ridge')) {
-    return '🍕';
+    return '🏙️';
   }
-  
+
   // Queens
-  if (n.includes('astoria') || n.includes('long island city') || n.includes('lic') || 
-      n.includes('sunnyside') || n.includes('jackson heights') || n.includes('elmhurst') || 
+  if (n.includes('astoria') || n.includes('long island city') || n.includes('lic') ||
+      n.includes('sunnyside') || n.includes('jackson heights') || n.includes('elmhurst') ||
       n.includes('flushing') || n.includes('forest hills')) {
-    return '🍺';
+    return '🏙️';
   }
-  
+
   // Bronx
   if (n.includes('belmont') || n.includes('arthur avenue') || n.includes('mott haven')) {
-    return '🥂';
+    return '🏙️';
   }
-  
+
   // Staten Island
   if (n.includes('st. george') || n.includes('st george')) {
-    return '🍹';
+    return '🏙️';
   }
   
   return '📍'; // Default
@@ -1188,13 +1188,18 @@ function App() {
                         <div className="place-info">
                           <h3>{p.name}</h3>
 
-                          {/* Neighborhood/Area */}
-                          {(p.neighborhood || p.maps_url) && (
+                          {/* Neighborhood/Area and Price */}
+                          {(p.neighborhood || p.maps_url || p.price) && (
                             <p className="neighborhood-field">
                               <span style={{ marginRight: '6px', fontSize: '16px' }}>
                                 {getNeighborhoodEmoji(p.neighborhood)}
                               </span>
-                              {p.neighborhood || 'Location'}
+                              {p.neighborhood || (p.address ? p.address.split(',')[0] : 'Location')}
+                              {p.price && (
+                                <span style={{ marginLeft: '8px', color: '#a0c4a0', fontWeight: '500' }}>
+                                  {p.price}
+                                </span>
+                              )}
                             </p>
                           )}
 
@@ -1239,6 +1244,13 @@ function App() {
                           {p.features && (
                             <p className="features-field">
                               <strong>🎯 Features:</strong> {p.features}
+                            </p>
+                          )}
+
+                          {/* Team Behind */}
+                          {p.team_behind && (
+                            <p className="team-behind-field">
+                              <strong>👥 Team Behind:</strong> {p.team_behind}
                             </p>
                           )}
 
@@ -1682,13 +1694,18 @@ function App() {
                               </div>
                             )}
 
-                            {/* Neighborhood/Area - Show location pin if neighborhood OR maps_url exists */}
-                            {(p.neighborhood || p.maps_url) && (
+                            {/* Neighborhood/Area and Price - Show location pin if neighborhood OR maps_url exists */}
+                            {(p.neighborhood || p.maps_url || p.price) && (
                               <p className="neighborhood-field">
                                 <span style={{ marginRight: '6px', fontSize: '16px' }}>
                                   {getNeighborhoodEmoji(p.neighborhood)}
                                 </span>
-                                {p.neighborhood || 'Location'}
+                                {p.neighborhood || (p.address ? p.address.split(',')[0] : 'Location')}
+                                {p.price && (
+                                  <span style={{ marginLeft: '8px', color: '#a0c4a0', fontWeight: '500' }}>
+                                    {p.price}
+                                  </span>
+                                )}
                               </p>
                             )}
 
@@ -1719,6 +1736,13 @@ function App() {
                             {p.good_to_know && (
                               <p className="good-to-know-field">
                                 <strong>Good to Know:</strong> {p.good_to_know}
+                              </p>
+                            )}
+
+                            {/* Team Behind */}
+                            {p.team_behind && (
+                              <p className="team-behind-field">
+                                <strong>👥 Team Behind:</strong> {p.team_behind}
                               </p>
                             )}
 
@@ -1794,6 +1818,13 @@ function App() {
                                 {p.good_to_know && (
                                   <p className="good-to-know-field">
                                     <strong>💡 Good to Know:</strong> {p.good_to_know}
+                                  </p>
+                                )}
+
+                                {/* Team Behind */}
+                                {p.team_behind && (
+                                  <p className="team-behind-field">
+                                    <strong>👥 Team Behind:</strong> {p.team_behind}
                                   </p>
                                 )}
 
