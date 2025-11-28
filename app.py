@@ -3116,14 +3116,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-        )
-        raw = response.choices[0].message.content.strip()
-        print(f"🤖 GPT raw response: {raw[:500]}...")
+            )
+            raw = response.choices[0].message.content.strip()
+            print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
@@ -3999,7 +3999,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             else:
                 display_name = canonical_name
                 if canonical_lower != original_lower:
-            print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+                    print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         else:
             display_name = venue_name
         
