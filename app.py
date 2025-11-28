@@ -4217,7 +4217,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                             # If no match found, keep the original neighborhood name (might be valid but not in our list)
                             if not matched:
                                 print(f"   ⚠️ Google Maps neighborhood '{google_maps_neighborhood}' not in known list, keeping as-is")
-                    else:  # This else matches the "if api_status == 'OK':" at line 4068
+                    else:
+                        # Handle non-OK API response statuses
                         # Handle non-OK API response statuses
                         error_message = details_data.get("error_message", "No error message provided")
                         
