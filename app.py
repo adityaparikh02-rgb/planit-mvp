@@ -4197,7 +4197,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         if is_generic:
                             print(f"   ⚠️ Place Details returned generic location '{google_maps_neighborhood}', will try other sources")
                             google_maps_neighborhood = None
-        else:
+                        else:
                             matched = False
                             for known_neighborhood in sorted_known:
                                 known_lower = known_neighborhood.lower()
