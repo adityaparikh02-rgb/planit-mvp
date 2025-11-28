@@ -4005,7 +4005,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             else:
                 display_name = canonical_name
                 if canonical_lower != original_lower:
-            print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+                print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         else:
             display_name = venue_name
         
