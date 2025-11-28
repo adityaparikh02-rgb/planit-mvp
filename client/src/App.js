@@ -1118,7 +1118,7 @@ function App() {
 
                     return (
                       <div key={i} className="place-card">
-                        {p.photo_url && (
+                        {p.photo_url && !p.permanently_closed && (
                           <div className="photo-wrapper">
                             <img
                               src={p.photo_url}
@@ -1131,6 +1131,11 @@ function App() {
                                 e.target.parentElement.style.display = 'none';
                               }}
                             />
+                          </div>
+                        )}
+                        {p.permanently_closed && (
+                          <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.6)', fontStyle: 'italic' }}>
+                            ⚠️ Permanently Closed
                           </div>
                         )}
                         <button

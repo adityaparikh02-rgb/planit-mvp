@@ -3867,6 +3867,9 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # For MVP, bias results towards NYC to avoid confusion with non-NYC venues
         canonical_name, address, place_id, photos, neighborhood, price_level = get_place_info_from_google(venue_name, use_cache=True, location_hint="NYC")
         
+        # Track business_status (will be set from Place Details API)
+        business_status = None
+        
         # Use canonical name, but be careful about major changes
         # If canonical name is too different from original (e.g., "LEI" → "LES"), prefer original
         # Only use canonical name if it's a minor spelling correction or capitalization fix
@@ -3953,7 +3956,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         "https://maps.googleapis.com/maps/api/place/details/json",
                         params={
                             "place_id": place_id,
-                            "fields": "address_components",
+                            "fields": "address_components,formatted_address,business_status",
                             "key": GOOGLE_API_KEY
                         },
                         timeout=10
@@ -3965,6 +3968,13 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     if api_status == "OK":
                         result = details_data.get("result", {})
                         address_components = result.get("address_components", [])
+                        # Get business_status to check if permanently closed
+                        business_status = result.get("business_status")
+                        # Also get formatted_address from Place Details (might be more accurate)
+                        place_details_address = result.get("formatted_address")
+                        if place_details_address and not address:
+                            address = place_details_address
+                            print(f"   📍 Using address from Place Details API: {address}")
                         # Look for neighborhood, sublocality, or locality in address components
                         # Priority: neighborhood > sublocality > sublocality_level_1 > locality
                         # Define generic locations to filter out
@@ -4165,9 +4175,15 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         break
 
         # Photo priority: 1) TikTok slide photo, 2) Google Maps photo
+        # Skip photo if permanently closed
         photo = None
+        
+        # Check if permanently closed - if so, skip photo fetching
+        is_permanently_closed = business_status == "CLOSED_PERMANENTLY"
+        if is_permanently_closed:
+            print(f"   ⚠️ {display_name} is permanently closed - skipping photo fetch")
 
-        # Try to get photo from the specific slide this venue came from
+        # Try to get photo from the specific slide this venue came from (only if not permanently closed)
         if source_slide and photo_urls:
             # Extract slide number from source_slide (e.g., "slide_2" -> 1 for 0-indexed)
             try:
@@ -4178,22 +4194,22 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             except (IndexError, ValueError) as e:
                 print(f"   ⚠️ Failed to parse slide number from {source_slide}: {e}")
 
-        # Fallback to Google Maps photo if no TikTok photo
-        if not photo:
+        # Fallback to Google Maps photo if no TikTok photo (skip if permanently closed)
+        if not photo and not is_permanently_closed:
             photo = get_photo_url(display_name, place_id=place_id, photos=photos)
             if photo:
                 print(f"   📸 Using Google Maps photo for {display_name}")
         
-        # Additional fallback: Try searching by name with NYC if still no photo
-        if not photo:
+        # Additional fallback: Try searching by name with NYC if still no photo (skip if permanently closed)
+        if not photo and not is_permanently_closed:
             print(f"   🔍 No photo found yet, trying search with NYC for {display_name}...")
             search_name = f"{display_name} NYC" if "NYC" not in display_name.upper() and "New York" not in display_name else display_name
             photo = get_photo_url(search_name, place_id=None, photos=None)
             if photo:
                 print(f"   📸 Got photo via NYC search for {display_name}")
         
-        # Last resort: Try original venue name if canonical name didn't work
-        if not photo and display_name != venue_name:
+        # Last resort: Try original venue name if canonical name didn't work (skip if permanently closed)
+        if not photo and display_name != venue_name and not is_permanently_closed:
             print(f"   🔍 Trying original venue name for photo: {venue_name}...")
             search_name = f"{venue_name} NYC" if "NYC" not in venue_name.upper() and "New York" not in venue_name else venue_name
             photo = get_photo_url(search_name, place_id=None, photos=None)
