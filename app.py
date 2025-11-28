@@ -3122,7 +3122,7 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-        response = client.chat.completions.create(
+            response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
             temperature=0.3,  # Lower temperature for more consistent extraction from OCR
