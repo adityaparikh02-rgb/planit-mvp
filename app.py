@@ -3128,8 +3128,8 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
             temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
         )
-        raw = response.choices[0].message.content.strip()
-        print(f"🤖 GPT raw response: {raw[:500]}...")
+            raw = response.choices[0].message.content.strip()
+            print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
