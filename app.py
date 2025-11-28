@@ -4049,7 +4049,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         if place_id:
             if not GOOGLE_API_KEY:
                 print(f"   ⚠️ Skipping Place Details API - GOOGLE_API_KEY not set")
-        else:
+            else:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
