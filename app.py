@@ -5546,7 +5546,7 @@ def get_extraction_status(extraction_id):
         # Auto-cleanup: if status is empty or very old, return empty
         # This helps stop unnecessary polling
         if not status_messages:
-        return jsonify({
+            return jsonify({
             "extraction_id": extraction_id,
                 "messages": [],
                 "completed": True
