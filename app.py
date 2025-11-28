@@ -2811,13 +2811,13 @@ If no venues found, output: (none)
                 client = get_openai_client()
                 
                 try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": slide_prompt}],
-                    temperature=0.2,  # Very low temperature for consistent extraction
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": slide_prompt}],
+                        temperature=0.2,  # Very low temperature for consistent extraction
                         timeout=30  # Add timeout to prevent hanging
-                )
-                slide_response = response.choices[0].message.content.strip()
+                    )
+                    slide_response = response.choices[0].message.content.strip()
                 except Exception as api_error:
                     print(f"     ❌ OpenAI API call failed for slide: {api_error}")
                     print(f"     Error type: {type(api_error).__name__}")
