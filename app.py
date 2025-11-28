@@ -174,6 +174,16 @@ YT_IMPERSONATE = None
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
+# Validate Google API Key at startup
+if not GOOGLE_API_KEY:
+    print("⚠️ WARNING: GOOGLE_API_KEY environment variable is not set")
+    print("   Location extraction will rely on title/caption text and address parsing only")
+elif len(GOOGLE_API_KEY) < 20:
+    print(f"⚠️ WARNING: GOOGLE_API_KEY appears invalid (too short: {len(GOOGLE_API_KEY)} chars)")
+    print("   Google Places API calls may fail")
+else:
+    print(f"✅ GOOGLE_API_KEY is set (length: {len(GOOGLE_API_KEY)} chars)")
+
 # ─────────────────────────────
 # Database Setup
 # ─────────────────────────────
@@ -2325,8 +2335,21 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
         r.raise_for_status()
         data = r.json()
         
-        if data.get("status") != "OK":
-            print(f"⚠️ Google Places search error for {place_name}: {data.get('status')} - {data.get('error_message', 'Unknown error')}")
+        api_status = data.get("status")
+        if api_status != "OK":
+            error_message = data.get('error_message', 'Unknown error')
+            print(f"⚠️ Google Places search error for {place_name}: {api_status} - {error_message}")
+            
+            # Provide specific guidance for common errors
+            if api_status == "REQUEST_DENIED":
+                print(f"   ❌ REQUEST_DENIED: Check that GOOGLE_API_KEY is valid and Places API is enabled")
+            elif api_status == "OVER_QUERY_LIMIT":
+                print(f"   ❌ OVER_QUERY_LIMIT: Google Places API quota exceeded")
+            elif api_status == "INVALID_REQUEST":
+                print(f"   ❌ INVALID_REQUEST: Invalid search query or parameters")
+            elif api_status == "ZERO_RESULTS":
+                print(f"   ⚠️ ZERO_RESULTS: No places found matching '{place_name}'")
+            
             return None, None, None, None, None, None
 
         res = data.get("results", [])
@@ -2657,14 +2680,25 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
 
     # CRITICAL: Detect if OCR is too garbled to be useful
     # SKIP garble check if we detected valid SLIDE markers (slideshow is structured content)
+    # IMPORTANT: If OCR is the ONLY content source (no transcript/caption), be more lenient
+    # Even garbled OCR is better than nothing when it's the only source
+    has_other_content = bool(transcript and len(transcript.strip()) > 50) or bool(caption and len(caption.strip()) > 20)
+    
     if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
+        if has_other_content:
         print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
         print(f"   Reason: Too many non-alphanumeric characters or random text")
         print(f"   Garbled OCR preview: {ocr_text[:200]}...")
         print(f"   Will use caption/transcript only instead")
-        # If OCR is garbled, completely ignore it - it will confuse GPT
+            # If OCR is garbled AND we have other content, ignore it - it will confuse GPT
         ocr_text = ""  # Ignore garbled OCR completely
         slide_dict = {}  # Clear slide dict
+        else:
+            print("⚠️ OCR text appears garbled BUT it's the only content source - KEEPING IT")
+            print(f"   Reason: No transcript or caption available, so we'll try to extract from OCR anyway")
+            print(f"   Garbled OCR preview: {ocr_text[:200]}...")
+            # Keep OCR even if garbled - better than nothing when it's the only source
+            # GPT might still be able to extract some venue names from garbled OCR
     
     # Log what we have for debugging
     print(f"📋 Content sources:")
@@ -2721,13 +2755,13 @@ If no venues found, output: (none)
                 client = get_openai_client()
                 
                 try:
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[{"role": "user", "content": slide_prompt}],
-                        temperature=0.2,  # Very low temperature for consistent extraction
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": slide_prompt}],
+                    temperature=0.2,  # Very low temperature for consistent extraction
                         timeout=30  # Add timeout to prevent hanging
-                    )
-                    slide_response = response.choices[0].message.content.strip()
+                )
+                slide_response = response.choices[0].message.content.strip()
                 except Exception as api_error:
                     print(f"     ❌ OpenAI API call failed for slide: {api_error}")
                     print(f"     Error type: {type(api_error).__name__}")
@@ -2951,6 +2985,9 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
 1️⃣ Extract every **specific** bar, restaurant, café, or food/drink venue mentioned.
 {caption_emphasis}
    • CRITICAL PRIORITY: Check the OCR text FIRST - photo posts show venue names IN THE IMAGES
+   • CRITICAL: Check ALL slides including the LAST slide - venue names are often on the final slide
+     Example: "Elvis Noho" might only appear on the last slide - make sure to check SLIDE N (where N is the last slide number)
+     If you see "SLIDE 1:", "SLIDE 2:", "SLIDE 3:", make sure to check "SLIDE 3:" for venue names
    • IMPORTANT: Check the CAPTION/DESCRIPTION - venue names are often listed there
    • Also check speech (transcript) and comments - LISTEN CAREFULLY to what the creator actually says
    • IMPORTANT: If transcript says "high life in east village", extract "High Life" as the venue name, NOT "high life dispo"
@@ -2969,6 +3006,9 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • If caption says "My favorite NYC spots" but doesn't list names, the names are IN THE OCR TEXT FROM IMAGES
    • Photo posts: The images contain the venue names - extract them from OCR text
    • Ignore broad neighborhoods like "SoHo" or "Brooklyn" unless they're part of a venue name
+   • CRITICAL: Do NOT invent or infer venue names. Only extract venues that are EXPLICITLY mentioned by name.
+     For example, if text says "wine bar in Soho" but doesn't name the wine bar, do NOT extract "Soho Wine Bar".
+     Only extract venues that are actually named (e.g., "Marjories", "Employees Only", "Katana Kitten").
    • ONLY list actual venue names that are mentioned. Do NOT use placeholders like "venue 1" or "<venue 1>".
    • IMPORTANT: OCR text may contain garbled characters or errors. Look for REAL venue names, not random words.
    • IMPORTANT: Transcript may have transcription errors. If transcript says "X dispo" but context suggests "X in Y", trust the context and extract "X"
@@ -2976,6 +3016,7 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's").
    • Do NOT extract random words from garbled OCR text (e.g., "Danny's" or "Ballerina" if they don't appear in context).
    • If OCR text is too garbled or unclear, prioritize the caption and transcript for venue names.
+   • Do NOT combine neighborhood names with generic terms to create venue names (e.g., don't extract "Soho Wine Bar" from "wine bar in Soho").
    • CRITICAL: Do NOT extract venues that are mentioned as "team behind", "created by", "made by", "founded by", or similar contexts. 
      For example, if text says "the team behind Sami & Susu made Shifka", extract ONLY "Shifka", NOT "Sami & Susu".
      Only extract venues that are actually being featured/reviewed/visited, not venues mentioned as creators or previous projects.
@@ -3025,14 +3066,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-            )
-            raw = response.choices[0].message.content.strip()
-            print(f"🤖 GPT raw response: {raw[:500]}...")
+        )
+        raw = response.choices[0].message.content.strip()
+        print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
@@ -3331,7 +3372,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             # Skip if sentence mentions another venue (be strict)
             mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
             mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
-
+            
             # Only include if it mentions this venue AND doesn't mention other venues
             if mentions_this and not mentions_other:
                 filtered_sentences.append(sentence)
@@ -3378,14 +3419,14 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     # Final safety check: ensure we have meaningful context
     if len(context.strip()) < 10:
         print(f"   ❌ WARNING: Very little context available for {name} ({len(context)} chars) - GPT extraction may be incomplete")
-
+    
     context_lower = context.lower()
-
+    
     # Determine venue type from context
     is_bar = any(word in context_lower for word in ["bar", "cocktail", "drinks", "happy hour", "bartender", "mixology", "lounge", "pub"])
     is_restaurant = any(word in context_lower for word in ["restaurant", "dining", "food", "menu", "chef", "cuisine", "eatery", "bistro", "cafe", "café"])
     is_club = any(word in context_lower for word in ["club", "nightclub", "dj", "dance", "nightlife", "party", "music venue"])
-
+    
     prompt = f"""
 Analyze the TikTok context for "{name}" ONLY. Return JSON with details SPECIFICALLY about "{name}".
 
@@ -3403,6 +3444,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list SPECIFIC dishes, drinks, or menu items mentioned by the creator. Even if they say 'I recommend everything on the menu' or 'everything is good', extract the SPECIFIC dishes they actually tried and mentioned liking (e.g., 'chicken harissa bowl', 'matbucha dip', 'sabik sandwich'). For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. Only include if mentioned SPECIFICALLY for {name}.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required'). Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
+  "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
   "specials": "Real deals or special events at {name} if mentioned",
   "comments_summary": "Short insight from comments about {name} if available",
   "creator_insights": "Capture personal recommendations, comparisons, or unique context from the creator SPECIFICALLY about {name}. This is where first-person opinions should go (e.g., 'quickly become our favorite', 'we rank every meal'). Examples: 'I'm from California and this is the only burger comparable to In-N-Out', 'This place reminds me of my favorite spot back home', 'Only place in NYC that does X like this', 'Has quickly become our favorite wine bar', 'We rank them an 8.7'. Include personal anecdotes, ratings, comparisons to other places, or unique selling points the creator emphasizes ABOUT {name}. Keep the creator's authentic voice and first-person language here - this will be shown in a 'Show More' section."
@@ -3474,6 +3516,9 @@ Context (filtered to only include mentions of "{name}"):
         
         # Get features field (new field for specific amenities/features)
         features_value = safe_get_str("features", "")
+        
+        # Get team_behind field (for "from the team behind X" information)
+        team_behind_value = safe_get_str("team_behind", "")
 
         data = {
             "summary": safe_get_str("summary", ""),
@@ -3484,6 +3529,7 @@ Context (filtered to only include mentions of "{name}"):
             "must_try_field": field_name,  # Store the field name
             "good_to_know": safe_get_str("good_to_know", ""),  # Add good_to_know field
             "features": features_value,  # Add features field for specific amenities
+            "team_behind": team_behind_value,  # Add team_behind field for "from the team behind X" context
             "specials": safe_get_str("specials", ""),
             "comments_summary": safe_get_str("comments_summary", ""),
             "creator_insights": safe_get_str("creator_insights", ""),  # Personal recommendations and comparisons
@@ -3505,6 +3551,7 @@ Context (filtered to only include mentions of "{name}"):
             "must_try_field": "must_try",
             "good_to_know": "",
             "features": "",
+            "team_behind": "",
             "specials": "",
             "comments_summary": "",
             "creator_insights": "",
@@ -3771,6 +3818,10 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
     if venue_to_context is None:
         venue_to_context = {}
     
+    # Combine caption and context_title for neighborhood extraction (title often contains location info)
+    # Example: "The Cutest New Spot in Soho" -> extract "Soho" as neighborhood
+    combined_text_for_neighborhood = f"{context_title} {caption}".strip() if context_title else caption
+    
     places_extracted = []
     
     def enrich_and_fetch_photo(venue_name):
@@ -3779,12 +3830,48 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # Use cache to avoid redundant API calls
         # For MVP, bias results towards NYC to avoid confusion with non-NYC venues
         canonical_name, address, place_id, photos, neighborhood, price_level = get_place_info_from_google(venue_name, use_cache=True, location_hint="NYC")
-        # Use canonical name if available, otherwise use original
-        display_name = canonical_name if canonical_name else venue_name
         
-        # Log if spelling was corrected
-        if canonical_name and canonical_name.lower() != venue_name.lower():
-            print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+        # Use canonical name, but be careful about major changes
+        # If canonical name is too different from original (e.g., "LEI" → "LES"), prefer original
+        # Only use canonical name if it's a minor spelling correction or capitalization fix
+        if canonical_name:
+            original_lower = venue_name.lower().strip()
+            canonical_lower = canonical_name.lower().strip()
+            
+            # Check if canonical name is substantially different (not just spelling/capitalization)
+            # Examples of bad matches: "LEI wine bar" → "LES Wine Bar" (different venue)
+            # Examples of good matches: "employees only" → "Employees Only" (same venue, capitalization)
+            is_substantial_change = False
+            
+            # If names are completely different (no significant overlap), it's likely a wrong match
+            if original_lower != canonical_lower:
+                # Check if canonical name contains the original name (or vice versa)
+                # If not, it might be a different venue
+                if original_lower not in canonical_lower and canonical_lower not in original_lower:
+                    # For very short names (3-4 chars), be very strict - they must be nearly identical
+                    # Examples: "LEI" vs "LES" are different venues, not a spelling correction
+                    if len(original_lower) <= 4 and len(canonical_lower) <= 4:
+                        # For 3-4 char names, require at least 2/3 characters to match
+                        matching_chars = sum(1 for a, b in zip(original_lower, canonical_lower) if a == b)
+                        if matching_chars < max(len(original_lower), len(canonical_lower)) * 0.67:
+                            is_substantial_change = True
+                    elif len(original_lower) <= 5 and len(canonical_lower) <= 5:
+                        # Short names (5 chars) that are different are likely wrong matches
+                        if original_lower != canonical_lower:
+                            is_substantial_change = True
+                    # For longer names, check if they share at least 70% of characters
+                    elif len(set(original_lower) & set(canonical_lower)) / max(len(set(original_lower)), len(set(canonical_lower))) < 0.5:
+                        is_substantial_change = True
+            
+            if is_substantial_change:
+                print(f"⚠️  Google Maps returned different venue '{canonical_name}' for '{venue_name}' - using original name")
+                display_name = venue_name
+            else:
+                display_name = canonical_name
+                if canonical_lower != original_lower:
+                    print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+        else:
+            display_name = venue_name
         
         # Get source slide for this venue if available
         source_slide = venue_to_slide.get(venue_name)
@@ -3796,15 +3883,34 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
 
         # PRIORITY ORDER FOR NEIGHBORHOOD EXTRACTION:
-        # 1. Place Details API (most reliable - has address_components)
-        # 2. Place name extraction (from parentheses like "(NOMAD)")
-        # 3. Google Maps address parsing (rarely works but worth trying)
-        # 4. Text extraction (last resort)
+        # 1. Title/Caption extraction (title often explicitly states location like "in Soho" or "Lower East Side")
+        # 2. Place Details API (most reliable - has address_components)
+        # 3. Place name extraction (from parentheses like "(NOMAD)")
+        # 4. Google Maps address parsing (rarely works but worth trying)
+        # 5. NYC geography inference
         
         final_neighborhood = None
         
-        # PRIORITY 1: Place Details API - call this FIRST, not last!
+        # PRIORITY 1: Title/Caption extraction - title often explicitly states location
+        # Use combined text (context_title + caption) for neighborhood extraction
+        # Example: "The Cutest New Spot in Soho" or "Discovering the Newest Wine Bar in the Lower East Side"
+        neighborhood_source_text = combined_text_for_neighborhood
+        
+        if not final_neighborhood and neighborhood_source_text:
+            print(f"   🔍 Trying text extraction from caption/title FIRST (title often explicitly states location)...")
+            text_neighborhood = _extract_neighborhood_from_text(neighborhood_source_text)
+            # Only use if it's a specific neighborhood (not a borough)
+            if text_neighborhood and text_neighborhood not in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]:
+                final_neighborhood = text_neighborhood
+                print(f"   📍 Found neighborhood from title/caption (PRIORITY 1): {final_neighborhood}")
+            elif text_neighborhood:
+                print(f"   ⚠️ Skipping borough-level neighborhood '{text_neighborhood}' from title")
+        
+        # PRIORITY 2: Place Details API - call this SECOND (title takes precedence)
         if place_id:
+            if not GOOGLE_API_KEY:
+                print(f"   ⚠️ Skipping Place Details API - GOOGLE_API_KEY not set")
+            else:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
@@ -3818,15 +3924,24 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     )
                     r.raise_for_status()
                     details_data = r.json()
-                    if details_data.get("status") == "OK":
+                    api_status = details_data.get("status")
+                    
+                    if api_status == "OK":
                         result = details_data.get("result", {})
                         address_components = result.get("address_components", [])
                         # Look for neighborhood, sublocality, or locality in address components
                         # Priority: neighborhood > sublocality > sublocality_level_1 > locality
+                        # Define generic locations to filter out
+                        generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
+                        
                         for component in address_components:
                             types = component.get("types", [])
                             neighborhood_name = component.get("long_name")
                             if neighborhood_name:
+                                # Skip generic locations immediately
+                                if neighborhood_name in generic_locations:
+                                    continue
+                                
                                 if "neighborhood" in types:
                                     final_neighborhood = neighborhood_name
                                     print(f"   📍 Found neighborhood from Place Details (neighborhood): {final_neighborhood}")
@@ -3837,113 +3952,149 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                 elif "sublocality_level_1" in types and not final_neighborhood:
                                     final_neighborhood = neighborhood_name
                                     print(f"   📍 Found neighborhood from Place Details (sublocality_level_1): {final_neighborhood}")
-                                elif "locality" in types and not final_neighborhood and neighborhood_name not in ["New York", "Brooklyn", "Queens", "Bronx", "Staten Island", "Manhattan"]:
+                                elif "locality" in types and not final_neighborhood:
                                     # Only use locality if it's not a borough name or generic "Manhattan"
                                     final_neighborhood = neighborhood_name
                                     print(f"   📍 Found neighborhood from Place Details (locality): {final_neighborhood}")
                         # Match against known neighborhoods list for consistency
                         if final_neighborhood:
                             known_neighborhoods = [
-                                # Downtown / Below 14th
-                                "Downtown", "Lower Manhattan",
-                                "Lower East Side", "LES",
-                                "East Village", "EV",
-                                "Alphabet City",
-                                "NoHo", "Noho",
-                                "Nolita", "NoLita",
-                                "SoHo", "Soho",
-                                "Chinatown",
-                                "Little Italy",
-                                "Two Bridges",
-                                "Tribeca", "TriBeCa",
-                                "West Village",
-                                "Greenwich Village",
-                                "Hudson Square",
-                                "Battery Park City",
-                                "Financial District", "FiDi", "FIDI",
-                                # Midtown-ish
-                                "Koreatown", "K-Town", "KTown",
-                                "Hell's Kitchen", "Hells Kitchen",
-                                "Midtown West", "Theater District",
-                                "Midtown East",
-                                "Murray Hill",
-                                "Gramercy",
-                                "Flatiron",
-                                "Kips Bay",
-                                "Chelsea",
-                                "Hudson Yards",
-                                # Islands / Special Areas
-                                "Roosevelt Island",
-                                # Uptown
-                                "Upper West Side", "UWS",
-                                "Upper East Side", "UES",
-                                "Harlem",
-                                "East Harlem",
-                                "Morningside Heights",
-                                "Washington Heights",
-                                "Inwood",
-                                # Brooklyn - Waterfront / North Brooklyn
-                                "Williamsburg",
-                                "East Williamsburg",
-                                "Greenpoint",
-                                "Bushwick",
-                                # Brooklyn - Brownstone Brooklyn
-                                "Brooklyn Heights",
-                                "DUMBO",
-                                "Cobble Hill",
-                                "Carroll Gardens",
-                                "Boerum Hill",
-                                "Gowanus",
-                                "Park Slope",
-                                "Prospect Heights",
-                                "Fort Greene",
-                                "Clinton Hill",
-                                # Brooklyn - Further Out
-                                "Bedford-Stuyvesant", "Bed-Stuy", "BedStuy",
-                                "Crown Heights",
-                                "Red Hook",
-                                "Sunset Park",
-                                "Bay Ridge",
-                                # Queens
-                                "Astoria",
-                                "Long Island City", "LIC",
-                                "Sunnyside",
-                                "Jackson Heights",
-                                "Elmhurst",
-                                "Flushing",
-                                "Forest Hills",
-                                # Bronx
-                                "Belmont", "Arthur Avenue",
-                                "Mott Haven",
-                                # Staten Island
-                                "St. George", "St George",
-                            ]
-                            # Sort by length (longest first) to prioritize more specific matches
-                            sorted_known = sorted(known_neighborhoods, key=len, reverse=True)
-                            final_neighborhood_lower = final_neighborhood.lower()
-                            
-                            # Try exact match first, then substring match
-                            # But don't match generic locations like "Manhattan" to "Lower Manhattan"
-                            generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
-                            is_generic = final_neighborhood_lower in [g.lower() for g in generic_locations]
-                            
+                            # Downtown / Below 14th
+                            "Downtown", "Lower Manhattan",
+                            "Lower East Side", "LES",
+                            "East Village", "EV",
+                            "Alphabet City",
+                            "NoHo", "Noho",
+                            "Nolita", "NoLita",
+                            "SoHo", "Soho",
+                            "Chinatown",
+                            "Little Italy",
+                            "Two Bridges",
+                            "Tribeca", "TriBeCa",
+                            "West Village",
+                            "Greenwich Village",
+                            "Hudson Square",
+                            "Battery Park City",
+                            "Financial District", "FiDi", "FIDI",
+                            # Midtown-ish
+                            "Koreatown", "K-Town", "KTown",
+                            "Hell's Kitchen", "Hells Kitchen",
+                            "Midtown West", "Theater District",
+                            "Midtown East",
+                            "Murray Hill",
+                            "Gramercy",
+                            "Flatiron",
+                            "Kips Bay",
+                            "Chelsea",
+                            "Hudson Yards",
+                            # Islands / Special Areas
+                            "Roosevelt Island",
+                            # Uptown
+                            "Upper West Side", "UWS",
+                            "Upper East Side", "UES",
+                            "Harlem",
+                            "East Harlem",
+                            "Morningside Heights",
+                            "Washington Heights",
+                            "Inwood",
+                            # Brooklyn - Waterfront / North Brooklyn
+                            "Williamsburg",
+                            "East Williamsburg",
+                            "Greenpoint",
+                            "Bushwick",
+                            # Brooklyn - Brownstone Brooklyn
+                            "Brooklyn Heights",
+                            "DUMBO",
+                            "Cobble Hill",
+                            "Carroll Gardens",
+                            "Boerum Hill",
+                            "Gowanus",
+                            "Park Slope",
+                            "Prospect Heights",
+                            "Fort Greene",
+                            "Clinton Hill",
+                            # Brooklyn - Further Out
+                            "Bedford-Stuyvesant", "Bed-Stuy", "BedStuy",
+                            "Crown Heights",
+                            "Red Hook",
+                            "Sunset Park",
+                            "Bay Ridge",
+                            # Queens
+                            "Astoria",
+                            "Long Island City", "LIC",
+                            "Sunnyside",
+                            "Jackson Heights",
+                            "Elmhurst",
+                            "Flushing",
+                            "Forest Hills",
+                            # Bronx
+                            "Belmont", "Arthur Avenue",
+                            "Mott Haven",
+                            # Staten Island
+                            "St. George", "St George",
+                        ]
+                        # Sort by length (longest first) to prioritize more specific matches
+                        sorted_known = sorted(known_neighborhoods, key=len, reverse=True)
+                        final_neighborhood_lower = final_neighborhood.lower()
+                        
+                        # Try exact match first, then substring match
+                        # But don't match generic locations like "Manhattan" to "Lower Manhattan"
+                        generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
+                        is_generic = final_neighborhood_lower in [g.lower() for g in generic_locations]
+                        
+                        # If it's already generic, skip matching and try fallbacks
+                        if is_generic:
+                            print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
+                            final_neighborhood = None
+                        else:
+                            matched = False
                             for known_neighborhood in sorted_known:
-                                if known_neighborhood.lower() == final_neighborhood_lower:
+                                known_lower = known_neighborhood.lower()
+                                if known_lower == final_neighborhood_lower:
                                     final_neighborhood = known_neighborhood
                                     print(f"   📍 Exact match to known neighborhood: {final_neighborhood}")
+                                    matched = True
                                     break
-                                elif known_neighborhood.lower() in final_neighborhood_lower:
-                                    # Only use substring match if it's a significant portion
-                                    # And don't match generic "Manhattan" to specific neighborhoods
-                                    if len(known_neighborhood) >= 4 and not is_generic:  # Avoid matching "EV" in "East Village" and "Manhattan" to "Lower Manhattan"
+                                elif known_lower in final_neighborhood_lower or final_neighborhood_lower in known_lower:
+                                    # Use substring match if it's a significant portion (>= 4 chars)
+                                    # This handles cases like "Lower East Side" matching "Lower East Side, Manhattan"
+                                    if len(known_neighborhood) >= 4:
                                         final_neighborhood = known_neighborhood
                                         print(f"   📍 Matched to known neighborhood: {final_neighborhood}")
+                                        matched = True
                                         break
                             
-                            # If we got a generic location like "Manhattan", mark it as None so we can try other sources
-                            if is_generic:
-                                print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
-                                final_neighborhood = None
+                            # If no match found, keep the original neighborhood name (might be valid but not in our list)
+                            if not matched:
+                                print(f"   ⚠️ Neighborhood '{final_neighborhood}' not in known list, keeping as-is")
+                    else:
+                        # Handle non-OK API response statuses
+                        error_message = details_data.get("error_message", "No error message provided")
+                        
+                        if api_status == "REQUEST_DENIED":
+                            print(f"   ❌ Place Details API REQUEST_DENIED: {error_message}")
+                            print(f"   ⚠️ This usually means:")
+                            print(f"      - GOOGLE_API_KEY is missing or invalid")
+                            print(f"      - Places API is not enabled for this API key")
+                            print(f"      - API key restrictions are blocking the request")
+                        elif api_status == "OVER_QUERY_LIMIT":
+                            print(f"   ❌ Place Details API OVER_QUERY_LIMIT: {error_message}")
+                            print(f"   ⚠️ Google Places API quota exceeded - will use fallback methods")
+                        elif api_status == "INVALID_REQUEST":
+                            print(f"   ❌ Place Details API INVALID_REQUEST: {error_message}")
+                            print(f"   ⚠️ Invalid place_id or request parameters")
+                        elif api_status == "ZERO_RESULTS":
+                            print(f"   ⚠️ Place Details API ZERO_RESULTS: No data found for place_id")
+                        elif api_status == "UNKNOWN_ERROR":
+                            print(f"   ❌ Place Details API UNKNOWN_ERROR: {error_message}")
+                            print(f"   ⚠️ Google server error - will try fallback methods")
+                        else:
+                            print(f"   ❌ Place Details API returned status '{api_status}': {error_message}")
+                            print(f"   ⚠️ Will use fallback methods for neighborhood extraction")
+                            
+                except requests.exceptions.RequestException as e:
+                    print(f"   ❌ Place Details API network error: {e}")
+                    print(f"   ⚠️ Network request failed - will use fallback methods")
                 except Exception as e:
                     print(f"   ⚠️ Place Details API failed for neighborhood: {e}")
                     import traceback
@@ -3997,7 +4148,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if photo:
                 print(f"   📸 Using Google Maps photo for {display_name}")
 
-        # PRIORITY 3: Google Maps address parsing
+        # PRIORITY 4: Google Maps address parsing
         if not final_neighborhood and address:
             print(f"   🔍 Trying Google Maps address parsing for neighborhood...")
             parsed_neighborhood = _extract_neighborhood_from_address(address)
@@ -4005,7 +4156,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 final_neighborhood = parsed_neighborhood
                 print(f"   📍 Found neighborhood from address parsing: {final_neighborhood}")
 
-        # PRIORITY 4: SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
+        # PRIORITY 5: SMART NEIGHBORHOOD FALLBACK: Use NYC geography knowledge if neighborhood still missing
         if not final_neighborhood and address:
             print(f"   🔍 Trying NYC geography inference for neighborhood...")
             inferred_neighborhood = infer_nyc_neighborhood_from_address(address, display_name)
@@ -4013,22 +4164,25 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 final_neighborhood = inferred_neighborhood
                 print(f"   🧠 Inferred neighborhood from address: {final_neighborhood}")
 
-        # PRIORITY 5: TEXT EXTRACTION (last resort, single-venue videos only)
-        # Only use text extraction if this is the ONLY venue in the video (to avoid applying global caption to all venues)
-        # This handles cases where Google Maps APIs don't have neighborhood data but the TikTok title/caption does
-        if not final_neighborhood and len(venues) == 1:
-            print(f"   🔍 Trying text extraction from caption/title (single venue only)...")
-            # Try caption first (most reliable)
-            text_neighborhood = _extract_neighborhood_from_text(caption)
-            if text_neighborhood:
-                final_neighborhood = text_neighborhood
-                print(f"   📍 Found neighborhood from caption: {final_neighborhood}")
-
+        # PRIORITY 6: Extract from venue name itself (e.g., "Soho Wine Bar" -> "SoHo")
+        if not final_neighborhood and display_name:
+            print(f"   🔍 Trying to extract neighborhood from venue name...")
+            name_neighborhood = _extract_neighborhood_from_text(display_name)
+            if name_neighborhood and name_neighborhood not in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"]:
+                final_neighborhood = name_neighborhood
+                print(f"   📍 Found neighborhood from venue name: {final_neighborhood}")
+        
         # Final check - log if still no neighborhood
         if not final_neighborhood:
             print(f"   ⚠️ Could not determine neighborhood for {display_name}")
-            print(f"      Address: {address}")
-            print(f"      Place ID: {place_id}")
+            print(f"      Address: {address or 'None (Google API may have failed)'}")
+            print(f"      Place ID: {place_id or 'None (Google API may have failed)'}")
+            print(f"      Title/Caption text: {neighborhood_source_text[:100] if neighborhood_source_text else 'None'}")
+            # If Google API completely failed, this is a critical issue
+            if not address and not place_id:
+                print(f"   ❌ CRITICAL: Google Places API failed - no address or place_id available")
+                print(f"      This venue will show 'Location' instead of a neighborhood")
+                print(f"      Check Google API key configuration and API status")
 
         # Convert price_level to dollar signs
         price = price_level_to_dollars(price_level)
@@ -4086,7 +4240,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 }
                 merged_place = merge_place_with_cache(place_data, url, username, context_title)
                 places_extracted.append(merged_place)
-
+    
     # Filter to keep only NYC venues (MVP requirement)
     nyc_places = []
     for place in places_extracted:
@@ -5074,11 +5228,48 @@ def healthz():
             except Exception as e:
                 openai_test = f"error: {str(e)[:100]}"
         
+        # Test Google Places API connectivity if key is set
+        google_api_test = None
+        if google_key_set:
+            try:
+                # Test with a simple Place Details API call using a known NYC place_id
+                # Using "ChIJN1t_tDeuEmsRUsoyG83frY4" (Google's NYC office) as test
+                test_place_id = "ChIJN1t_tDeuEmsRUsoyG83frY4"
+                import requests
+                r = requests.get(
+                    "https://maps.googleapis.com/maps/api/place/details/json",
+                    params={
+                        "place_id": test_place_id,
+                        "fields": "name",
+                        "key": GOOGLE_API_KEY
+                    },
+                    timeout=5
+                )
+                r.raise_for_status()
+                test_data = r.json()
+                test_status = test_data.get("status")
+                
+                if test_status == "OK":
+                    google_api_test = "success"
+                elif test_status == "REQUEST_DENIED":
+                    error_msg = test_data.get("error_message", "No error message")
+                    google_api_test = f"REQUEST_DENIED: {error_msg[:100]}"
+                elif test_status == "OVER_QUERY_LIMIT":
+                    google_api_test = "OVER_QUERY_LIMIT: API quota exceeded"
+                else:
+                    error_msg = test_data.get("error_message", "Unknown error")
+                    google_api_test = f"{test_status}: {error_msg[:100]}"
+            except requests.exceptions.RequestException as e:
+                google_api_test = f"network_error: {str(e)[:100]}"
+            except Exception as e:
+                google_api_test = f"error: {str(e)[:100]}"
+        
         return jsonify({
             "status": "ok",
             "openai_api_key_set": openai_key_set,
             "google_api_key_set": google_key_set,
             "openai_api_test": openai_test,
+            "google_api_test": google_api_test,
             "ocr_available": OCR_AVAILABLE,
             "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
             "modules_available": modules_available,
@@ -5100,8 +5291,8 @@ def get_extraction_status(extraction_id):
         # Auto-cleanup: if status is empty or very old, return empty
         # This helps stop unnecessary polling
         if not status_messages:
-            return jsonify({
-                "extraction_id": extraction_id,
+        return jsonify({
+            "extraction_id": extraction_id,
                 "messages": [],
                 "completed": True
             }), 200
@@ -5208,6 +5399,7 @@ def extract_api():
         
         if photo_urls:
             print(f"✅ Extracted {len(photo_urls)} photos, caption: {caption[:100] if caption else 'None'}...")
+            print(f"📸 Photo URLs: {[url[:50] + '...' if len(url) > 50 else url for url in photo_urls]}")
             update_status(extraction_id, f"Scanning {len(photo_urls)} images for text...")
 
             # Use new advanced OCR pipeline for slideshow extraction
@@ -5215,14 +5407,23 @@ def extract_api():
 
             if ADVANCED_OCR_AVAILABLE and len(photo_urls) > 0:
                 print(f"🔍 Processing {len(photo_urls)} images with advanced OCR pipeline...")
+                print(f"   📋 Will process ALL {len(photo_urls)} images including the last one")
                 update_status(extraction_id, "Reading text from images...")
                 try:
                     # Use the new high-quality OCR processor on slideshow images
                     image_sources = photo_urls  # Process ALL images (no limit)
+                    print(f"   🔍 Processing images: {[f'Image {i+1}' for i in range(len(image_sources))]}")
                     ocr_text = extract_text_from_slideshow(image_sources)
                     print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
                     if ocr_text:
                         print(f"📝 OCR preview: {ocr_text[:200]}...")
+                        # Check if last slide text is present
+                        if "SLIDE" in ocr_text:
+                            slide_count = ocr_text.count("SLIDE")
+                            print(f"   📊 Found text from {slide_count} slides (expected {len(image_sources)} slides)")
+                            if slide_count < len(image_sources):
+                                print(f"   ⚠️ WARNING: Only {slide_count} slides have text, but {len(image_sources)} images were processed")
+                                print(f"   ⚠️ Last slide may not have been OCR'd successfully")
                 except Exception as e:
                     print(f"⚠️ Advanced OCR pipeline failed: {e}")
                     print(f"   Falling back to legacy OCR method...")
@@ -5235,21 +5436,30 @@ def extract_api():
                 try:
                     num_images = len(photo_urls)  # Process ALL images (no limit)
                     print(f"🔍 Processing {num_images} images with legacy OCR...")
+                    print(f"   📋 Will process ALL {num_images} images including the last one (image {num_images})")
                     
                     for i, img_url in enumerate(photo_urls):
                         try:
                             if OCR_AVAILABLE:
-                                print(f"🔍 Running OCR on photo {i+1}/{num_images}...")
+                                is_last = (i == len(photo_urls) - 1)
+                                slide_marker = " (LAST SLIDE)" if is_last else ""
+                                print(f"🔍 Running OCR on photo {i+1}/{num_images}{slide_marker}...")
                                 photo_ocr = run_ocr_on_image(img_url)
                                 if photo_ocr and len(photo_ocr.strip()) > 3:
                                     ocr_text += photo_ocr + " "
-                                    print(f"✅ OCR extracted text from photo {i+1} ({len(photo_ocr)} chars): {photo_ocr[:150]}...")
+                                    print(f"✅ OCR extracted text from photo {i+1}{slide_marker} ({len(photo_ocr)} chars): {photo_ocr[:150]}...")
                                 else:
-                                    print(f'⚠️ OCR found no text in photo {i+1}')
+                                    print(f'⚠️ OCR found no text in photo {i+1}{slide_marker}')
+                                    if is_last:
+                                        print(f"   ⚠️ WARNING: Last slide ({i+1}) has no text - venue name might be missing!")
                             else:
                                 print(f"⚠️ OCR not available - skipping photo {i+1}")
                         except Exception as e:
-                            print(f"⚠️ Failed to process photo {i+1}: {e}")
+                            is_last = (i == len(photo_urls) - 1)
+                            slide_marker = " (LAST SLIDE)" if is_last else ""
+                            print(f"⚠️ Failed to process photo {i+1}{slide_marker}: {e}")
+                            if is_last:
+                                print(f"   ⚠️ ERROR: Failed to process last slide - venue name might be missing!")
                             continue
             
                     ocr_text = ocr_text.strip()
@@ -5263,8 +5473,24 @@ def extract_api():
                 print(f"📊 Total OCR text extracted: {len(ocr_text)} chars")
                 if ocr_text:
                     print(f"📝 OCR text preview: {ocr_text[:300]}...")
+                    # Check if last slide text is present
+                    if "SLIDE" in ocr_text:
+                        slide_count = ocr_text.count("SLIDE")
+                        print(f"   📊 Found text from {slide_count} slides (expected {len(photo_urls)} slides)")
+                        if slide_count < len(photo_urls):
+                            print(f"   ⚠️ WARNING: Only {slide_count} slides have text, but {len(photo_urls)} images were processed")
+                            print(f"   ⚠️ Last slide may not have been OCR'd successfully")
+                    # Check for common last slide patterns
+                    ocr_lower = ocr_text.lower()
+                    if "last" in ocr_lower or len(photo_urls) > 0:
+                        last_slide_marker = f"SLIDE {len(photo_urls)}"
+                        if last_slide_marker in ocr_text:
+                            print(f"   ✅ Last slide ({last_slide_marker}) text found in OCR")
+                        else:
+                            print(f"   ⚠️ Last slide marker ({last_slide_marker}) not found in OCR - checking if text is present anyway...")
                 else:
                     print("⚠️ No OCR text extracted from any images")
+                    print(f"   ⚠️ This means venue names from slides (including last slide) won't be extracted!")
             
             # Combine OCR + caption text using weighted formula
             # OCR prioritized: (ocr * 1.4) + (caption * 1.2) = photo-mode specific weights
@@ -5272,6 +5498,8 @@ def extract_api():
                 # Weight OCR more heavily than caption for photo posts
                 combined_text = f"{ocr_text}\n{caption} {caption}"  # OCR gets more weight
                 print(f"📊 Weighted combination: OCR ({len(ocr_text)} chars) prioritized over caption ({len(caption)} chars)")
+                print(f"   📋 Full OCR text being sent to GPT (check for last slide content):")
+                print(f"   {ocr_text[:500]}..." if len(ocr_text) > 500 else f"   {ocr_text}")
             else:
                 combined_text = f"{caption} {ocr_text}".strip()
             
@@ -5295,11 +5523,11 @@ def extract_api():
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
             try:
-                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-                print(f"🤖 GPT returned {len(venues)} venues: {venues}")
-                print(f"🤖 GPT returned title: {context_title}")
-                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-                print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            print(f"🤖 GPT returned {len(venues)} venues: {venues}")
+            print(f"🤖 GPT returned title: {context_title}")
+            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+            print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
             except Exception as extract_error:
                 print(f"❌ extract_places_and_context failed: {extract_error}")
                 import traceback
@@ -5787,10 +6015,26 @@ def extract_api():
                 ocr_text = extract_ocr_text(video_path, sample_rate=1)  # Sample every frame
                 print(f"✅ Slideshow OCR: {len(ocr_text)} chars extracted")
             elif transcript_length > 50 and not "music" in transcript.lower():
-                # Good transcript exists and it's speech (not music) - skip OCR
-                print(f"✅ GOOD TRANSCRIPT ({transcript_length} chars) - SKIPPING OCR for speed")
-                ocr_text = ""
-                print("   Reason: Voice content detected and transcript is substantial")
+                # Check if transcript actually contains venue-like content
+                # If transcript is just generic words or noise, prioritize OCR
+                transcript_lower = transcript.lower()
+                has_venue_indicators = any(word in transcript_lower for word in ["restaurant", "bar", "cafe", "lounge", "place", "spot", "venue", "nyc", "manhattan", "brooklyn"])
+                
+                if has_venue_indicators:
+                    # Transcript seems useful - run OCR with light sampling as backup
+                    print(f"✅ GOOD TRANSCRIPT ({transcript_length} chars) - Running OCR anyway (video may have text overlays)")
+                    update_status(extraction_id, "Scanning video for text...")
+                    ocr_text = extract_ocr_text(video_path, sample_rate=0.3)  # Light sampling (30% of frames) since we have transcript
+                    print(f"✅ Sampled OCR: {len(ocr_text)} chars extracted")
+                    print("   Note: Transcript will be prioritized, but OCR available as backup")
+                else:
+                    # Transcript doesn't seem to contain venue info - prioritize OCR
+                    print(f"⚠️ TRANSCRIPT EXISTS ({transcript_length} chars) but doesn't contain venue indicators - Prioritizing OCR")
+                    print(f"   Transcript preview: {transcript[:100]}...")
+                    update_status(extraction_id, "Scanning video for text...")
+                    ocr_text = extract_ocr_text(video_path, sample_rate=0.5)  # More sampling since transcript isn't useful
+                    print(f"✅ Sampled OCR: {len(ocr_text)} chars extracted")
+                    print("   Note: OCR prioritized over transcript for venue extraction")
             else:
                 # No transcript or very short - run OCR with sampling
                 print(f"⚠️ LIMITED SPEECH ({transcript_length} chars) - Running sampled OCR")
