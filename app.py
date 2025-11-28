@@ -5785,11 +5785,11 @@ def extract_api():
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
             try:
-            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-            print(f"🤖 GPT returned {len(venues)} venues: {venues}")
-            print(f"🤖 GPT returned title: {context_title}")
-            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-            print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                print(f"🤖 GPT returned {len(venues)} venues: {venues}")
+                print(f"🤖 GPT returned title: {context_title}")
+                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+                print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
             except Exception as extract_error:
                 print(f"❌ extract_places_and_context failed: {extract_error}")
                 import traceback
