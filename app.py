@@ -2686,13 +2686,13 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     
     if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
         if has_other_content:
-        print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
-        print(f"   Reason: Too many non-alphanumeric characters or random text")
-        print(f"   Garbled OCR preview: {ocr_text[:200]}...")
-        print(f"   Will use caption/transcript only instead")
+            print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
+            print(f"   Reason: Too many non-alphanumeric characters or random text")
+            print(f"   Garbled OCR preview: {ocr_text[:200]}...")
+            print(f"   Will use caption/transcript only instead")
             # If OCR is garbled AND we have other content, ignore it - it will confuse GPT
-        ocr_text = ""  # Ignore garbled OCR completely
-        slide_dict = {}  # Clear slide dict
+            ocr_text = ""  # Ignore garbled OCR completely
+            slide_dict = {}  # Clear slide dict
         else:
             print("⚠️ OCR text appears garbled BUT it's the only content source - KEEPING IT")
             print(f"   Reason: No transcript or caption available, so we'll try to extract from OCR anyway")
@@ -2755,13 +2755,13 @@ If no venues found, output: (none)
                 client = get_openai_client()
                 
                 try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": slide_prompt}],
-                    temperature=0.2,  # Very low temperature for consistent extraction
+                    response = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": slide_prompt}],
+                        temperature=0.2,  # Very low temperature for consistent extraction
                         timeout=30  # Add timeout to prevent hanging
-                )
-                slide_response = response.choices[0].message.content.strip()
+                    )
+                    slide_response = response.choices[0].message.content.strip()
                 except Exception as api_error:
                     print(f"     ❌ OpenAI API call failed for slide: {api_error}")
                     print(f"     Error type: {type(api_error).__name__}")
@@ -3066,14 +3066,14 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         print(f"📤 Sending {content_length} chars to GPT for venue extraction...")
         
         try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
-            temperature=0.3,  # Lower temperature for more consistent extraction from OCR
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt + "\n\nContent to analyze:\n" + content_to_analyze}],
+                temperature=0.3,  # Lower temperature for more consistent extraction from OCR
                 timeout=30  # Add timeout to prevent hanging
-        )
-        raw = response.choices[0].message.content.strip()
-        print(f"🤖 GPT raw response: {raw[:500]}...")
+            )
+            raw = response.choices[0].message.content.strip()
+            print(f"🤖 GPT raw response: {raw[:500]}...")
         except Exception as api_error:
             print(f"❌ OpenAI API call failed: {api_error}")
             print(f"   Error type: {type(api_error).__name__}")
@@ -3878,7 +3878,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             else:
                 display_name = canonical_name
                 if canonical_lower != original_lower:
-            print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
+                    print(f"✏️  Corrected spelling: '{venue_name}' → '{canonical_name}'")
         else:
             display_name = venue_name
         
@@ -3919,7 +3919,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         if place_id:
             if not GOOGLE_API_KEY:
                 print(f"   ⚠️ Skipping Place Details API - GOOGLE_API_KEY not set")
-        else:
+            else:
                 try:
                     print(f"   🔍 Trying Place Details API for neighborhood info...")
                     r = requests.get(
@@ -4054,7 +4054,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         # If it's already generic, skip matching and try fallbacks
                         if is_generic:
                             print(f"   ⚠️ Place Details returned generic location '{final_neighborhood}', will try other sources")
-            final_neighborhood = None
+                            final_neighborhood = None
                         else:
                             matched = False
                             for known_neighborhood in sorted_known:
@@ -5320,7 +5320,7 @@ def get_extraction_status(extraction_id):
         # Auto-cleanup: if status is empty or very old, return empty
         # This helps stop unnecessary polling
         if not status_messages:
-        return jsonify({
+            return jsonify({
             "extraction_id": extraction_id,
                 "messages": [],
                 "completed": True
@@ -5552,11 +5552,11 @@ def extract_api():
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
             try:
-            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
-            print(f"🤖 GPT returned {len(venues)} venues: {venues}")
-            print(f"🤖 GPT returned title: {context_title}")
-            venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
-            print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
+                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                print(f"🤖 GPT returned {len(venues)} venues: {venues}")
+                print(f"🤖 GPT returned title: {context_title}")
+                venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
+                print(f"✅ After filtering: {len(venues)} venues remain: {venues}")
             except Exception as extract_error:
                 print(f"❌ extract_places_and_context failed: {extract_error}")
                 import traceback
