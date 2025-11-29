@@ -3907,12 +3907,12 @@ Context (filtered to only include mentions of "{name}"):
 """
     try:
         client = get_openai_client()
-        r = client.chat.completions.create(
+        completion = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.6,
         )
-        raw = r.choices[0].message.content.strip()
+        raw = completion.choices[0].message.content.strip()
         match = re.search(r"\{.*\}", raw, re.S)
         j = json.loads(match.group(0)) if match else {}
         # Handle case where GPT returns a list instead of string
