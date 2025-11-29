@@ -3974,34 +3974,61 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         # Split context into sentences/segments
         sentences = re.split(r'[.!?]\s+', raw_context)
         
-        # Keep only sentences that mention THIS venue name (case-insensitive)
+        # Keep sentences that mention THIS venue name OR are general tips/advice
         name_lower = name.lower()
         name_words = set(name_lower.split())
         # Also check for partial matches (e.g., "employees only" matches "Employees Only")
         relevant_sentences = []
+        
+        # Patterns for general tips/advice that should be included even without venue name
+        general_tip_patterns = [
+            r'save.*\$\$', r'save.*money', r'cash.*only', r'reserve.*ahead', r'worth.*it',
+            r'bring.*cash', r'no.*reservation', r'walk.*in', r'call.*ahead', r'book.*ahead',
+            r'worth.*visit', r'must.*try', r'don\'t.*miss', r'highly.*recommend', r'best.*time',
+            r'go.*early', r'go.*late', r'avoid.*crowd', r'busy.*time', r'quiet.*time',
+            r'price', r'cost', r'affordable', r'expensive', r'cheap', r'budget', r'\$\$',
+            r'tip', r'tips', r'note', r'important', r'remember', r'know'
+        ]
+        
         for sentence in sentences:
             sentence_lower = sentence.lower()
+            sentence_stripped = sentence.strip()
+            
+            # Skip very short sentences (likely OCR fragments)
+            if len(sentence_stripped) < 10:
+                continue
+            
             # Check if sentence mentions this venue
-            # Match if venue name appears, or if key words from venue name appear together
+            mentions_venue = False
             if name_lower in sentence_lower:
-                relevant_sentences.append(sentence)
+                mentions_venue = True
             elif len(name_words) > 1:
                 # For multi-word names, check if most words appear together
                 words_found = sum(1 for word in name_words if word in sentence_lower)
                 if words_found >= min(2, len(name_words) - 1):  # At least 2 words or all but 1
-                    relevant_sentences.append(sentence)
+                    mentions_venue = True
             elif len(name_words) == 1:
                 # Single word - be more careful, check it's not part of another word
                 if re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower):
-                    relevant_sentences.append(sentence)
+                    mentions_venue = True
+            
+            # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
+            is_general_tip = any(re.search(pattern, sentence_lower) for pattern in general_tip_patterns)
+            
+            # Include if it mentions venue OR is a general tip
+            if mentions_venue or is_general_tip:
+                relevant_sentences.append(sentence)
         
         # Remove sentences that mention OTHER venues
         # Filter AGGRESSIVELY to prevent context bleeding between venues
         other_venues = [v.lower() for v in all_venues if v.lower() != name_lower]
         filtered_sentences = []
 
-        # CRITICAL: Filter very aggressively to prevent bleeding
-        # Only keep sentences that mention THIS venue and explicitly exclude sentences mentioning OTHER venues
+        # CRITICAL: Filter to prevent bleeding but keep useful general tips
+        # Keep sentences that:
+        # 1. Mention THIS venue (and don't mention other venues)
+        # 2. Are general tips/advice (like "save your $$", "cash only") even if they don't mention venue name
+        # 3. Exclude sentences that mention OTHER venues
         for sentence in relevant_sentences:
             sentence_lower = sentence.lower()
             # Skip if sentence mentions another venue (be strict - use word boundaries)
@@ -4021,11 +4048,25 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 # Multi-word - check if name appears or if key words appear together
                 mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
-            # Only include if it mentions this venue AND doesn't mention other venues
-            # CRITICAL: Be very strict - if sentence mentions other venues, exclude it to prevent item bleeding
-            if mentions_this and not mentions_other:
+            # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
+            # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
+            general_tip_patterns = [
+                r'save.*\$\$', r'save.*money', r'cash.*only', r'reserve.*ahead', r'worth.*it',
+                r'bring.*cash', r'no.*reservation', r'walk.*in', r'call.*ahead', r'book.*ahead',
+                r'worth.*visit', r'must.*try', r'don\'t.*miss', r'highly.*recommend', r'best.*time',
+                r'go.*early', r'go.*late', r'avoid.*crowd', r'busy.*time', r'quiet.*time'
+            ]
+            is_general_tip = any(re.search(pattern, sentence_lower) for pattern in general_tip_patterns)
+            
+            # Include if:
+            # 1. Mentions this venue AND doesn't mention other venues, OR
+            # 2. Is a general tip AND doesn't mention other venues
+            if (mentions_this and not mentions_other) or (is_general_tip and not mentions_other):
                 filtered_sentences.append(sentence)
-                print(f"      ✓ Kept: '{sentence[:80]}...'")
+                if mentions_this:
+                    print(f"      ✓ Kept (mentions venue): '{sentence[:80]}...'")
+                else:
+                    print(f"      ✓ Kept (general tip): '{sentence[:80]}...'")
             # If both mentioned, be EXTREMELY strict - exclude to prevent bleeding unless this venue is clearly the ONLY focus
             elif mentions_this and mentions_other:
                 this_pos = sentence_lower.find(name_lower)
@@ -4103,10 +4144,10 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
   "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing SPECIFIC dishes, drinks, or menu items mentioned by the creator. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). For RESTAURANTS/FOOD places, extract SPECIFIC dishes they actually tried and mentioned liking. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. CRITICAL: Only include items that are EXPLICITLY associated with {name} in the context. If an item appears but is associated with a different venue name in the same context, do NOT include it.",
-  "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required'). Only include if clearly mentioned in the context.",
+  "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, or helpful advice mentioned in the context. Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
-  "specials": "Real deals or special events at {name} if mentioned",
+  "specials": "Real deals, special events, pricing tips, or money-saving information at {name} if mentioned (e.g., 'Save your $$', 'Happy hour deals', 'Weekend specials', 'Affordable prices'). Capture any cost-related tips or special offers mentioned.",
   "comments_summary": "Short insight from comments about {name} if available",
   "creator_insights": "Capture personal recommendations, comparisons, or unique context from the creator SPECIFICALLY about {name}. This is where first-person opinions should go (e.g., 'quickly become our favorite', 'we rank every meal'). Examples: 'I'm from California and this is the only burger comparable to In-N-Out', 'This place reminds me of my favorite spot back home', 'Only place in NYC that does X like this', 'Has quickly become our favorite wine bar', 'We rank them an 8.7'. Include personal anecdotes, ratings, comparisons to other places, or unique selling points the creator emphasizes ABOUT {name}. Keep the creator's authentic voice and first-person language here - this will be shown in a 'Show More' section."
 }}
@@ -5189,6 +5230,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             "address": address,  # Also get address while we're at it
             "neighborhood": final_neighborhood_to_use,  # Use strict neighborhood extraction (static overrides > lat/lon > address)
             "price": price,  # Price level from Google Maps ($, $$, $$$, $$$$)
+            "place_id": place_id,  # Store place_id for deduplication
             **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags", "vibe_keywords"]}
         }
         return place_data
@@ -5196,6 +5238,11 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
     # Run enrichment and photo fetching in parallel (max 5 concurrent to avoid rate limits)
     if len(venues) > 1:
         print(f"⚡ Enriching {len(venues)} places in parallel...")
+    
+    # Track place_ids to deduplicate venues that Google Maps identifies as the same place
+    seen_place_ids = {}  # place_id -> place_data (keep best match)
+    seen_venue_names = set()  # Track venue names (case-insensitive) for name-based deduplication
+    
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_venue = {
             executor.submit(enrich_and_fetch_photo, v): v 
@@ -5208,9 +5255,57 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 place_data = future.result()
                 # Merge with cached places - pass video summary
                 merged_place = merge_place_with_cache(place_data, url, username, context_title)
-                places_extracted.append(merged_place)
-                if len(venues) > 1:
-                    print(f"✅ Enriched: {venue_name}")
+                
+                # Deduplicate by place_id (if Google Maps returned same place_id, it's the same venue)
+                place_id = merged_place.get("place_id") or merged_place.get("address")  # Use address as fallback
+                place_name_lower = merged_place.get("name", "").lower().strip()
+                
+                # Check for duplicates
+                is_duplicate = False
+                
+                # Method 1: Check by place_id (most reliable)
+                if place_id and place_id in seen_place_ids:
+                    existing = seen_place_ids[place_id]
+                    print(f"🔄 Duplicate detected by place_id: '{merged_place.get('name')}' matches '{existing.get('name')}' (place_id: {place_id[:20]}...)")
+                    # Keep the one with more complete data or better name match
+                    if len(merged_place.get("description", "")) > len(existing.get("description", "")):
+                        seen_place_ids[place_id] = merged_place
+                    is_duplicate = True
+                
+                # Method 2: Check by venue name (case-insensitive, fuzzy match)
+                if not is_duplicate:
+                    for seen_name in seen_venue_names:
+                        seen_lower = seen_name.lower().strip()
+                        # Check if names are very similar (likely same venue with OCR/spelling variations)
+                        if place_name_lower and seen_lower:
+                            # If one name contains the other (e.g., "lingo greenpoint" vs "lingo")
+                            if place_name_lower in seen_lower or seen_lower in place_name_lower:
+                                # Check if they're not just generic words
+                                if len(place_name_lower) > 4 and len(seen_lower) > 4:
+                                    print(f"🔄 Duplicate detected by name similarity: '{merged_place.get('name')}' similar to '{seen_name}'")
+                                    is_duplicate = True
+                                    break
+                            # Check character similarity for short names
+                            elif len(place_name_lower) <= 6 and len(seen_lower) <= 6:
+                                # For short names, check if they're very similar (e.g., "Fairpoint" vs "KWORK" - but these are different)
+                                # Only match if they share most characters
+                                matching_chars = sum(1 for a, b in zip(place_name_lower, seen_lower) if a == b)
+                                if matching_chars >= min(len(place_name_lower), len(seen_lower)) * 0.8:
+                                    print(f"🔄 Duplicate detected by name similarity: '{merged_place.get('name')}' similar to '{seen_name}'")
+                                    is_duplicate = True
+                                    break
+                
+                if not is_duplicate:
+                    places_extracted.append(merged_place)
+                    if place_id:
+                        seen_place_ids[place_id] = merged_place
+                    if place_name_lower:
+                        seen_venue_names.add(merged_place.get("name", ""))
+                    if len(venues) > 1:
+                        print(f"✅ Enriched: {venue_name}")
+                else:
+                    print(f"⏭️  Skipped duplicate: {venue_name}")
+                    
             except Exception as e:
                 print(f"⚠️ Failed to enrich {venue_name}: {e}")
                 # Add basic place data even if enrichment fails
@@ -5231,7 +5326,13 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     "vibe_tags": [],
                 }
                 merged_place = merge_place_with_cache(place_data, url, username, context_title)
-                places_extracted.append(merged_place)
+                # Check for duplicates before adding
+                place_name_lower = venue_name.lower().strip()
+                is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower 
+                                  for seen in seen_venue_names if len(place_name_lower) > 4 and len(seen) > 4)
+                if not is_duplicate:
+                    places_extracted.append(merged_place)
+                    seen_venue_names.add(venue_name)
     
     # Filter to keep only NYC venues (MVP requirement)
     nyc_places = []
