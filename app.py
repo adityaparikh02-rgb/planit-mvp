@@ -3396,26 +3396,36 @@ If no venues found, output: (none)
             overall_summary = f"Photo Slideshow ({len(all_venues_per_slide)} slides)"
 
         # Deduplicate venues by name (keeping first occurrence and slide info)
+        # IMPORTANT: Preserve slide order - venues should appear in order of slides
         unique_venues = []
         seen = set()
+        venue_to_slide = {}
+        venue_to_slide_order = {}  # Track slide order for sorting
+        
+        # Extract slide number from slide_key (e.g., "slide_3" -> 3)
+        def get_slide_number(slide_key):
+            try:
+                return int(slide_key.split('_')[1])
+            except (IndexError, ValueError):
+                return 999  # Put unknown slides at the end
+        
         for v_dict in all_venues_with_slides:
             v_lower = v_dict["name"].lower().strip()
             if v_lower not in seen and len(v_lower) >= 3:
                 seen.add(v_lower)
                 unique_venues.append(v_dict["name"])  # Return just names for compatibility
+                venue_to_slide[v_dict["name"]] = v_dict["source_slide"]
+                # Store slide order for sorting
+                venue_to_slide_order[v_dict["name"]] = get_slide_number(v_dict["source_slide"])
 
+        # Sort venues by slide order (earlier slides first)
+        unique_venues.sort(key=lambda v: venue_to_slide_order.get(v, 999))
+        
         print(f"\n📖 Slide-aware extraction complete:")
-        print(f"   Total unique venues: {len(unique_venues)}")
+        print(f"   Total unique venues: {len(unique_venues)} (ordered by slide appearance)")
         print(f"   Summary: {overall_summary}")
 
         # Return tuple: (venue_names, summary, venue_to_slide_mapping, venue_to_context_mapping)
-        # Build mappings for enrichment later
-        venue_to_slide = {}
-        for v_dict in all_venues_with_slides:
-            v_lower = v_dict["name"].lower().strip()
-            if v_lower not in venue_to_slide and len(v_lower) >= 3:
-                venue_to_slide[v_dict["name"]] = v_dict["source_slide"]
-
         return unique_venues, overall_summary, venue_to_slide, venue_to_context
     
     # NEW: Organized slideshow extraction using book-style format
@@ -5309,6 +5319,22 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
     seen_place_ids = {}  # place_id -> place_data (keep best match)
     seen_venue_names = {}  # venue_name_lower -> place_data (for address-based deduplication)
     
+    # Track slide order for each venue to preserve order in final output
+    venue_to_order = {}
+    if venue_to_slide:
+        def get_slide_number(slide_key):
+            try:
+                return int(slide_key.split('_')[1])
+            except (IndexError, ValueError):
+                return 999  # Put unknown slides at the end
+        
+        for venue in venues:
+            slide_key = venue_to_slide.get(venue)
+            if slide_key:
+                venue_to_order[venue.lower()] = get_slide_number(slide_key)
+            else:
+                venue_to_order[venue.lower()] = 999  # Put venues without slide info at the end
+    
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_venue = {
             executor.submit(enrich_and_fetch_photo, v): v 
@@ -5514,6 +5540,14 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
 
     if len(nyc_places) < len(places_extracted):
         print(f"🗽 NYC Filter: Kept {len(nyc_places)}/{len(places_extracted)} venues")
+    
+    # Sort by slide order to preserve order of appearance in slides
+    if venue_to_order:
+        def get_venue_order(place):
+            venue_name = place.get("name", "").lower()
+            return venue_to_order.get(venue_name, 999)
+        nyc_places.sort(key=get_venue_order)
+        print(f"📋 Sorted {len(nyc_places)} places by slide order")
 
     return nyc_places
 
