@@ -358,7 +358,7 @@ class OptimizedGeocodingService:
             # Step 1: FindPlaceFromText (cheaper than geocoding)
             findplace_params = {
                 'input': place_query,
-                'inputtype': 'textquery',
+                'input_type': 'textquery',
                 'fields': self.FINDPLACE_FIELDS
             }
             

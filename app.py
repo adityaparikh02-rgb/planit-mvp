@@ -2160,6 +2160,301 @@ def _extract_neighborhood_from_address(address):
     return None
 
 
+def get_nyc_neighborhood_strict(venue_name="", address="", latitude=None, longitude=None):
+    """
+    Extract NYC neighborhood following strict priority rules.
+    
+    RULE 1: Static overrides (venue name exact matches) - ALWAYS RETURN THESE
+    RULE 2: If lat/lon provided, use neighborhood boundary grid
+    RULE 3: If only address provided, parse and infer from grid
+    RULE 4: Return ONLY the neighborhood name (no commentary, no JSON)
+    
+    Args:
+        venue_name: Venue name (for static overrides)
+        address: Address string (for parsing)
+        latitude: Latitude coordinate (optional)
+        longitude: Longitude coordinate (optional)
+    
+    Returns:
+        Neighborhood name string or "Unknown"
+    """
+    import re
+    
+    # RULE 1: STATIC OVERRIDES (ALWAYS RETURN THESE)
+    static_overrides = {
+        "Soogil": "East Village",
+        "Ulysses'": "Financial District",
+        "Old Mates Pub": "Financial District",
+        "Ten Degrees": "East Village",
+        "Drift In": "West Village"
+    }
+    
+    if venue_name and venue_name in static_overrides:
+        return static_overrides[venue_name]
+    
+    # RULE 2: IF LAT/LON IS PROVIDED - Use neighborhood boundary grid
+    if latitude is not None and longitude is not None:
+        lat = float(latitude)
+        lon = float(longitude)
+        
+        # MANHATTAN NEIGHBORHOOD GRID
+        # Lower Manhattan
+        if 40.6990 <= lat <= 40.7089 and -74.0180 <= lon <= -74.0030:
+            return "Financial District"
+        if 40.7050 <= lat <= 40.7175 and -74.0195 <= lon <= -74.0120:
+            return "Battery Park City"
+        if 40.7130 <= lat <= 40.7250 and -74.0135 <= lon <= -74.0060:
+            return "Tribeca"
+        if 40.7210 <= lat <= 40.7290 and -74.0060 <= lon <= -73.9980:
+            return "SoHo"
+        if 40.7200 <= lat <= 40.7265 and -73.9980 <= lon <= -73.9920:
+            return "Nolita"
+        if 40.7150 <= lat <= 40.7250 and -73.9990 <= lon <= -73.9910:
+            return "Little Italy"
+        if 40.7105 <= lat <= 40.7195 and -74.0035 <= lon <= -73.9930:
+            return "Chinatown"
+        if 40.7090 <= lat <= 40.7245 and -73.9940 <= lon <= -73.9770:
+            return "Lower East Side"
+        if 40.7230 <= lat <= 40.7335 and -73.9925 <= lon <= -73.9730:
+            return "East Village"
+        if 40.7280 <= lat <= 40.7410 and -74.0100 <= lon <= -74.0000:
+            return "West Village"
+        if 40.7280 <= lat <= 40.7370 and -74.0000 <= lon <= -73.9940:
+            return "Greenwich Village"
+        
+        # Mid-Manhattan
+        if 40.7370 <= lat <= 40.7540 and -74.0055 <= lon <= -73.9920:
+            return "Chelsea"
+        if 40.7360 <= lat <= 40.7475 and -73.9920 <= lon <= -73.9840:
+            return "Flatiron"
+        if 40.7310 <= lat <= 40.7395 and -73.9890 <= lon <= -73.9780:
+            return "Gramercy"
+        if 40.7345 <= lat <= 40.7445 and -73.9780 <= lon <= -73.9710:
+            return "Kips Bay"
+        if 40.7430 <= lat <= 40.7520 and -73.9840 <= lon <= -73.9715:
+            return "Murray Hill"
+        if 40.7480 <= lat <= 40.7640 and -73.9715 <= lon <= -73.9550:
+            return "Midtown East"
+        if 40.7475 <= lat <= 40.7710 and -74.0050 <= lon <= -73.9850:
+            return "Midtown West"
+        if 40.7510 <= lat <= 40.7630 and -74.0070 <= lon <= -73.9950:
+            return "Hudson Yards"
+        if 40.7570 <= lat <= 40.7680 and -73.9880 <= lon <= -73.9800:
+            return "Theater District"
+        
+        # Upper Manhattan
+        if 40.7680 <= lat <= 40.8060 and -73.9950 <= lon <= -73.9580:
+            return "Upper West Side"
+        if 40.7620 <= lat <= 40.7850 and -73.9670 <= lon <= -73.9440:
+            return "Upper East Side"
+        if 40.8000 <= lat <= 40.8340 and -73.9700 <= lon <= -73.9300:
+            return "Harlem"
+        if 40.8400 <= lat <= 40.8700 and -73.9450 <= lon <= -73.9150:
+            return "Washington Heights"
+        
+        # BROOKLYN NEIGHBORHOOD GRID
+        # Williamsburg
+        if 40.7210 <= lat <= 40.7265 and -73.9635 <= lon <= -73.9440:
+            return "Williamsburg"
+        if 40.7070 <= lat <= 40.7210 and -73.9660 <= lon <= -73.9420:
+            return "Williamsburg"
+        if 40.7110 <= lat <= 40.7250 and -73.9420 <= lon <= -73.9180:
+            return "East Williamsburg"
+        
+        # Bushwick
+        if 40.6890 <= lat <= 40.7110 and -73.9390 <= lon <= -73.9000:
+            return "Bushwick"
+        
+        # Greenpoint
+        if 40.7230 <= lat <= 40.7400 and -73.9630 <= lon <= -73.9330:
+            return "Greenpoint"
+        
+        # Dumbo
+        if 40.6990 <= lat <= 40.7070 and -73.9935 <= lon <= -73.9810:
+            return "DUMBO"
+        
+        # Brooklyn Heights
+        if 40.6920 <= lat <= 40.7015 and -73.9990 <= lon <= -73.9880:
+            return "Brooklyn Heights"
+        
+        # Cobble Hill
+        if 40.6840 <= lat <= 40.6920 and -73.9990 <= lon <= -73.9840:
+            return "Cobble Hill"
+        
+        # Carroll Gardens
+        if 40.6750 <= lat <= 40.6890 and -74.0060 <= lon <= -73.9880:
+            return "Carroll Gardens"
+        
+        # Park Slope
+        if 40.6745 <= lat <= 40.6815 and -73.9830 <= lon <= -73.9700:
+            return "Park Slope"
+        if 40.6560 <= lat <= 40.6745 and -74.0000 <= lon <= -73.9730:
+            return "Park Slope"
+        
+        # Gowanus
+        if 40.6675 <= lat <= 40.6825 and -73.9990 <= lon <= -73.9800:
+            return "Gowanus"
+        
+        # Fort Greene / Clinton Hill
+        if 40.6830 <= lat <= 40.6960 and -73.9890 <= lon <= -73.9685:
+            return "Fort Greene"
+        if 40.6840 <= lat <= 40.7000 and -73.9685 <= lon <= -73.9535:
+            return "Clinton Hill"
+        
+        # Bed-Stuy
+        if 40.6790 <= lat <= 40.7000 and -73.9535 <= lon <= -73.9100:
+            return "Bedford-Stuyvesant"
+        
+        # Prospect Heights
+        if 40.6730 <= lat <= 40.6830 and -73.9760 <= lon <= -73.9620:
+            return "Prospect Heights"
+        
+        # Crown Heights
+        if 40.6640 <= lat <= 40.6810 and -73.9600 <= lon <= -73.9300:
+            return "Crown Heights"
+        
+        # QUEENS
+        # Astoria
+        if 40.7550 <= lat <= 40.7890 and -73.9440 <= lon <= -73.8950:
+            return "Astoria"
+        
+        # Long Island City
+        if 40.7350 <= lat <= 40.7525 and -73.9620 <= lon <= -73.9340:
+            return "Long Island City"
+        
+        # Sunnyside
+        if 40.7390 <= lat <= 40.7500 and -73.9330 <= lon <= -73.9150:
+            return "Sunnyside"
+        
+        # Jackson Heights
+        if 40.7460 <= lat <= 40.7620 and -73.9030 <= lon <= -73.8700:
+            return "Jackson Heights"
+        
+        # Flushing
+        if 40.7445 <= lat <= 40.7780 and -73.8400 <= lon <= -73.8150:
+            return "Flushing"
+    
+    # RULE 3: IF ONLY ADDRESS IS PROVIDED - Parse street and infer from grid
+    if address:
+        # Extract just the street address part (before first comma) for better parsing
+        # Google Maps addresses are often "35 W 19th St, New York, NY 10011"
+        street_address = address.split(',')[0].strip()
+        address_lower = address.lower()
+        street_address_lower = street_address.lower()
+        
+        # Check for Roosevelt Island (N Loop Rd is unique to Roosevelt Island)
+        if "n loop rd" in address_lower or "north loop road" in address_lower or "roosevelt island" in address_lower:
+            return "Roosevelt Island"
+        
+        # Check for Financial District indicators (including Nassau St)
+        if any(street in address_lower for street in ["stone st", "wall st", "broad st", "water st", "john st", "william st", "pearl st", "nassau st", "nassau street"]):
+            return "Financial District"
+        
+        # Check for Park Avenue South (Flatiron/Gramercy area)
+        if "park ave s" in address_lower or "park avenue south" in address_lower:
+            # Park Ave S runs from ~14th to ~34th, generally Flatiron/Gramercy area
+            return "Flatiron"
+        
+        # Check for Flatiron indicators
+        if any(street in address_lower for street in ["broadway", "5th ave", "5th avenue", "madison square"]):
+            # Check if it's in the Flatiron range (roughly 14th-34th)
+            street_match = re.search(r'(\d+)(?:st|nd|rd|th|street)', address_lower)
+            if street_match:
+                street_num = int(street_match.group(1))
+                if 14 <= street_num <= 34:
+                    return "Flatiron"
+        
+        # Check for East Village indicators
+        if any(street in address_lower for street in ["st marks", "st mark's", "avenue a", "avenue b", "avenue c", "e 4th", "e 5th", "e 6th", "e 7th", "e 8th", "e 9th", "e 10th", "e 11th", "e 12th", "e 13th"]):
+            if "e " in address_lower or "east" in address_lower:
+                return "East Village"
+        
+        # Check for West Village indicators (including W 12th St)
+        if any(street in address_lower for street in ["west st", "hudson st", "greenwich ave", "christopher st", "bleecker st", "w 4th", "w 10th", "w 11th", "w 12th", "w 13th"]):
+            if "w " in address_lower or "west" in address_lower:
+                return "West Village"
+        
+        # Try to extract street number and direction - improved regex to handle "35 W 19th St" pattern
+        # Pattern 1: "35 W 19th St" or "35 West 19th Street" - use street_address for better matching
+        street_match = re.search(r'\b(\d+)\s+(W|E|West|East)\s+(\d+)(?:st|nd|rd|th|street)', street_address, re.I)
+        if street_match:
+            street_num = int(street_match.group(3))
+            street_dir = street_match.group(2)
+            street_dir_lower = street_dir.lower() if street_dir else ""
+            
+            # Upper East Side: 60th-96th St, east side
+            if 60 <= street_num <= 96 and ('e' in street_dir_lower or 'east' in street_dir_lower):
+                return "Upper East Side"
+            # Upper West Side: 60th-110th St, west side
+            elif 60 <= street_num <= 110 and ('w' in street_dir_lower or 'west' in street_dir_lower):
+                return "Upper West Side"
+            # Midtown East: 34th-59th St, east side
+            elif 34 <= street_num <= 59 and ('e' in street_dir_lower or 'east' in street_dir_lower):
+                return "Midtown East"
+            # Midtown West: 34th-59th St, west side
+            elif 34 <= street_num <= 59 and ('w' in street_dir_lower or 'west' in street_dir_lower):
+                return "Midtown West"
+            # Chelsea: 14th-34th St, west side
+            elif 14 <= street_num <= 34 and ('w' in street_dir_lower or 'west' in street_dir_lower):
+                return "Chelsea"
+            # Gramercy/Murray Hill: 14th-34th St, east side
+            elif 14 <= street_num <= 34 and ('e' in street_dir_lower or 'east' in street_dir_lower):
+                if street_num <= 23:
+                    return "Gramercy"
+                else:
+                    return "Murray Hill"
+            # Below 14th St
+            elif street_num < 14:
+                if 'e' in street_dir_lower or 'east' in street_dir_lower:
+                    return "East Village"
+                elif 'w' in street_dir_lower or 'west' in street_dir_lower:
+                    return "West Village"
+        else:
+            # Pattern 2: Try simpler pattern like "19th St" or "W 19th St" - use street_address
+            street_match2 = re.search(r'\b(W|E|West|East)?\s*(\d+)(?:st|nd|rd|th|street)', street_address, re.I)
+            if street_match2:
+                street_num = int(street_match2.group(2))
+                street_dir = street_match2.group(1) if street_match2.group(1) else ""
+                street_dir_lower = street_dir.lower() if street_dir else ""
+                
+                # Check address for direction if not in street_dir
+                if not street_dir_lower:
+                    if "w " in address_lower or "west" in address_lower:
+                        street_dir_lower = "w"
+                    elif "e " in address_lower or "east" in address_lower:
+                        street_dir_lower = "e"
+                
+                # Upper East Side: 60th-96th St, east side
+                if 60 <= street_num <= 96 and ('e' in street_dir_lower or 'east' in street_dir_lower):
+                    return "Upper East Side"
+                # Upper West Side: 60th-110th St, west side
+                elif 60 <= street_num <= 110 and ('w' in street_dir_lower or 'west' in street_dir_lower):
+                    return "Upper West Side"
+                # Midtown East: 34th-59th St, east side
+                elif 34 <= street_num <= 59 and ('e' in street_dir_lower or 'east' in street_dir_lower):
+                    return "Midtown East"
+                # Midtown West: 34th-59th St, west side
+                elif 34 <= street_num <= 59 and ('w' in street_dir_lower or 'west' in street_dir_lower):
+                    return "Midtown West"
+                # Chelsea: 14th-34th St, west side
+                elif 14 <= street_num <= 34 and ('w' in street_dir_lower or 'west' in street_dir_lower):
+                    return "Chelsea"
+                # Gramercy/Murray Hill: 14th-34th St, east side
+                elif 14 <= street_num <= 34 and ('e' in street_dir_lower or 'east' in street_dir_lower):
+                    if street_num <= 23:
+                        return "Gramercy"
+                    else:
+                        return "Murray Hill"
+                # Below 14th St
+                elif street_num < 14:
+                    if 'e' in street_dir_lower or 'east' in street_dir_lower:
+                        return "East Village"
+                    elif 'w' in street_dir_lower or 'west' in street_dir_lower:
+                        return "West Village"
+    
+    return "Unknown"
+
+
 def infer_nyc_neighborhood_from_address(address, venue_name=""):
     """
     Infer NYC neighborhood from address and venue name using geographic knowledge.
@@ -4029,6 +4324,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         text_extracted_neighborhood = None  # Store text-extracted neighborhood separately
         google_maps_neighborhood = None  # Store Google Maps neighborhood separately
         place_types_from_google = []  # Store Google Maps place types for cuisine extraction
+        latitude = None  # Store latitude for strict neighborhood extraction
+        longitude = None  # Store longitude for strict neighborhood extraction
 
         # STEP 1: Extract neighborhood from title/caption (but don't finalize yet)
         # Use combined text (context_title + caption) for neighborhood extraction
@@ -4056,7 +4353,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         "https://maps.googleapis.com/maps/api/place/details/json",
                         params={
                             "place_id": place_id,
-                            "fields": "address_components,formatted_address,business_status,types",
+                            "fields": "address_components,formatted_address,business_status,types,geometry",
                             "key": GOOGLE_API_KEY
                         },
                         timeout=10
@@ -4070,6 +4367,11 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         address_components = result.get("address_components", [])
                         # Get business_status to check if permanently closed
                         business_status = result.get("business_status")
+                        # Get lat/lon from geometry for strict neighborhood extraction
+                        geometry = result.get("geometry", {})
+                        location = geometry.get("location", {})
+                        latitude = location.get("lat")
+                        longitude = location.get("lng")
                         # Get place types from Google Maps (for cuisine categorization)
                         place_types_from_google = result.get("types", [])
                         if place_types_from_google:
@@ -4450,6 +4752,17 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 vibe_tags.append(google_cuisine)
                 print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine}")
 
+        # Use strict neighborhood extraction function (PRIORITY: static overrides > lat/lon > address)
+        strict_neighborhood = get_nyc_neighborhood_strict(
+            venue_name=display_name,
+            address=address,
+            latitude=latitude,
+            longitude=longitude
+        )
+        
+        # Use strict neighborhood if available, otherwise fall back to extracted neighborhood
+        final_neighborhood_to_use = strict_neighborhood if strict_neighborhood != "Unknown" else final_neighborhood
+        
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
@@ -4458,7 +4771,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             "vibe_tags": vibe_tags,  # Use updated vibe_tags with Google Maps cuisine
             "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly
             "address": address,  # Also get address while we're at it
-            "neighborhood": final_neighborhood,  # Prioritize text mentions, fallback to Google Maps, then inferred
+            "neighborhood": final_neighborhood_to_use,  # Use strict neighborhood extraction (static overrides > lat/lon > address)
             "price": price,  # Price level from Google Maps ($, $$, $$$, $$$$)
             **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags", "vibe_keywords"]}
         }
