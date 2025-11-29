@@ -3243,9 +3243,12 @@ HANDLING GARBLED OCR: The slide text may be garbled due to OCR errors. Try your 
 - Use the caption context to help identify venue names if the OCR is unclear
 
 Slide content (may be garbled):
-{slide_text[:1000]}
+{slide_text}
 
-Caption context: {caption[:200] if caption else '(none)'}
+Caption context: {caption if caption else '(none)'}
+
+CRITICAL: Extract ALL venue names and details from this slide. Do NOT stop after finding 1-2 items. 
+Read EVERY WORD in the OCR text, including smaller font text, fine print, and all details.
 
 Output format: One venue name per line, or empty if none found.
 VenueName1
@@ -3445,7 +3448,10 @@ Extract:
 2. For each venue, the "what to get" items mentioned in its slides
 
 Organized slideshow content:
-{organized_context[:4000]}
+{organized_context}
+
+CRITICAL: Extract ALL venue names and details. Read EVERY WORD in the OCR text, including smaller font text and fine print.
+Do NOT stop after finding 1-2 venues - extract EVERYTHING mentioned.
 
 Caption: {caption if caption else '(none)'}
 
@@ -3504,11 +3510,13 @@ If no dish mentioned for a venue, leave it blank after the |."""
             ocr_emphasis = f"""
    ⚠️⚠️⚠️ CRITICAL: This is a PHOTO POST or video with NO SPEECH. The OCR text below contains ALL venue information.
    ⚠️⚠️⚠️ The OCR text IS THE PRIMARY SOURCE - extract venue names directly from it.
-   ⚠️⚠️⚠️ OCR TEXT FROM IMAGES (extract ALL venue names from this):
-{ocr_text[:2000]}
+   ⚠️⚠️⚠️ OCR TEXT FROM IMAGES (extract ALL venue names from this - NO TRUNCATION):
+{ocr_text}
    
-   • Extract EVERY venue name you see in the OCR text above
+   • Extract EVERY venue name you see in the OCR text above - read EVERY WORD
    • Photo posts often show venue names in the images themselves - look carefully
+   • Do NOT stop after finding 1-2 venues - extract ALL venues mentioned
+   • Pay attention to smaller font text, fine print, and all details - extract EVERYTHING
    • If OCR shows a numbered list (1. Venue, 2. Venue, etc.), extract ALL of them
    • If OCR shows venue names separated by commas, newlines, bullets, or semicolons, extract ALL of them
    • Venue names might be restaurant names, bar names, café names, or food spot names
@@ -3588,6 +3596,9 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • Venue names might be in hashtags (#VenueName) - extract those too
    • If caption says "My favorite NYC spots" but doesn't list names, the names are IN THE OCR TEXT FROM IMAGES
    • Photo posts: The images contain the venue names - extract them from OCR text
+   • CRITICAL: Read EVERY WORD in the OCR text - do NOT stop after finding 1-2 venues
+   • Extract ALL venue names, including those in smaller font, fine print, or less prominent positions
+   • Be thorough - if there are multiple venues mentioned, extract ALL of them, not just the first few
    • Ignore broad neighborhoods like "SoHo" or "Brooklyn" unless they're part of a venue name
    • CRITICAL: Do NOT invent or infer venue names. Only extract venues that are EXPLICITLY mentioned by name.
      For example, if text says "wine bar in Soho" but doesn't name the wine bar, do NOT extract "Soho Wine Bar".
@@ -3638,8 +3649,9 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
             print("⚠️ No content to analyze (empty transcript, OCR, caption, comments)")
             return [], "TikTok Venues", {}
         
-        # Increase context window to 8000 chars to capture more OCR content
-        content_to_analyze = combined_text[:8000]
+        # Use ALL OCR content - no truncation to capture every detail including smaller font text
+        # GPT-4o-mini supports up to 128k tokens, so we can send much more content
+        content_to_analyze = combined_text  # No truncation - extract ALL text
         
         # If OCR is the main source (no speech), emphasize it heavily
         if ocr_text and (not transcript or len(transcript) < 50):
@@ -4199,7 +4211,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar').",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
-  "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing ALL SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE ONLY. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. But ONLY extract items that are clearly FOR {name}.",
+  "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing ALL SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE ONLY. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. Read EVERY WORD in the context, including smaller font text, fine print, and all details. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. Read the ENTIRE context carefully - do NOT miss items in smaller font or less prominent positions. But ONLY extract items that are clearly FOR {name}.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, or helpful advice mentioned in the context. Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
@@ -4209,7 +4221,10 @@ CRITICAL: Only extract information that is clearly about "{name}".
 }}
 
 Context (filtered to only include mentions of "{name}"):
-{context[:4000]}
+{context}
+
+CRITICAL: Extract ALL details from this context. Read EVERY WORD including smaller font text and fine print.
+Do NOT stop after extracting 1-2 items - extract ALL dishes, features, tips, and details mentioned.
 """
     try:
         client = get_openai_client()
