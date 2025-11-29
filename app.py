@@ -5369,7 +5369,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
-            cuisine_map = {
+                cuisine_map = {
                 "restaurant": None,  # Too generic
                 "bar": None,  # Too generic
                 "cafe": None,  # Too generic
@@ -5393,15 +5393,15 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "steak_house": "Steakhouse",
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
-            }
-            google_cuisine = None
+                }
+                google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
-                if place_type in cuisine_map and cuisine_map[place_type]:
-                    google_cuisine = cuisine_map[place_type]
-                    break
-            if google_cuisine and google_cuisine not in vibe_tags:
-                vibe_tags.append(google_cuisine)
+                    if place_type in cuisine_map and cuisine_map[place_type]:
+                        google_cuisine = cuisine_map[place_type]
+                        break
+                if google_cuisine and google_cuisine not in vibe_tags:
+                    vibe_tags.append(google_cuisine)
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
