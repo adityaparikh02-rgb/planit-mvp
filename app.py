@@ -4102,7 +4102,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar').",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
-  "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list SPECIFIC dishes, drinks, or menu items mentioned by the creator. Even if they say 'I recommend everything on the menu' or 'everything is good', extract the SPECIFIC dishes they actually tried and mentioned liking (e.g., 'chicken harissa bowl', 'matbucha dip', 'sabik sandwich'). For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. CRITICAL: Only include items that are EXPLICITLY associated with {name} in the context. If an item appears but is associated with a different venue name in the same context, do NOT include it. Example: If context mentions 'PB&J matcha latte' near 'caffe paradiso' but you're analyzing 'The Elk', do NOT include 'PB&J matcha latte'.",
+  "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing SPECIFIC dishes, drinks, or menu items mentioned by the creator. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). For RESTAURANTS/FOOD places, extract SPECIFIC dishes they actually tried and mentioned liking. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. CRITICAL: Only include items that are EXPLICITLY associated with {name} in the context. If an item appears but is associated with a different venue name in the same context, do NOT include it.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required'). Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
@@ -4127,9 +4127,75 @@ Context (filtered to only include mentions of "{name}"):
         # Handle case where GPT returns a list instead of string
         must_try_raw = j.get("must_try", "")
         if isinstance(must_try_raw, list):
-            must_try_value = " ".join(str(x) for x in must_try_raw).strip()
+            # Format list items as a natural sentence
+            items = [str(x).strip() for x in must_try_raw if str(x).strip()]
+            if len(items) == 1:
+                must_try_value = items[0]
+            elif len(items) == 2:
+                must_try_value = f"{items[0]} and {items[1]}"
+            elif len(items) > 2:
+                # Join with commas and 'and' for the last item
+                must_try_value = ", ".join(items[:-1]) + f", and {items[-1]}"
+            else:
+                must_try_value = ""
         else:
             must_try_value = str(must_try_raw).strip() if must_try_raw else ""
+        
+        # Clean up formatting: if it's still space-separated (old format), convert to sentence
+        # Detect space-separated items and intelligently split them into proper items
+        if must_try_value and " " in must_try_value and "," not in must_try_value and "and" not in must_try_value.lower():
+            words = must_try_value.split()
+            items = []
+            current_item = []
+            
+            # Smart splitting: look for words that commonly START new menu items (not end them)
+            # These are usually adjectives or modifiers that appear at the beginning
+            item_starters = ['iced', 'hot', 'spicy', 'sweet', 'perfect', 'original', 'miami', 'crispy', 
+                           'grilled', 'fried', 'fresh', 'cold', 'warm', 'frozen', 'salted', 'maple', 
+                           'whipped', 'seasonal', 'blue', 'coconut', 'brown', 'butter', 'oat', 'matcha']
+            
+            # Words that typically END items (not start new ones)
+            item_enders = ['bowl', 'wrap', 'sandwich', 'burger', 'pizza', 'pasta', 'sushi', 'taco', 
+                          'burrito', 'latte', 'espresso', 'cappuccino', 'mocha', 'coffee', 'tea', 
+                          'soup', 'salad', 'smoothie', 'shake', 'juice']
+            
+            for i, word in enumerate(words):
+                word_lower = word.lower().strip('.,!?')
+                current_item.append(word)
+                
+                # Check if we should finish current item
+                if i + 1 < len(words):
+                    next_word_lower = words[i + 1].lower().strip('.,!?')
+                    # Finish item if:
+                    # 1. Current word is an item ender (bowl, wrap, etc.) AND we have at least 2 words
+                    # 2. Next word is an item starter AND we have at least 2 words
+                    if (word_lower in item_enders and len(current_item) >= 2) or \
+                       (next_word_lower in item_starters and len(current_item) >= 2):
+                        items.append(" ".join(current_item))
+                        current_item = []
+                elif i == len(words) - 1:
+                    # Last word, finish current item
+                    items.append(" ".join(current_item))
+            
+            # If we didn't find good splits, try splitting every 2-3 words
+            if len(items) <= 1 and len(words) > 3:
+                # Fallback: split into groups of 2-3 words
+                items = []
+                i = 0
+                while i < len(words):
+                    # Take 2-3 words as an item
+                    chunk_size = 3 if i + 3 < len(words) else min(2, len(words) - i)
+                    items.append(" ".join(words[i:i+chunk_size]))
+                    i += chunk_size
+            
+            # Format as sentence
+            if len(items) > 1:
+                if len(items) == 2:
+                    must_try_value = f"{items[0]} and {items[1]}"
+                else:
+                    must_try_value = ", ".join(items[:-1]) + f", and {items[-1]}"
+            elif len(items) == 1:
+                must_try_value = items[0]
         
         # Determine field name based on venue type (prioritize venue type over content keywords)
         if must_try_value:
