@@ -5599,12 +5599,19 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         print(f"🗽 NYC Filter: Kept {len(nyc_places)}/{len(places_extracted)} venues")
     
     # Sort by slide order to preserve order of appearance in slides
-    if venue_to_order:
-        def get_venue_order(place):
+    # Use _slide_order field if available (more reliable), otherwise fall back to venue_to_order
+    def get_venue_order(place):
+        # First try _slide_order field (set during enrichment)
+        if "_slide_order" in place:
+            return place["_slide_order"]
+        # Fall back to venue_to_order mapping
+        if venue_to_order:
             venue_name = place.get("name", "").lower()
             return venue_to_order.get(venue_name, 999)
-        nyc_places.sort(key=get_venue_order)
-        print(f"📋 Sorted {len(nyc_places)} places by slide order")
+        return 999  # Default to end
+    
+    nyc_places.sort(key=get_venue_order)
+    print(f"📋 Sorted {len(nyc_places)} places by slide order")
 
     return nyc_places
 
