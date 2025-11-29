@@ -99,8 +99,8 @@ function App() {
   const [selectedHistoryItems, setSelectedHistoryItems] = useState(new Set()); // Set of selected history item indices
   const [savedListsSelectionMode, setSavedListsSelectionMode] = useState(false); // Multi-select mode for saved lists
   const [selectedSavedLists, setSelectedSavedLists] = useState(new Set()); // Set of selected saved list names
-  const [showClearSavedMenu, setShowClearSavedMenu] = useState(false);
-  const [showDebugInfo, setShowDebugInfo] = useState(false); // Toggle for showing OCR text and transcript // For clear saved menu
+  const [showClearSavedMenu, setShowClearSavedMenu] = useState(false); // For clear saved menu
+  const [showDebugInfo, setShowDebugInfo] = useState(false); // Toggle for showing OCR text and transcript
 
   // Handle share target / deep linking
   useEffect(() => {
