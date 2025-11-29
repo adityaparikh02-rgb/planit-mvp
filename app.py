@@ -2902,6 +2902,10 @@ def organize_slides_by_venue(ocr_text):
 If multiple places mentioned, list them (one per line).
 If NO places mentioned, output: (none)
 
+IMPORTANT: OCR text may be garbled. If you see text that could be a garbled venue name (e.g., "CTU REN" might be "CACTUS WREN") 
+AND there's context suggesting a venue (e.g., "cactus shaped corn bread" suggests "Cactus Wren"), extract the most likely venue name.
+However, ONLY extract if there's clear context - don't extract random garbled text.
+
 Slide text:
 {slide_text[:500]}
 
@@ -3577,14 +3581,19 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • CRITICAL: Do NOT invent or infer venue names. Only extract venues that are EXPLICITLY mentioned by name.
      For example, if text says "wine bar in Soho" but doesn't name the wine bar, do NOT extract "Soho Wine Bar".
      Only extract venues that are actually named (e.g., "Marjories", "Employees Only", "Katana Kitten", "Blank Street").
+   • IMPORTANT: OCR text may contain garbled venue names. If you see text that looks like it could be a garbled venue name (e.g., "CTU REN" might be "CACTUS WREN", "GLASVIN" might be garbled), AND there's strong context suggesting a venue name (like "cactus shaped corn bread" suggesting "Cactus Wren"), try to extract the most likely venue name. However, ONLY do this if there's clear context - don't extract random garbled text as venues.
    • IMPORTANT: Venue names can be single words or multiple words. Examples: "Blank Street" (two words), "The Elk" (two words), "caffe paradiso" (two words). Extract them exactly as written, preserving capitalization and spacing.
    • If a venue name appears on a slide with its menu items, extract the venue name even if it's brief. Example: If slide says "Blank Street" followed by drink items, extract "Blank Street" as a venue.
    • ONLY list actual venue names that are mentioned. Do NOT use placeholders like "venue 1" or "<venue 1>".
    • IMPORTANT: OCR text may contain garbled characters or errors. Look for REAL venue names, not random words.
+   • IMPORTANT: OCR may garble venue names (e.g., "CTU REN" might be "CACTUS WREN", "GLASVIN" might be garbled). 
+     If you see garbled text that COULD be a venue name AND there's strong context (e.g., "cactus shaped corn bread" suggests "Cactus Wren"), 
+     try to extract the most likely venue name. However, ONLY do this if there's clear context - don't extract random garbled text.
    • IMPORTANT: Transcript may have transcription errors. If transcript says "X dispo" but context suggests "X in Y", trust the context and extract "X"
    • If OCR text is mostly garbled (lots of special characters, random letters), rely MORE on the caption and transcript.
    • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's").
    • Do NOT extract random words from garbled OCR text (e.g., "Danny's" or "Ballerina" if they don't appear in context).
+   • CRITICAL: If you see garbled text like "CTU REN" near context about "cactus" items, it might be "CACTUS WREN" - extract it.
    • If OCR text is too garbled or unclear, prioritize the caption and transcript for venue names.
    • Do NOT combine neighborhood names with generic terms to create venue names (e.g., don't extract "Soho Wine Bar" from "wine bar in Soho").
    • CRITICAL: Do NOT extract venues that are mentioned as "team behind", "created by", "made by", "founded by", or similar contexts. 
