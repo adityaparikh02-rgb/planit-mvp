@@ -2907,7 +2907,9 @@ def _is_ocr_garbled(text):
     has_slide_markers = 'SLIDE' in text.upper() or re.search(r'SLIDE\s+\d+', text, re.I)
     
     # Check for proper nouns (capitalized words) - common in venue names
-    capitalized_words = sum(1 for w in words if len(w) > 2 and w[0].isupper() and w[1:].islower())
+    # FIXED: Allow all capitalized words (not just Title Case) to count as proper nouns
+    # This includes "SLIDE", "LEMON", acronyms, and regular Title Case words
+    capitalized_words = sum(1 for w in words if len(w) > 1 and w[0].isupper())
     proper_noun_ratio = capitalized_words / len(words) if words else 0
     
     # CRITICAL: Check if text is mostly random 1-3 character "words" (garbled OCR)
@@ -2950,11 +2952,19 @@ def _is_ocr_garbled(text):
         return False
     
     # Check for common words - if barely any AND no proper nouns, it's garbled
-    common_words = ['the', 'and', 'a', 'to', 'of', 'in', 'is', 'at', 'for', 'nyc', 'restaurant', 'food', 'pizza', 'bar', 'cafe', 'coffee', 'ny', 'new', 'york']
+    # FIXED: Expanded to include food/menu/atmosphere vocabulary
+    common_words = [
+        'the', 'and', 'a', 'to', 'of', 'in', 'is', 'at', 'for', 'nyc', 'restaurant', 'food', 'pizza', 'bar', 'cafe', 'coffee', 'ny', 'new', 'york',
+        # Food and menu vocabulary
+        'lemon', 'chicken', 'pasta', 'salad', 'with', 'or', 'but', 'all', 'very', 'so',
+        # Atmosphere vocabulary
+        'vibes', 'romantic', 'exclusive', 'were', 'yet', 'menu', 'order', 'get'
+    ]
     word_matches = sum(1 for w in words if w.lower().strip('.,!?') in common_words)
-    
+
     # Only flag as garbled if no common words AND no proper nouns
-    if len(words) > 15 and word_matches < 2 and proper_noun_ratio < 0.1:
+    # FIXED: Lowered threshold from 0.1 (10%) to 0.05 (5%) to allow 7.4% proper nouns to pass
+    if len(words) > 15 and word_matches < 2 and proper_noun_ratio < 0.05:
         print(f"   🚫 Garble detection: Found only {word_matches} common words and {proper_noun_ratio:.1%} proper nouns in {len(words)} words")
         return True
     
@@ -3028,8 +3038,11 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     # IMPORTANT: If OCR is the ONLY content source (no transcript/caption), be more lenient
     # Even garbled OCR is better than nothing when it's the only source
     has_other_content = bool(transcript and len(transcript.strip()) > 50) or bool(caption and len(caption.strip()) > 20)
-    
-    if ocr_text and not is_slideshow and _is_ocr_garbled(ocr_text):
+
+    # FIXED: Skip garble check for any text with SLIDE markers (not just multi-slide)
+    has_slide_markers = bool(ocr_text and 'SLIDE' in ocr_text.upper())
+
+    if ocr_text and not (is_slideshow or has_slide_markers) and _is_ocr_garbled(ocr_text):
         if has_other_content:
             print("⚠️ OCR text appears to be heavily garbled/corrupted - IGNORING IT")
             print(f"   Reason: Too many non-alphanumeric characters or random text")
@@ -3525,8 +3538,8 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         """Remove 'SLIDE X:' markers from text."""
         if not text:
             return text
-        import re
         # Remove "SLIDE X:" or "SLIDEX:" patterns (case-insensitive)
+        # (re is imported at parent function level)
         cleaned = re.sub(r'SLIDE\s*\d+\s*:\s*', '', text, flags=re.IGNORECASE)
         return cleaned.strip()
     
@@ -3535,7 +3548,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         """Remove garbled sentences, hashtags, and OCR noise from text before sending to GPT."""
         if not text:
             return text
-        import re
+        # (re is imported at parent function level)
         
         # Remove hashtags
         text = re.sub(r'#\w+', '', text)
@@ -3584,7 +3597,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         """
         if not text:
             return text
-        import re
+        # (re is imported at parent function level)
 
         # Replace "belly list" with "Beli" (case-insensitive)
         text = re.sub(r'\bbelly\s+list\b', 'Beli', text, flags=re.IGNORECASE)
@@ -3668,7 +3681,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         """Remove venue name, hashtags, garbled text, and 'the vibes:' prefixes from vibe text."""
         if not vibe_text:
             return vibe_text
-        import re
+        # (re is imported at parent function level)
         
         # Remove hashtags
         cleaned = re.sub(r'#\w+', '', vibe_text)
@@ -3954,7 +3967,12 @@ Context (filtered to only include mentions of "{name}"):
         # Use the actual OCR text from the slide for more accurate tag extraction
         # Pass venue name to ensure unique, context-specific tags
         data["vibe_tags"] = extract_vibe_tags(context, venue_name=name)
-        
+
+        # CRITICAL FIX: Fallback to vibe_keywords if GPT extraction failed or returned empty list
+        if not data["vibe_tags"] and vibe_keywords:
+            data["vibe_tags"] = vibe_keywords[:6]  # Limit to 6 tags max
+            print(f"   ⚠️ GPT vibe_tags extraction failed for {name}, using vibe_keywords fallback: {data['vibe_tags']}")
+
         # Add "Vegan" tag if explicitly mentioned in the context
         context_lower = context.lower()
         vegan_indicators = ["vegan", "plant-based", "plant based"]
@@ -4490,36 +4508,36 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         if google_maps_neighborhood:
                             google_neighborhood_lower = google_maps_neighborhood.lower()
 
-                        # Try exact match first, then substring match
-                        # But don't match generic locations like "Manhattan" to "Lower Manhattan"
-                        generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
-                        is_generic = google_neighborhood_lower in [g.lower() for g in generic_locations]
+                            # Try exact match first, then substring match
+                            # But don't match generic locations like "Manhattan" to "Lower Manhattan"
+                            generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
+                            is_generic = google_neighborhood_lower in [g.lower() for g in generic_locations]
 
-                        # If it's already generic, skip matching and try fallbacks
-                        if is_generic:
-                            print(f"   ⚠️ Place Details returned generic location '{google_maps_neighborhood}', will try other sources")
-                            google_maps_neighborhood = None
-                        else:
-                            matched = False
-                            for known_neighborhood in sorted_known:
-                                known_lower = known_neighborhood.lower()
-                                if known_lower == google_neighborhood_lower:
-                                    google_maps_neighborhood = known_neighborhood
-                                    print(f"   📍 Google Maps exact match to known neighborhood: {google_maps_neighborhood}")
-                                    matched = True
-                                    break
-                                elif known_lower in google_neighborhood_lower or google_neighborhood_lower in known_lower:
-                                    # Use substring match if it's a significant portion (>= 4 chars)
-                                    # This handles cases like "Lower East Side" matching "Lower East Side, Manhattan"
-                                    if len(known_neighborhood) >= 4:
+                            # If it's already generic, skip matching and try fallbacks
+                            if is_generic:
+                                print(f"   ⚠️ Place Details returned generic location '{google_maps_neighborhood}', will try other sources")
+                                google_maps_neighborhood = None
+                            else:
+                                matched = False
+                                for known_neighborhood in sorted_known:
+                                    known_lower = known_neighborhood.lower()
+                                    if known_lower == google_neighborhood_lower:
                                         google_maps_neighborhood = known_neighborhood
-                                        print(f"   📍 Google Maps matched to known neighborhood: {google_maps_neighborhood}")
+                                        print(f"   📍 Google Maps exact match to known neighborhood: {google_maps_neighborhood}")
                                         matched = True
                                         break
+                                    elif known_lower in google_neighborhood_lower or google_neighborhood_lower in known_lower:
+                                        # Use substring match if it's a significant portion (>= 4 chars)
+                                        # This handles cases like "Lower East Side" matching "Lower East Side, Manhattan"
+                                        if len(known_neighborhood) >= 4:
+                                            google_maps_neighborhood = known_neighborhood
+                                            print(f"   📍 Google Maps matched to known neighborhood: {google_maps_neighborhood}")
+                                            matched = True
+                                            break
 
-                            # If no match found, keep the original neighborhood name (might be valid but not in our list)
-                            if not matched:
-                                print(f"   ⚠️ Google Maps neighborhood '{google_maps_neighborhood}' not in known list, keeping as-is")
+                                # If no match found, keep the original neighborhood name (might be valid but not in our list)
+                                if not matched:
+                                    print(f"   ⚠️ Google Maps neighborhood '{google_maps_neighborhood}' not in known list, keeping as-is")
                     else:
                         # Handle non-OK API response statuses
                         # Handle non-OK API response statuses
@@ -4759,14 +4777,44 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             latitude=latitude,
             longitude=longitude
         )
-        
+
         # Use strict neighborhood if available, otherwise fall back to extracted neighborhood
         final_neighborhood_to_use = strict_neighborhood if strict_neighborhood != "Unknown" else final_neighborhood
-        
+
+        # CRITICAL FIX: If still no neighborhood found, try to extract from address one more time
+        if not final_neighborhood_to_use or final_neighborhood_to_use == "Unknown":
+            if address:
+                # Last attempt: Try to find any borough or well-known area in the address
+                address_lower = address.lower()
+                # Check for boroughs
+                if "manhattan" in address_lower or "new york, ny" in address_lower:
+                    final_neighborhood_to_use = "Manhattan"
+                elif "brooklyn" in address_lower:
+                    final_neighborhood_to_use = "Brooklyn"
+                elif "queens" in address_lower:
+                    final_neighborhood_to_use = "Queens"
+                elif "bronx" in address_lower:
+                    final_neighborhood_to_use = "Bronx"
+                elif "staten island" in address_lower:
+                    final_neighborhood_to_use = "Staten Island"
+                else:
+                    # If still no neighborhood, use "NYC" as final fallback
+                    final_neighborhood_to_use = "NYC"
+                print(f"   ⚠️ Using final fallback neighborhood for {display_name}: {final_neighborhood_to_use}")
+            else:
+                # No address available, use "NYC" as absolute fallback
+                final_neighborhood_to_use = "NYC"
+                print(f"   ⚠️ No address available for {display_name}, using 'NYC' as neighborhood")
+
+        # CRITICAL FIX: Ensure photo is set to placeholder if missing or empty
+        if not photo or photo.strip() == "":
+            photo = "https://via.placeholder.com/600x400?text=No+Photo"
+            print(f"   ⚠️ No photo found for {display_name}, using placeholder")
+
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
-            "photo_url": photo or "https://via.placeholder.com/600x400?text=No+Photo",
+            "photo_url": photo,
             "description": intel.get("summary", ""),
             "vibe_tags": vibe_tags,  # Use updated vibe_tags with Google Maps cuisine
             "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly

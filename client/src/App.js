@@ -92,7 +92,6 @@ function App() {
   const [expandedSavedPlaceIndex, setExpandedSavedPlaceIndex] = useState(null); // For expanded place details in saved lists
   const [editingNoteForPlace, setEditingNoteForPlace] = useState(null); // Which place's note is being edited: {listName, placeIndex}
   const [noteValue, setNoteValue] = useState(""); // Current note value being edited
-  const [selectedVibeFilter, setSelectedVibeFilter] = useState(null); // Currently selected vibe tag for filtering
   const [userAddedTags, setUserAddedTags] = useState({}); // { placeName: [array of user-added tags] }
   const [activeHistoryMenu, setActiveHistoryMenu] = useState(null); // For history item menus: index or null
   const [showClearHistoryMenu, setShowClearHistoryMenu] = useState(false); // For clear history menu
@@ -778,48 +777,6 @@ function App() {
   };
 
   // ===== Vibe Tags Functions =====
-  const getAllVibeTags = () => {
-    const tags = new Set();
-    
-    // From current extraction result
-    if (result?.places_extracted) {
-      result.places_extracted.forEach(place => {
-        if (place.vibe_tags && Array.isArray(place.vibe_tags)) {
-          place.vibe_tags.forEach(tag => tags.add(tag));
-        }
-        // Also include user-added tags
-        if (userAddedTags[place.name]) {
-          userAddedTags[place.name].forEach(tag => tags.add(tag));
-        }
-      });
-    }
-    
-    // From saved places
-    Object.values(savedPlaces).forEach(list => {
-      list.forEach(place => {
-        if (place.vibe_tags && Array.isArray(place.vibe_tags)) {
-          place.vibe_tags.forEach(tag => tags.add(tag));
-        }
-        if (userAddedTags[place.name]) {
-          userAddedTags[place.name].forEach(tag => tags.add(tag));
-        }
-      });
-    });
-    
-    return Array.from(tags).sort();
-  };
-
-  const getFilteredPlaces = (places) => {
-    if (!selectedVibeFilter || !places) return places;
-    
-    return places.filter(place => {
-      const placeTags = [
-        ...(place.vibe_tags || []),
-        ...(userAddedTags[place.name] || [])
-      ];
-      return placeTags.includes(selectedVibeFilter);
-    });
-  };
 
   const handleAddTag = (placeName, tag) => {
     if (!tag.trim()) return;
@@ -1075,41 +1032,11 @@ function App() {
                   </>
                 )}
 
-                {/* Vibe Tags Filter Bar - Only show for saved/history views, not initial extraction */}
-                {result && result.places_extracted && result.places_extracted.length > 0 && getAllVibeTags().length > 0 && (viewingHistory || selectedList) && (
-                  <div className="vibe-filter-bar">
-                    <div className="vibe-filter-header">
-                      <span className="filter-label">Filter by vibe:</span>
-                      {selectedVibeFilter && (
-                        <button 
-                          className="clear-filter-btn"
-                          onClick={() => setSelectedVibeFilter(null)}
-                        >
-                          Clear filter
-                        </button>
-                      )}
-                    </div>
-                    <div className="vibe-filter-tags">
-                      {getAllVibeTags().map((tag, idx) => (
-                        <button
-                          key={idx}
-                          className={`vibe-filter-chip ${selectedVibeFilter === tag ? 'active' : ''}`}
-                          onClick={() => setSelectedVibeFilter(
-                            selectedVibeFilter === tag ? null : tag
-                          )}
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {result.places_extracted && result.places_extracted.length > 0 && (
                   <div
                     className="results-list"
                   >
-                    {getFilteredPlaces(result.places_extracted).map((p, i) => {
+                    {result.places_extracted.map((p, i) => {
                     const isExpanded = expandedIndex === i;
                     const shortDesc =
                       p.summary && p.summary.length > 180
@@ -1199,7 +1126,7 @@ function App() {
                               <span style={{ marginRight: '6px', fontSize: '16px' }}>
                                 {getNeighborhoodEmoji(p.neighborhood)}
                               </span>
-                              {p.neighborhood || (p.address ? p.address.split(',')[0] : 'Location')}
+                              {p.neighborhood || p.address?.split(',')[0] || 'NYC'}
                               {p.price && (
                                 <span style={{ marginLeft: '8px', color: '#a0c4a0', fontWeight: '500' }}>
                                   {p.price}
@@ -1318,12 +1245,6 @@ function App() {
                                 </div>
                               </details>
                             </div>
-                          )}
-                          {/* Creator insights (if any) */}
-                          {p.creator_insights && (
-                            <p className="creator-insights">
-                              {p.creator_insights}
-                            </p>
                           )}
                           {p.maps_url && (
                             <a
@@ -1660,39 +1581,8 @@ function App() {
                     )}
                   </div>
                 </div>
-                
-                {/* Vibe Tags Filter Bar for Saved Lists */}
-                {selectedList && savedPlaces[selectedList] && savedPlaces[selectedList].length > 0 && getAllVibeTags().length > 0 && (
-                  <div className="vibe-filter-bar">
-                    <div className="vibe-filter-header">
-                      <span className="filter-label">Filter by vibe:</span>
-                      {selectedVibeFilter && (
-                        <button 
-                          className="clear-filter-btn"
-                          onClick={() => setSelectedVibeFilter(null)}
-                        >
-                          Clear filter
-                        </button>
-                      )}
-                    </div>
-                    <div className="vibe-filter-tags">
-                      {getAllVibeTags().map((tag, idx) => (
-                        <button
-                          key={idx}
-                          className={`vibe-filter-chip ${selectedVibeFilter === tag ? 'active' : ''}`}
-                          onClick={() => setSelectedVibeFilter(
-                            selectedVibeFilter === tag ? null : tag
-                          )}
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
                 <div className="saved-list-places">
-                    {getFilteredPlaces(savedPlaces[selectedList] || []).map((p, i) => {
+                    {(savedPlaces[selectedList] || []).map((p, i) => {
                       const isExpanded = expandedSavedPlaceIndex === i;
                       // Get first sentence or first 120 characters as one-line summary
                       const oneLineSummary = p.summary 
@@ -1735,7 +1625,7 @@ function App() {
                                 <span style={{ marginRight: '6px', fontSize: '16px' }}>
                                   {getNeighborhoodEmoji(p.neighborhood)}
                                 </span>
-                                {p.neighborhood || (p.address ? p.address.split(',')[0] : 'Location')}
+                                {p.neighborhood || p.address?.split(',')[0] || 'NYC'}
                                 {p.price && (
                                   <span style={{ marginLeft: '8px', color: '#a0c4a0', fontWeight: '500' }}>
                                     {p.price}
