@@ -99,7 +99,8 @@ function App() {
   const [selectedHistoryItems, setSelectedHistoryItems] = useState(new Set()); // Set of selected history item indices
   const [savedListsSelectionMode, setSavedListsSelectionMode] = useState(false); // Multi-select mode for saved lists
   const [selectedSavedLists, setSelectedSavedLists] = useState(new Set()); // Set of selected saved list names
-  const [showClearSavedMenu, setShowClearSavedMenu] = useState(false); // For clear saved menu
+  const [showClearSavedMenu, setShowClearSavedMenu] = useState(false);
+  const [showDebugInfo, setShowDebugInfo] = useState(false); // Toggle for showing OCR text and transcript // For clear saved menu
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -1004,7 +1005,88 @@ function App() {
                     </a>
                   </div>
                 )}
-
+                
+                {/* Debug Info Toggle */}
+                <div style={{ marginTop: "16px", marginBottom: "16px", display: "flex", alignItems: "center", gap: "12px" }}>
+                  <button
+                    onClick={() => setShowDebugInfo(!showDebugInfo)}
+                    style={{
+                      background: showDebugInfo ? "rgba(63, 71, 255, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: "8px",
+                      color: "rgba(255, 255, 255, 0.8)",
+                      padding: "8px 16px",
+                      cursor: "pointer",
+                      fontSize: "0.9rem",
+                      transition: "all 0.2s ease"
+                    }}
+                  >
+                    {showDebugInfo ? "🔍 Hide Debug Info" : "🔍 Show Debug Info"}
+                  </button>
+                </div>
+                
+                {/* Debug Info Display */}
+                {showDebugInfo && (
+                  <div style={{
+                    background: "rgba(0, 0, 0, 0.3)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: "12px",
+                    padding: "20px",
+                    marginBottom: "24px",
+                    fontFamily: "monospace",
+                    fontSize: "0.85rem"
+                  }}>
+                    <h3 style={{ marginTop: 0, marginBottom: "16px", color: "rgba(255, 255, 255, 0.9)" }}>
+                      Debug Information (Testing Only)
+                    </h3>
+                    
+                    {result.transcript && (
+                      <div style={{ marginBottom: "20px" }}>
+                        <h4 style={{ color: "rgba(255, 255, 255, 0.7)", marginBottom: "8px", fontSize: "0.9rem" }}>
+                          📝 Transcript ({result.transcript.length} chars):
+                        </h4>
+                        <div style={{
+                          background: "rgba(0, 0, 0, 0.4)",
+                          padding: "12px",
+                          borderRadius: "8px",
+                          color: "rgba(255, 255, 255, 0.8)",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          maxHeight: "200px",
+                          overflowY: "auto"
+                        }}>
+                          {result.transcript || "(No transcript available)"}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {result.ocr_text && (
+                      <div style={{ marginBottom: "20px" }}>
+                        <h4 style={{ color: "rgba(255, 255, 255, 0.7)", marginBottom: "8px", fontSize: "0.9rem" }}>
+                          📸 OCR Text ({result.ocr_text.length} chars):
+                        </h4>
+                        <div style={{
+                          background: "rgba(0, 0, 0, 0.4)",
+                          padding: "12px",
+                          borderRadius: "8px",
+                          color: "rgba(255, 255, 255, 0.8)",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          maxHeight: "300px",
+                          overflowY: "auto"
+                        }}>
+                          {result.ocr_text || "(No OCR text available)"}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!result.transcript && !result.ocr_text && (
+                      <div style={{ color: "rgba(255, 255, 255, 0.5)", fontStyle: "italic" }}>
+                        No transcript or OCR text available for this extraction.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {result.places_extracted?.length === 0 && (
                   <div style={{ textAlign: "center", padding: "40px", color: "#888" }}>

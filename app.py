@@ -6751,7 +6751,9 @@ def extract_api():
                 "preview_image": photo_urls[0] if photo_urls else None,  # NEW: Include first image as preview
                 "source_type": "photo_slideshow",  # NEW: Identify source type
                 "photo_urls": photo_urls,  # Include photo URLs in response
-                "caption_extracted": caption  # Include actual caption for debugging
+                "caption_extracted": caption,  # Include actual caption for debugging
+                "ocr_text": ocr_text,  # Include OCR text for debugging/testing
+                "transcript": transcript  # Include transcript (empty for photo posts)
             }
             
             # Enrich places if any were found
@@ -7092,6 +7094,8 @@ def extract_api():
                     "context_summary": context_title or caption or "No venues found",
                     "places_extracted": [],
                     "extraction_id": extraction_id,  # Add extraction_id for status polling
+                    "ocr_text": ocr_text,  # Include OCR text for debugging/testing
+                    "transcript": transcript  # Include transcript for debugging/testing
                 }
                 
                 if venues:
@@ -7304,6 +7308,8 @@ def extract_api():
                 "error": error_msg,
                 "warning": warning_msg if warning_msg else None,
                 "extraction_id": extraction_id,  # Add extraction_id for status polling
+                "ocr_text": ocr_text,  # Include OCR text for debugging/testing
+                "transcript": transcript,  # Include transcript for debugging/testing
                 "debug_info": {
                     "has_content": has_content,
                     "openai_key_set": bool(api_key),
@@ -7336,6 +7342,8 @@ def extract_api():
             "context_summary": context_title or caption or "TikTok Venues",
             "places_extracted": places_extracted,
             "extraction_id": extraction_id,  # Add extraction_id for status polling
+            "ocr_text": ocr_text,  # Include OCR text for debugging/testing
+            "transcript": transcript  # Include transcript for debugging/testing
         }
 
         if vid:
@@ -7374,7 +7382,9 @@ def extract_api():
                     "context_summary": context_title or html_caption or "TikTok Photo Post",
                     "places_extracted": [],
                     "photo_urls": [],
-                    "caption_extracted": html_caption  # Include actual caption for debugging
+                    "caption_extracted": html_caption,  # Include actual caption for debugging
+                    "ocr_text": ocr_text,  # Include OCR text for debugging/testing
+                    "transcript": transcript  # Include transcript for debugging/testing
                 }
                 
                 if venues:
