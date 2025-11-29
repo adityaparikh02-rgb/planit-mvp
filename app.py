@@ -5639,12 +5639,12 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         merged_place["_slide_order"] = venue_to_order[venue_name.lower()]
                     else:
                         merged_place["_slide_order"] = 999  # Default to end if no slide info
-                places_extracted.append(merged_place)
+                    places_extracted.append(merged_place)
                     if place_id:
                         seen_place_ids[place_id] = merged_place
                     if place_name_lower:
                         seen_venue_names[place_name_lower] = merged_place
-                if len(venues) > 1:
+                    if len(venues) > 1:
                         print(f"✅ Enriched: {venue_name} (slide order: {merged_place.get('_slide_order', 'unknown')})")
                 else:
                     print(f"⏭️  Skipped duplicate: {venue_name}")
@@ -5674,7 +5674,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower 
                                   for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
-                places_extracted.append(merged_place)
+                    places_extracted.append(merged_place)
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
