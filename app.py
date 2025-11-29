@@ -4069,15 +4069,30 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             ]
             is_general_tip = any(re.search(pattern, sentence_lower) for pattern in general_tip_patterns)
             
+            # CRITICAL: For "what to get" items, ONLY include sentences that explicitly mention the venue
+            # Don't include general tips that mention food items - those can bleed between venues
+            # Only include general tips that are truly general (pricing, reservations, etc.) not food items
+            
+            # Check if sentence mentions food items (likely to bleed)
+            food_item_patterns = [
+                r'\b(fried chicken|pizza|pasta|burger|sandwich|sushi|taco|burrito|wings|fries|salad|soup|steak|fish|chicken|beef|pork|lamb|shrimp|crab|lobster|oyster|mussel|clam|scallop|salmon|tuna|rice|noodle|dumpling|roll|bowl|wrap|tart|cake|pie|ice cream|dessert)\b',
+                r'\b(cheese|gruyere|fritter|oyster|kombucha|carpaccio|wagyu|uni|mussel|vada pav|dosa)\b'
+            ]
+            mentions_food_items = any(re.search(pattern, sentence_lower) for pattern in food_item_patterns)
+            
             # Include if:
-            # 1. Mentions this venue AND doesn't mention other venues, OR
-            # 2. Is a general tip AND doesn't mention other venues
-            if (mentions_this and not mentions_other) or (is_general_tip and not mentions_other):
+            # 1. Mentions this venue AND doesn't mention other venues (always include)
+            # 2. Is a general tip AND doesn't mention other venues AND doesn't mention food items (to prevent bleeding)
+            if mentions_this and not mentions_other:
                 filtered_sentences.append(sentence)
-                if mentions_this:
-                    print(f"      ✓ Kept (mentions venue): '{sentence[:80]}...'")
-                else:
-                    print(f"      ✓ Kept (general tip): '{sentence[:80]}...'")
+                print(f"      ✓ Kept (mentions venue): '{sentence[:80]}...'")
+            elif is_general_tip and not mentions_other and not mentions_food_items:
+                # Only include general tips that don't mention food items (to prevent item bleeding)
+                filtered_sentences.append(sentence)
+                print(f"      ✓ Kept (general tip, no food items): '{sentence[:80]}...'")
+            elif is_general_tip and mentions_food_items:
+                # Exclude general tips that mention food items - they can bleed
+                print(f"      ✗ Dropped (general tip with food items - prevents bleeding): '{sentence[:80]}...'")
             # If both mentioned, be EXTREMELY strict - exclude to prevent bleeding unless this venue is clearly the ONLY focus
             elif mentions_this and mentions_other:
                 this_pos = sentence_lower.find(name_lower)
@@ -4149,13 +4164,14 @@ CRITICAL: Only extract information that is clearly about "{name}".
 - Only use information that directly relates to "{name}"
 - IMPORTANT: If this is from a slideshow, ONLY use information from the slide(s) that mention "{name}". Do NOT aggregate information from other slides about different venues.
 - CRITICAL FOR "must_try": Only include menu items/dishes that are EXPLICITLY mentioned for "{name}". If an item is mentioned for another venue (even in the same sentence), do NOT include it. Example: If context says "PB&J matcha latte at caffe paradiso" and you're analyzing "The Elk", do NOT include "PB&J matcha latte" even if it appears in the context.
-- CRITICAL FOR COMPLETENESS: Extract ALL dishes/items mentioned for "{name}" - do not skip any. If you see a list like "tostada de jaiba, tostada de pulpo, razor clams, seared scallop", extract ALL items, not just some of them. Be thorough and complete - capture every dish/item the creator mentioned.
+- CRITICAL FOR "must_try": If an item appears in the context but is NOT explicitly associated with "{name}" (e.g., it appears in a list but the venue name isn't mentioned nearby), do NOT include it. Only extract items that are clearly linked to "{name}" in the context.
+- CRITICAL FOR COMPLETENESS: Extract ALL dishes/items mentioned for "{name}" - do not skip any. If you see a list like "tostada de jaiba, tostada de pulpo, razor clams, seared scallop", extract ALL items, not just some of them. Be thorough and complete - capture every dish/item the creator mentioned FOR THIS SPECIFIC VENUE.
 
 {{
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar').",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
-  "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing ALL SPECIFIC dishes, drinks, or menu items mentioned by the creator. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). CRITICAL: Extract EVERY dish/item mentioned - do not skip any. If the creator mentions multiple dishes (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. CRITICAL: Only include items that are EXPLICITLY associated with {name} in the context. If an item appears but is associated with a different venue name in the same context, do NOT include it. IMPORTANT: Be thorough - if you see a list of dishes, extract ALL of them, not just a subset.",
+  "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing ALL SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE ONLY. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. But ONLY extract items that are clearly FOR {name}.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, or helpful advice mentioned in the context. Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
@@ -4193,6 +4209,12 @@ Context (filtered to only include mentions of "{name}"):
                 must_try_value = ""
         else:
             must_try_value = str(must_try_raw).strip() if must_try_raw else ""
+        
+        # Post-processing: Remove items that appear incomplete or suspicious
+        # If must_try_value starts with "Try the and" or similar incomplete patterns, it's likely bleeding
+        if must_try_value and re.search(r'^(try|get|order)\s+(the|a|an)\s+and\s+', must_try_value.lower()):
+            print(f"   ⚠️ Detected incomplete 'must_try' (likely bleeding): '{must_try_value}' - clearing it")
+            must_try_value = ""
         
         # Clean up formatting: if it's still space-separated (old format), convert to sentence
         # Detect space-separated items and intelligently split them into proper items
