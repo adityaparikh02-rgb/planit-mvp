@@ -2859,6 +2859,130 @@ def get_photo_url(name, place_id=None, photos=None):
     return None
 
 # ─────────────────────────────
+# Organize Slides by Venue
+# ─────────────────────────────
+def organize_slides_by_venue(ocr_text):
+    """
+    Organize OCR text from slides by venue attribution.
+
+    Rules:
+    1. If a slide explicitly mentions a place name, create new Place section
+    2. If next slide has NO place but adds context -> attach to most recent place
+    3. If context slides appear BEFORE place name -> attach to place that appears at end
+    4. Preserve chronological order within each place group
+
+    Args:
+        ocr_text: OCR text with "SLIDE N:" markers
+
+    Returns:
+        dict: {place_name: ["Page X: text", "Page Y: text", ...]}
+    """
+    if not ocr_text or 'SLIDE' not in ocr_text.upper():
+        return {}
+
+    # Parse slides
+    slide_dict = _parse_slide_text(ocr_text)
+    if len(slide_dict) < 2:
+        return {}  # Not a slideshow
+
+    print(f"\n📚 Organizing {len(slide_dict)} slides by venue attribution...")
+
+    # Step 1: Detect place names in each slide using GPT
+    slide_to_places = {}
+    for slide_key in sorted(slide_dict.keys()):
+        slide_text = slide_dict[slide_key]
+
+        if not slide_text or len(slide_text.strip()) < 5:
+            continue
+
+        # Use GPT to extract place names from this slide
+        try:
+            client = get_openai_client()
+            prompt = f"""Extract ONLY the place/venue name from this slide text.
+If multiple places mentioned, list them (one per line).
+If NO places mentioned, output: (none)
+
+Slide text:
+{slide_text[:500]}
+
+Place names only:"""
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                timeout=10
+            )
+            result = response.choices[0].message.content.strip()
+
+            places = []
+            for line in result.split('\n'):
+                line = line.strip()
+                if not line or line.lower() == '(none)':
+                    continue
+                # Remove bullets/numbers
+                line = re.sub(r"^[\d\-\•\.\s]+", "", line).strip()
+                if 2 < len(line) < 60:
+                    places.append(line)
+
+            if places:
+                slide_to_places[slide_key] = places
+                print(f"   {slide_key}: {places}")
+            else:
+                slide_to_places[slide_key] = []
+                print(f"   {slide_key}: (context only - no place name)")
+
+        except Exception as e:
+            print(f"   ⚠️ Failed to analyze {slide_key}: {e}")
+            slide_to_places[slide_key] = []
+
+    # Step 2: Apply attribution rules
+    place_to_slides = {}
+    current_place = None
+    context_buffer = []  # Slides without place names
+
+    slides_sorted = sorted(slide_dict.items())
+
+    for slide_key, slide_text in slides_sorted:
+        places_in_slide = slide_to_places.get(slide_key, [])
+
+        if places_in_slide:
+            # Rule 1: Explicit place mention -> new Place section
+            for place in places_in_slide:
+                if place not in place_to_slides:
+                    place_to_slides[place] = []
+
+                # If we have buffered context slides, attach them here
+                # (Rule 3: context slides before place name)
+                if context_buffer and not current_place:
+                    for ctx_key, ctx_text in context_buffer:
+                        place_to_slides[place].append(f"{ctx_key}: {ctx_text}")
+                    context_buffer = []
+
+                # Add current slide
+                place_to_slides[place].append(f"{slide_key}: {slide_text}")
+                current_place = place
+        else:
+            # Rule 2: No place name -> context slide
+            if current_place:
+                # Attach to most recent place
+                place_to_slides[current_place].append(f"{slide_key}: {slide_text}")
+            else:
+                # Buffer for next place (Rule 3)
+                context_buffer.append((slide_key, slide_text))
+
+    # Handle any remaining context buffer (no place found after them)
+    if context_buffer:
+        place_to_slides["Unknown / Context"] = [f"{key}: {text}" for key, text in context_buffer]
+
+    # Log results
+    print(f"\n📖 Attribution complete:")
+    for place, slides in place_to_slides.items():
+        print(f"   {place}: {len(slides)} slide(s)")
+
+    return place_to_slides
+
+# ─────────────────────────────
 # GPT: Extract Venues + Summary
 # ─────────────────────────────
 def _is_ocr_garbled(text):
@@ -3064,9 +3188,24 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     print(f"   - Transcript: {len(transcript)} chars - {transcript[:100] if transcript else 'None'}...")
     print(f"   - OCR: {len(ocr_text)} chars - {ocr_text[:100] if ocr_text else 'None'}...")
     print(f"   - Comments: {len(comments)} chars - {comments[:100] if comments else 'None'}...")
-    
-    # If we have slides, extract per-slide to maintain context
+
+    # NEW: Organize slides by venue BEFORE extraction
+    organized_context = ""
     if is_slideshow:
+        place_to_slides_map = organize_slides_by_venue(ocr_text)
+        if place_to_slides_map:
+            # Format as book-style organized text
+            organized_parts = []
+            for place_name, slide_texts in place_to_slides_map.items():
+                organized_parts.append(f"\n{place_name}:")
+                for slide_text in slide_texts:
+                    organized_parts.append(f"  - {slide_text}")
+            organized_context = "\n".join(organized_parts)
+            print(f"\n📖 Organized context ready ({len(organized_context)} chars)")
+            print(f"   Using organized format for GPT extraction")
+
+    # If we have slides, extract per-slide to maintain context
+    if is_slideshow and not organized_context:
         print(f"\n🔄 Extracting places per-slide (slide-aware mode)...")
         all_venues_per_slide = {}
         overall_summary = ""
@@ -3273,7 +3412,72 @@ If no venues found, output: (none)
                 venue_to_slide[v_dict["name"]] = v_dict["source_slide"]
 
         return unique_venues, overall_summary, venue_to_slide, venue_to_context
-    
+
+    # NEW: Organized slideshow extraction using book-style format
+    elif organized_context:
+        print(f"\n📚 Using organized slideshow extraction...")
+
+        # Send organized context to GPT for extraction
+        organized_prompt = f"""You are analyzing a TikTok photo slideshow where slides have been organized by venue.
+
+Each venue section shows:
+- The venue name
+- All slides mentioning that venue (with page numbers)
+- Context like descriptions, menu items, recommendations
+
+Extract:
+1. All venue names
+2. For each venue, the "what to get" items mentioned in its slides
+
+Organized slideshow content:
+{organized_context[:4000]}
+
+Caption: {caption if caption else '(none)'}
+
+Output format (one venue per line with optional dish):
+VenueName1|dish item
+VenueName2|another dish
+VenueName3|
+...
+
+If no dish mentioned for a venue, leave it blank after the |."""
+
+        try:
+            client = get_openai_client()
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": organized_prompt}],
+                temperature=0.2,
+                timeout=30
+            )
+            result = response.choices[0].message.content.strip()
+
+            # Parse venues and dishes
+            venues = []
+            venue_to_context = {}
+            for line in result.split('\n'):
+                line = line.strip()
+                if not line or '|' not in line:
+                    continue
+                parts = line.split('|', 1)
+                venue_name = parts[0].strip()
+                dish = parts[1].strip() if len(parts) > 1 else ""
+
+                if 2 < len(venue_name) < 60:
+                    venues.append(venue_name)
+                    # Store dish info in context
+                    if dish:
+                        venue_to_context[venue_name] = f"What to get: {dish}"
+
+            summary = caption[:100] if caption else "Organized Photo Slideshow"
+            print(f"\n📚 Organized extraction complete: {len(venues)} venues")
+
+            return venues, summary, {}, venue_to_context
+
+        except Exception as e:
+            print(f"❌ Organized extraction failed: {e}")
+            # Fall through to non-slideshow extraction
+
     # Non-slideshow extraction (fallback to combined text)
     combined_text = "\n".join(x for x in [ocr_text, transcript, caption, comments] if x)
     
