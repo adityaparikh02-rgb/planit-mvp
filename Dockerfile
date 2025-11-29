@@ -58,5 +58,8 @@ COPY Procfile .
 EXPOSE 10000
 
 # Use gunicorn to run the app
-CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 --access-logfile - --error-logfile -
+# --preload: Load app code before forking workers (faster startup, better for health checks)
+# --graceful-timeout: Time to wait for workers to finish requests before killing them
+# --timeout: Worker timeout (120s for long-running TikTok extractions)
+CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 --graceful-timeout 30 --preload --access-logfile - --error-logfile -
 

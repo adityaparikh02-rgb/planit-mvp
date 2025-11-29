@@ -24,7 +24,6 @@ os.environ["YT_DLP_NO_WARNINGS"] = "1"
 
 print("✅ Proxy env cleaned. Ready to import dependencies.")
 
-
 # ─────────────────────────────
 # Now safe to import everything else
 # ─────────────────────────────
@@ -34,6 +33,10 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+
+# Track initialization start time (after datetime import)
+_app_init_start_time = datetime.now()
+print(f"🚀 Starting app initialization at {_app_init_start_time}")
 import sqlite3
 from PIL import Image
 from moviepy.editor import VideoFileClip
@@ -91,6 +94,26 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'your-secret-key-chan
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=30)
 jwt = JWTManager(app)
 
+# ─────────────────────────────
+# App Readiness Tracking
+# ─────────────────────────────
+# Track app initialization status for health checks
+_app_ready = False
+_app_init_start_time = None
+
+def mark_app_ready():
+    """Mark the app as ready to accept requests."""
+    global _app_ready
+    _app_ready = True
+    init_time = None
+    if _app_init_start_time:
+        init_time = (datetime.now() - _app_init_start_time).total_seconds()
+    print(f"✅ App marked as ready (initialization took {init_time:.2f}s)" if init_time else "✅ App marked as ready")
+
+def is_app_ready():
+    """Check if app is ready to accept requests."""
+    return _app_ready
+
 # Allow all origins for CORS - needed for frontend to connect
 CORS(app, resources={
     r"/api/*": {
@@ -105,6 +128,10 @@ CORS(app, resources={
 # ─────────────────────────────
 from threading import Lock
 import uuid
+
+# Mark app as ready after critical imports are complete
+print("✅ Critical modules imported successfully")
+mark_app_ready()
 
 # In-memory storage for extraction status updates
 extraction_status = {}
@@ -6556,8 +6583,20 @@ def extract_photo_post(url):
 
 @app.route("/api/healthz", methods=["GET"])
 def healthz():
-    """Health check endpoint with environment variable diagnostics."""
+    """
+    Detailed health check endpoint with environment variable diagnostics.
+    This endpoint does API connectivity tests but should not block health checks.
+    API test failures don't fail the health check - they're informational only.
+    """
     try:
+        # First check if app is ready
+        if not is_app_ready():
+            return jsonify({
+                "status": "initializing",
+                "service": "planit-backend",
+                "message": "App is still initializing"
+            }), 503
+        
         # Check critical environment variables
         openai_key_set = bool(os.getenv("OPENAI_API_KEY"))
         google_key_set = bool(os.getenv("GOOGLE_API_KEY"))
@@ -6584,23 +6623,24 @@ def healthz():
         except ImportError:
             pass
         
-        # Test OpenAI API connectivity if key is set
+        # Test OpenAI API connectivity if key is set (with timeout protection)
         openai_test = None
         if openai_key_set:
             try:
                 client = get_openai_client()
-                # Quick test call
+                # Quick test call with short timeout - don't block health check
                 test_response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": "Say 'ok'"}],
                     max_tokens=5,
-                    timeout=5
+                    timeout=3  # Reduced from 5 to 3 seconds
                 )
                 openai_test = "success" if test_response.choices else "failed"
             except Exception as e:
+                # Don't fail health check if API test fails - just report it
                 openai_test = f"error: {str(e)[:100]}"
         
-        # Test Google Places API connectivity if key is set
+        # Test Google Places API connectivity if key is set (with timeout protection)
         google_api_test = None
         if google_key_set:
             try:
@@ -6608,6 +6648,7 @@ def healthz():
                 # Using "ChIJN1t_tDeuEmsRUsoyG83frY4" (Google's NYC office) as test
                 test_place_id = "ChIJN1t_tDeuEmsRUsoyG83frY4"
                 import requests
+                # Reduced timeout to prevent blocking health checks
                 r = requests.get(
                     "https://maps.googleapis.com/maps/api/place/details/json",
                     params={
@@ -6615,7 +6656,7 @@ def healthz():
                         "fields": "name",
                         "key": GOOGLE_API_KEY
                     },
-                    timeout=5
+                    timeout=3  # Reduced from 5 to 3 seconds
                 )
                 r.raise_for_status()
                 test_data = r.json()
@@ -6631,13 +6672,20 @@ def healthz():
                 else:
                     error_msg = test_data.get("error_message", "Unknown error")
                     google_api_test = f"{test_status}: {error_msg[:100]}"
+            except requests.exceptions.Timeout:
+                # Timeout is OK - don't fail health check
+                google_api_test = "timeout: API test timed out (non-critical)"
             except requests.exceptions.RequestException as e:
+                # Network errors are OK - don't fail health check
                 google_api_test = f"network_error: {str(e)[:100]}"
             except Exception as e:
+                # Any other error is OK - don't fail health check
                 google_api_test = f"error: {str(e)[:100]}"
         
+        # Always return 200 OK - API test failures are informational, not health check failures
         return jsonify({
             "status": "ok",
+            "ready": True,
             "openai_api_key_set": openai_key_set,
             "google_api_key_set": google_key_set,
             "openai_api_test": openai_test,
@@ -6647,12 +6695,15 @@ def healthz():
             "modules_available": modules_available,
         }), 200
     except Exception as e:
+        # Log error but return 200 - don't fail health check due to diagnostics errors
+        print(f"⚠️ Health check diagnostics error: {e}")
         import traceback
         return jsonify({
-            "status": "error", 
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }), 500
+            "status": "ok",
+            "ready": True,
+            "message": "Health check diagnostics failed but app is running",
+            "error": str(e)[:200]
+        }), 200
 
 @app.route("/api/status/<extraction_id>", methods=["GET"])
 def get_extraction_status(extraction_id):
@@ -7620,11 +7671,33 @@ def cache_stats():
 
 @app.route("/healthz", methods=["GET"])
 def health_check():
+    """
+    Lightweight health check endpoint for Render.com.
+    Must be fast and non-blocking - no API calls or heavy operations.
+    """
     try:
+        # Check if app is ready (initialized)
+        if not is_app_ready():
+            return jsonify({
+                "status": "initializing",
+                "service": "planit-backend",
+                "message": "App is still initializing"
+            }), 503  # Service Unavailable - not ready yet
+        
         # Basic health check - just verify app is running
-        return jsonify({"status": "ok", "service": "planit-backend"}), 200
+        return jsonify({
+            "status": "ok",
+            "service": "planit-backend",
+            "ready": True
+        }), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        # Log error but don't crash - return error status
+        print(f"⚠️ Health check error: {e}")
+        return jsonify({
+            "status": "error",
+            "service": "planit-backend",
+            "message": str(e)[:200]  # Limit message length
+        }), 500
 
 # ─────────────────────────────
 # Run Server
