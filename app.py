@@ -2472,6 +2472,8 @@ def infer_nyc_neighborhood_from_address(address, venue_name=""):
     Returns:
         Neighborhood string from allowed list, or None if can't determine
     """
+    import re  # Import re at function level
+    
     if not address:
         return None
 
@@ -5417,10 +5419,10 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 # Check for duplicates before adding
                 place_name_lower = venue_name.lower().strip()
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower 
-                                  for seen in seen_venue_names if len(place_name_lower) > 4 and len(seen) > 4)
+                                  for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
                     places_extracted.append(merged_place)
-                    seen_venue_names.add(venue_name)
+                    seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
     nyc_places = []
