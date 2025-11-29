@@ -3594,7 +3594,11 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • If OCR text is mostly garbled (lots of special characters, random letters), rely MORE on the caption and transcript.
    • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's").
    • Do NOT extract random words from garbled OCR text (e.g., "Danny's" or "Ballerina" if they don't appear in context).
+   • CRITICAL: Do NOT extract single words or short phrases that appear randomly in slides unless they're clearly venue names.
+     Examples of things to EXCLUDE: "KWORK", "Fidelity", "DIPWAY ARCH" (unless they're clearly mentioned as venues with context like "restaurant" or "bar").
+     Only extract names that appear with clear context indicating they're restaurants/bars/cafes (e.g., "la tete d'or by Daniel").
    • CRITICAL: If you see garbled text like "CTU REN" near context about "cactus" items, it might be "CACTUS WREN" - extract it.
+   • IMPORTANT: If a venue name appears multiple times in garbled form (e.g., "LA TETE DOR" appears 3 times), extract it ONCE as the most likely correct version (e.g., "la tete d'or").
    • If OCR text is too garbled or unclear, prioritize the caption and transcript for venue names.
    • Do NOT combine neighborhood names with generic terms to create venue names (e.g., don't extract "Soho Wine Bar" from "wine bar in Soho").
    • CRITICAL: Do NOT extract venues that are mentioned as "team behind", "created by", "made by", "founded by", or similar contexts. 
@@ -3708,6 +3712,21 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
             if re.search(r"^<.*>$|^venue\s*\d+$|^example|^test", v_lower):
                 print(f"⚠️ Skipping placeholder-like venue: {v}")
                 continue
+            # Filter out venues that don't look like real venue names
+            # Exclude single words that are too generic or don't look like venue names
+            if len(v.split()) == 1 and len(v) <= 5:
+                # Single short words like "KWORK", "Fidelity" are likely not venues
+                # Unless they're common venue name patterns
+                if not re.search(r'^(the|le|la|les|el|los|las)\s+', v_lower) and v_lower not in ['bar', 'cafe', 'pub']:
+                    print(f"⚠️ Skipping single short word that doesn't look like venue: {v}")
+                    continue
+            # Exclude all-caps single words that are likely OCR errors (unless they're acronyms)
+            if v.isupper() and len(v.split()) == 1 and len(v) <= 6:
+                # Check if it's a known acronym or if it appears with context
+                known_acronyms = ['NYC', 'LES', 'UWS', 'UES', 'LIC', 'DUMBO', 'NOLITA', 'NOHO']
+                if v not in known_acronyms:
+                    print(f"⚠️ Skipping all-caps single word (likely OCR error): {v}")
+                    continue
             seen.add(v_lower)
             unique.append(v)
 
@@ -5336,6 +5355,31 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                         # Remove old entry
                                         if seen_name_lower in seen_venue_names:
                                             del seen_venue_names[seen_name_lower]
+                                    is_duplicate = True
+                                    break
+                            # Check for garbled OCR variations (e.g., "LA TETE DOR" vs "la tete d'or")
+                            # Normalize both names by removing spaces, apostrophes, and special chars for comparison
+                            normalized_current = re.sub(r'[\s\'\-\.]', '', place_name_lower)
+                            normalized_seen = re.sub(r'[\s\'\-\.]', '', seen_name_lower)
+                            # If normalized versions are very similar (80%+ match), they're likely the same venue
+                            if len(normalized_current) > 5 and len(normalized_seen) > 5:
+                                # Calculate similarity
+                                matching_chars = sum(1 for a, b in zip(normalized_current, normalized_seen) if a == b)
+                                similarity = matching_chars / max(len(normalized_current), len(normalized_seen))
+                                if similarity >= 0.8:  # 80% similarity threshold
+                                    print(f"🔄 Duplicate detected by garbled OCR similarity: '{merged_place.get('name')}' ({similarity:.0%} match) similar to '{seen_name}'")
+                                    # Prefer the version with apostrophes/spaces (more likely correct)
+                                    prefer_current = ("'" in merged_place.get("name", "") or " " in merged_place.get("name", "")) and not ("'" in seen_name or " " in seen_name)
+                                    prefer_seen = ("'" in seen_name or " " in seen_name) and not ("'" in merged_place.get("name", "") or " " in merged_place.get("name", ""))
+                                    if prefer_current or len(merged_place.get("description", "")) > len(seen_place_data.get("description", "")):
+                                        seen_venue_names[place_name_lower] = merged_place
+                                        if seen_name_lower in seen_venue_names:
+                                            del seen_venue_names[seen_name_lower]
+                                        # Also update places_extracted if already added
+                                        for i, place in enumerate(places_extracted):
+                                            if place.get("name", "").lower() == seen_name_lower:
+                                                places_extracted[i] = merged_place
+                                                break
                                     is_duplicate = True
                                     break
                             # Check character similarity for short names
