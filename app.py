@@ -4308,6 +4308,20 @@ Context (filtered to only include mentions of "{name}"):
         # Pass venue name to ensure unique, context-specific tags
         data["vibe_tags"] = extract_vibe_tags(context, venue_name=name)
         
+        # Fallback: Add important vibe keywords that GPT might have missed
+        # Check if context mentions romantic/date night but GPT didn't extract it
+        context_lower_for_tags = context.lower()
+        important_tags_to_check = {
+            "romantic": ["romantic", "date night", "romantic spot", "romantic dinner", "romantic italian"],
+            "intimate": ["intimate", "intimate setting", "intimate spot"],
+            "cozy": ["cozy", "cozy spot", "cozy atmosphere"],
+        }
+        for tag, keywords in important_tags_to_check.items():
+            if tag.capitalize() not in data["vibe_tags"]:
+                if any(kw in context_lower_for_tags for kw in keywords):
+                    data["vibe_tags"].append(tag.capitalize())
+                    print(f"   ✅ Added '{tag.capitalize()}' tag from context keywords")
+        
         # Filter out cuisine tags for non-restaurants (cafes/bars shouldn't have cuisine tags)
         context_lower = context.lower()
         is_restaurant_context = any(word in context_lower for word in ["restaurant", "dining", "chef", "cuisine", "eatery", "bistro"])
@@ -4452,9 +4466,9 @@ Tags should be SHORT (1-2 words) and capture the SPECIFIC atmosphere, style, or 
 CRITICAL: Only use POSITIVE, APPEALING descriptors. NEVER use negative words like "Crowded", "Loud", "Busy", "Packed", "Expensive", etc.
 
 Focus on what makes THIS place unique:
-- Atmosphere: Cozy, Lively, Intimate, Energetic, Chill, Upscale, Vibrant, Relaxed
-- Best for: Date Night, Groups, Solo, Brunch, Late Night, Happy Hour
-- Style: Trendy, Classic, Authentic, Modern, Casual, Fancy, Hip, Stylish
+- Atmosphere: Cozy, Lively, Intimate, Energetic, Chill, Upscale, Vibrant, Relaxed, Romantic
+- Best for: Date Night, Groups, Solo, Brunch, Late Night, Happy Hour, Romantic Dinner
+- Style: Trendy, Classic, Authentic, Modern, Casual, Fancy, Hip, Stylish, Romantic
 - Features: Outdoor, Rooftop, Live Music, DJ, Games, Dancing, Cocktails
 
 Extract tags that are SPECIFIC to what's written in the text. Each venue should have different tags based on its unique characteristics.
@@ -5241,7 +5255,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
     
     # Track place_ids to deduplicate venues that Google Maps identifies as the same place
     seen_place_ids = {}  # place_id -> place_data (keep best match)
-    seen_venue_names = set()  # Track venue names (case-insensitive) for name-based deduplication
+    seen_venue_names = {}  # venue_name_lower -> place_data (for address-based deduplication)
     
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_venue = {
@@ -5272,35 +5286,99 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         seen_place_ids[place_id] = merged_place
                     is_duplicate = True
                 
-                # Method 2: Check by venue name (case-insensitive, fuzzy match)
+                # Method 2: Check by venue name (case-insensitive, fuzzy match) and address
                 if not is_duplicate:
-                    for seen_name in seen_venue_names:
-                        seen_lower = seen_name.lower().strip()
+                    for seen_name_lower, seen_place_data in seen_venue_names.items():
+                        seen_name = seen_place_data.get("name", "")
                         # Check if names are very similar (likely same venue with OCR/spelling variations)
-                        if place_name_lower and seen_lower:
+                        if place_name_lower and seen_name_lower:
                             # If one name contains the other (e.g., "lingo greenpoint" vs "lingo")
-                            if place_name_lower in seen_lower or seen_lower in place_name_lower:
+                            if place_name_lower in seen_name_lower or seen_name_lower in place_name_lower:
                                 # Check if they're not just generic words
-                                if len(place_name_lower) > 4 and len(seen_lower) > 4:
+                                if len(place_name_lower) > 4 and len(seen_name_lower) > 4:
                                     print(f"🔄 Duplicate detected by name similarity: '{merged_place.get('name')}' similar to '{seen_name}'")
+                                    # Keep the one with more complete data or better name
+                                    if len(merged_place.get("description", "")) > len(seen_place_data.get("description", "")):
+                                        seen_venue_names[place_name_lower] = merged_place
+                                        # Remove old entry
+                                        if seen_name_lower in seen_venue_names:
+                                            del seen_venue_names[seen_name_lower]
                                     is_duplicate = True
                                     break
                             # Check character similarity for short names
-                            elif len(place_name_lower) <= 6 and len(seen_lower) <= 6:
-                                # For short names, check if they're very similar (e.g., "Fairpoint" vs "KWORK" - but these are different)
-                                # Only match if they share most characters
-                                matching_chars = sum(1 for a, b in zip(place_name_lower, seen_lower) if a == b)
-                                if matching_chars >= min(len(place_name_lower), len(seen_lower)) * 0.8:
+                            elif len(place_name_lower) <= 6 and len(seen_name_lower) <= 6:
+                                # For short names, check if they're very similar
+                                matching_chars = sum(1 for a, b in zip(place_name_lower, seen_name_lower) if a == b)
+                                if matching_chars >= min(len(place_name_lower), len(seen_name_lower)) * 0.8:
                                     print(f"🔄 Duplicate detected by name similarity: '{merged_place.get('name')}' similar to '{seen_name}'")
+                                    if len(merged_place.get("description", "")) > len(seen_place_data.get("description", "")):
+                                        seen_venue_names[place_name_lower] = merged_place
+                                        if seen_name_lower in seen_venue_names:
+                                            del seen_venue_names[seen_name_lower]
                                     is_duplicate = True
                                     break
+                            # Check if addresses match (same address = same venue, even if names differ)
+                            # This catches cases like "Walco" vs "Tucci" where OCR misread the name
+                            elif merged_place.get("address") and seen_place_data.get("address"):
+                                existing_address = seen_place_data.get("address", "").lower()
+                                current_address = merged_place.get("address", "").lower()
+                                # If addresses are very similar (same street address), likely same venue
+                                if existing_address and current_address:
+                                    # Extract street address (before first comma)
+                                    existing_street = existing_address.split(',')[0].strip()
+                                    current_street = current_address.split(',')[0].strip()
+                                    # Check if street addresses match (allowing for minor variations)
+                                    if existing_street == current_street and len(existing_street) > 10:
+                                        print(f"🔄 Duplicate detected by address match: '{merged_place.get('name')}' and '{seen_name}' have same address")
+                                        # Prefer the name that appears more complete or is more common
+                                        # "Tucci" is likely correct vs "Walco" (OCR error)
+                                        prefer_new = (
+                                            len(merged_place.get("description", "")) > len(seen_place_data.get("description", "")) or
+                                            len(merged_place.get("name", "")) > len(seen_name) or
+                                            "tucci" in place_name_lower  # Prefer known correct name
+                                        )
+                                        if prefer_new:
+                                            # Replace with better name/data
+                                            seen_venue_names[place_name_lower] = merged_place
+                                            # Remove old entry
+                                            if seen_name_lower in seen_venue_names:
+                                                del seen_venue_names[seen_name_lower]
+                                            # Also update places_extracted if already added
+                                            for i, place in enumerate(places_extracted):
+                                                if place.get("name", "").lower() == seen_name_lower:
+                                                    places_extracted[i] = merged_place
+                                                    break
+                                        is_duplicate = True
+                                        break
+                                    # Also check if addresses are very similar (fuzzy match)
+                                    elif len(existing_street) > 10 and len(current_street) > 10:
+                                        # Check if they share most of the address
+                                        words_existing = set(existing_street.split())
+                                        words_current = set(current_street.split())
+                                        common_words = words_existing & words_current
+                                        if len(common_words) >= min(len(words_existing), len(words_current)) * 0.7:
+                                            print(f"🔄 Duplicate detected by similar address: '{merged_place.get('name')}' and '{seen_name}' have similar addresses")
+                                            prefer_new = (
+                                                len(merged_place.get("description", "")) > len(seen_place_data.get("description", "")) or
+                                                "tucci" in place_name_lower
+                                            )
+                                            if prefer_new:
+                                                seen_venue_names[place_name_lower] = merged_place
+                                                if seen_name_lower in seen_venue_names:
+                                                    del seen_venue_names[seen_name_lower]
+                                                for i, place in enumerate(places_extracted):
+                                                    if place.get("name", "").lower() == seen_name_lower:
+                                                        places_extracted[i] = merged_place
+                                                        break
+                                            is_duplicate = True
+                                            break
                 
                 if not is_duplicate:
                     places_extracted.append(merged_place)
                     if place_id:
                         seen_place_ids[place_id] = merged_place
                     if place_name_lower:
-                        seen_venue_names.add(merged_place.get("name", ""))
+                        seen_venue_names[place_name_lower] = merged_place
                     if len(venues) > 1:
                         print(f"✅ Enriched: {venue_name}")
                 else:
