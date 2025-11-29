@@ -2916,8 +2916,10 @@ def organize_slides_by_venue(ocr_text):
     print(f"\n📚 Organizing {len(slide_dict)} slides by venue attribution...")
 
     # Step 1: Detect place names in each slide using GPT
+    # CRITICAL: Sort slides by numeric slide number (not lexicographically)
     slide_to_places = {}
-    for slide_key in sorted(slide_dict.keys()):
+    slides_sorted = _sort_slides_by_number(slide_dict)
+    for slide_key, _ in slides_sorted:
         slide_text = slide_dict[slide_key]
 
         if not slide_text or len(slide_text.strip()) < 5:
@@ -2973,7 +2975,8 @@ Place names only:"""
     current_place = None
     context_buffer = []  # Slides without place names
 
-    slides_sorted = sorted(slide_dict.items())
+    # CRITICAL: Sort slides by numeric slide number (not lexicographically)
+    slides_sorted = _sort_slides_by_number(slide_dict)
 
     for slide_key, slide_text in slides_sorted:
         places_in_slide = slide_to_places.get(slide_key, [])
@@ -3142,6 +3145,7 @@ def _parse_slide_text(ocr_text):
     """
     Parse OCR text that contains SLIDE markers and return a dict of slides.
     Returns: {"slide_1": "text from slide 1", "slide_2": "text from slide 2", ...}
+    Slides are stored in order of appearance in the OCR text.
     """
     if not ocr_text:
         return {}
@@ -3171,6 +3175,27 @@ def _parse_slide_text(ocr_text):
         slides[f"slide_{current_slide}"] = "\n".join(current_text).strip()
     
     return slides
+
+def _sort_slides_by_number(slide_dict):
+    """
+    Sort slides by their numeric slide number (not lexicographically).
+    This ensures slide_2 comes before slide_10, slide_14, etc.
+    
+    Args:
+        slide_dict: Dictionary with keys like "slide_1", "slide_2", etc.
+    
+    Returns:
+        List of (slide_key, slide_text) tuples sorted by slide number
+    """
+    def get_slide_number(slide_key):
+        """Extract numeric slide number from key like 'slide_2' -> 2"""
+        try:
+            return int(slide_key.split('_')[1])
+        except (IndexError, ValueError):
+            return 999  # Put invalid slides at the end
+    
+    # Sort by numeric slide number
+    return sorted(slide_dict.items(), key=lambda x: get_slide_number(x[0]))
 
 
 def extract_places_and_context(transcript, ocr_text, caption, comments):
@@ -3243,7 +3268,9 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
         overall_summary = ""
         
         # Analyze each slide independently
-        for slide_key, slide_text in sorted(slide_dict.items()):
+        # CRITICAL: Sort slides by numeric slide number (not lexicographically)
+        slides_sorted = _sort_slides_by_number(slide_dict)
+        for slide_key, slide_text in slides_sorted:
             print(f"\n  📄 Analyzing {slide_key}...")
             
             # For each slide, create a targeted extraction prompt
@@ -3330,9 +3357,10 @@ If no venues found, output: (none)
         # CRITICAL: Make context venue-specific to prevent bleeding between venues
         # If a venue is on slide 2, and slide 3 has no venue, slide 3's content belongs to slide 2's venue
         # BUT: Only include slides that actually mention this specific venue
+        # CRITICAL: Sort slides by numeric slide number (not lexicographically) to preserve order
         print(f"\n📖 Building context for each venue (reading like a book, venue-specific)...")
         venue_to_context = {}
-        slides_sorted = sorted(slide_dict.items())
+        slides_sorted = _sort_slides_by_number(slide_dict)
         
         # First, collect all venue names for reference (before building context)
         all_venue_names = []
@@ -3340,8 +3368,19 @@ If no venues found, output: (none)
             all_venue_names.extend(venues)
         all_venue_names_lower = [v.lower() for v in all_venue_names]
 
-        for slide_key, venues in sorted(all_venues_per_slide.items()):
-            # Get index of this slide
+        # Sort venues by their slide number (numeric, not lexicographic)
+        def get_slide_number_from_key(slide_key):
+            """Extract numeric slide number from key like 'slide_2' -> 2"""
+            try:
+                return int(slide_key.split('_')[1])
+            except (IndexError, ValueError):
+                return 999  # Put invalid slides at the end
+        
+        # Sort venues_per_slide by slide number to process in correct order
+        venues_per_slide_sorted = sorted(all_venues_per_slide.items(), key=lambda x: get_slide_number_from_key(x[0]))
+        
+        for slide_key, venues in venues_per_slide_sorted:
+            # Get index of this slide in the sorted slides list
             slide_idx = next(i for i, (k, _) in enumerate(slides_sorted) if k == slide_key)
 
             for venue in venues:
