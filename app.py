@@ -3731,12 +3731,13 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     # Use pre-built slide context if available (already includes sequential reading)
     # NOTE: We still need to filter slide_context to prevent bleeding between venues on the same slide
     if slide_context:
-        print(f"   📖 Enriching {name} using pre-built slide context ({len(slide_context)} chars)")
+        print(f"   📖 Enriching {name} using pre-built slide context (already filtered, {len(slide_context)} chars)")
         # Clean slide markers from context
         cleaned_slide_context = clean_slide_markers(slide_context)
         raw_context = "\n".join(x for x in [cleaned_slide_context, caption] if x)
-        # IMPORTANT: Don't skip filtering - slide context may still contain other venue mentions
-        context_is_already_filtered = False
+        # FIXED: venue_to_context already contains venue-specific context built during slideshow extraction
+        # No need to re-filter as it's already isolated to this venue's slides
+        context_is_already_filtered = True
     elif source_slide:
         # Fallback: Parse slides if OCR has them
         slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
@@ -3749,9 +3750,9 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             raw_context = "\n".join(x for x in [cleaned_slide_text, caption] if x)
             context_is_already_filtered = False
         else:
-            # Fallback: use full context
-            cleaned_ocr = clean_slide_markers(ocr_text) if ocr_text else ""
-            raw_context = "\n".join(x for x in [caption, cleaned_ocr, transcript, comments] if x)
+            # FIXED: Fallback to caption only (safer than full OCR with all slides)
+            print(f"   ⚠️ {source_slide} not found in slide_dict, using caption only to avoid context bleeding")
+            raw_context = caption if caption else ""
             context_is_already_filtered = False
     else:
         # Fallback: use full context (for non-slideshow videos or if source_slide not found)
@@ -3797,9 +3798,22 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         # Only keep sentences that mention THIS venue and explicitly exclude sentences mentioning OTHER venues
         for sentence in relevant_sentences:
             sentence_lower = sentence.lower()
-            # Skip if sentence mentions another venue (be strict)
-            mentions_other = any(v in sentence_lower for v in other_venues if len(v) > 3)
-            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            # Skip if sentence mentions another venue (be strict - use word boundaries)
+            mentions_other = False
+            for v in other_venues:
+                if len(v) > 2:
+                    # Use word boundary regex to avoid substring matches
+                    if re.search(r'\b' + re.escape(v) + r'\b', sentence_lower):
+                        mentions_other = True
+                        break
+            # Check if sentence mentions this venue (use word boundaries for single words)
+            mentions_this = False
+            if len(name_words) == 1:
+                # Single word - use word boundary
+                mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
+            else:
+                # Multi-word - check if name appears or if key words appear together
+                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Only include if it mentions this venue AND doesn't mention other venues
             if mentions_this and not mentions_other:
@@ -3808,9 +3822,19 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             # If both mentioned, be VERY strict - only keep if this venue is clearly the focus
             elif mentions_this and mentions_other:
                 this_pos = sentence_lower.find(name_lower)
-                other_positions = [sentence_lower.find(v) for v in other_venues if v in sentence_lower]
-                this_count = sentence_lower.count(name_lower)
-                other_counts = [sentence_lower.count(v) for v in other_venues if v in sentence_lower]
+                # Use word boundary regex for finding other venue positions
+                other_positions = []
+                for v in other_venues:
+                    if len(v) > 2:
+                        match = re.search(r'\b' + re.escape(v) + r'\b', sentence_lower)
+                        if match:
+                            other_positions.append(match.start())
+                this_count = len(re.findall(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
+                other_counts = []
+                for v in other_venues:
+                    if len(v) > 2:
+                        count = len(re.findall(r'\b' + re.escape(v) + r'\b', sentence_lower))
+                        other_counts.append(count)
                 max_other_count = max(other_counts, default=0)
                 # Very strict: this venue must appear first AND be mentioned significantly more
                 if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count > max_other_count)):
@@ -4322,11 +4346,20 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         else:
             display_name = venue_name
         
-        # Get source slide for this venue if available
-        source_slide = venue_to_slide.get(venue_name)
+        # Get source slide for this venue if available (case-insensitive lookup)
+        source_slide = None
+        venue_name_lower = venue_name.lower()
+        for key, value in venue_to_slide.items():
+            if key.lower() == venue_name_lower:
+                source_slide = value
+                break
 
-        # Get pre-built context for this venue (from sequential slide reading)
-        slide_context = venue_to_context.get(venue_name)
+        # Get pre-built context for this venue (from sequential slide reading) (case-insensitive lookup)
+        slide_context = None
+        for key, value in venue_to_context.items():
+            if key.lower() == venue_name_lower:
+                slide_context = value
+                break
 
         # Pass source_slide, slide_context, and all_venues to enrichment for slide-aware and venue-specific context
         intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
