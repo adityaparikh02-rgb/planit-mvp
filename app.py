@@ -4212,7 +4212,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
   "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing ALL SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE ONLY. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. Read EVERY WORD in the context, including smaller font text, fine print, and all details. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. Read the ENTIRE context carefully - do NOT miss items in smaller font or less prominent positions. But ONLY extract items that are clearly FOR {name}.",
-  "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, or helpful advice mentioned in the context. Only include if clearly mentioned in the context.",
+  "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly', 'Quality isn't always consistent', 'Long lines', 'Sometimes inconsistent'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, helpful advice, AND any warnings or negative feedback mentioned in the context (e.g., 'quality isn't always consistent', 'long lines', 'sometimes inconsistent'). Include both positive tips AND realistic warnings/limitations if mentioned. Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
   "specials": "Real deals, special events, pricing tips, or money-saving information at {name} if mentioned (e.g., 'Save your $$', 'Happy hour deals', 'Weekend specials', 'Affordable prices'). Capture any cost-related tips or special offers mentioned.",
@@ -4414,10 +4414,26 @@ Do NOT stop after extracting 1-2 items - extract ALL dishes, features, tips, and
         is_cafe_context = any(word in context_lower for word in ["cafe", "coffee", "latte", "espresso", "cappuccino"])
         
         # Remove cuisine tags if this is a cafe/bar (not a restaurant)
+        # CRITICAL: Also filter out cuisine tags that are actually drink names (e.g., "Spanish" from "Spanish latte")
         original_tag_count = len(data["vibe_tags"])
         if data["vibe_tags"] and (is_cafe_context or is_bar_context) and not is_restaurant_context:
             cuisine_tags = {"Thai", "Italian", "French", "Spanish", "Japanese", "Mexican", "Indian", "Greek", "Mediterranean", "Seafood", "Steakhouse", "Sushi", "Pasta", "Tapas", "Ramen", "Chinese", "Korean"}
-            data["vibe_tags"] = [tag for tag in data["vibe_tags"] if tag not in cuisine_tags]
+            # Check if cuisine tag appears in context as a drink name (e.g., "Spanish latte", "Italian espresso")
+            context_lower_for_drink_check = context.lower()
+            drink_patterns = ["latte", "espresso", "coffee", "drink", "cocktail", "mocha", "cappuccino", "americano", "macchiato"]
+            filtered_tags = []
+            for tag in data["vibe_tags"]:
+                if tag in cuisine_tags:
+                    # Check if this cuisine tag appears next to a drink name (e.g., "Spanish latte")
+                    tag_lower = tag.lower()
+                    # Look for patterns like "spanish latte", "italian espresso", etc.
+                    is_drink_name = any(f"{tag_lower} {drink}" in context_lower_for_drink_check or f"{drink} {tag_lower}" in context_lower_for_drink_check 
+                                       for drink in drink_patterns)
+                    if is_drink_name:
+                        print(f"   🏷️ Filtered out '{tag}' tag - appears to be a drink name (e.g., '{tag} latte'), not a cuisine tag")
+                        continue
+                filtered_tags.append(tag)
+            data["vibe_tags"] = filtered_tags
             if len(data["vibe_tags"]) < original_tag_count:
                 print(f"   🏷️ Filtered out cuisine tags for {name} (cafe/bar, not restaurant)")
 
@@ -5513,13 +5529,18 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                                             break
                 
                 if not is_duplicate:
+                    # Store original slide order for sorting later
+                    if venue_name.lower() in venue_to_order:
+                        merged_place["_slide_order"] = venue_to_order[venue_name.lower()]
+                    else:
+                        merged_place["_slide_order"] = 999  # Default to end if no slide info
                     places_extracted.append(merged_place)
                     if place_id:
                         seen_place_ids[place_id] = merged_place
                     if place_name_lower:
                         seen_venue_names[place_name_lower] = merged_place
                     if len(venues) > 1:
-                        print(f"✅ Enriched: {venue_name}")
+                        print(f"✅ Enriched: {venue_name} (slide order: {merged_place.get('_slide_order', 'unknown')})")
                 else:
                     print(f"⏭️  Skipped duplicate: {venue_name}")
                     
