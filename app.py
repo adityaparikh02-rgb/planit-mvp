@@ -4540,7 +4540,12 @@ def extract_vibe_tags(text, venue_name=None):
 Extract up to 6 unique, POSITIVE vibe tags from this text{venue_context}.
 Tags should be SHORT (1-2 words) and capture the SPECIFIC atmosphere, style, or features mentioned in the text.
 
-CRITICAL: Only use POSITIVE, APPEALING descriptors. NEVER use negative words like "Crowded", "Loud", "Busy", "Packed", "Expensive", etc.
+CRITICAL: This text is SPECIFICALLY about "{venue_name}" only. Extract tags that are SPECIFIC to THIS venue, not generic tags that could apply to any venue.
+CRITICAL: Only extract tags that are EXPLICITLY mentioned or clearly implied about THIS specific venue in the text.
+CRITICAL: Do NOT extract generic tags like "Fun", "Good", "Nice" unless they're specifically emphasized for this venue.
+CRITICAL: If the text mentions multiple venues, ONLY extract tags that are clearly about "{venue_name}".
+
+Only use POSITIVE, APPEALING descriptors. NEVER use negative words like "Crowded", "Loud", "Busy", "Packed", "Expensive", etc.
 
 Focus on what makes THIS place unique:
 - Atmosphere: Cozy, Lively, Intimate, Energetic, Chill, Upscale, Vibrant, Relaxed, Romantic
@@ -4548,11 +4553,13 @@ Focus on what makes THIS place unique:
 - Style: Trendy, Classic, Authentic, Modern, Casual, Fancy, Hip, Stylish, Romantic
 - Features: Outdoor, Rooftop, Live Music, DJ, Games, Dancing, Cocktails
 
-Extract tags that are SPECIFIC to what's written in the text. Each venue should have different tags based on its unique characteristics.
+Extract tags that are SPECIFIC to what's written about THIS venue in the text. Each venue should have different tags based on its unique characteristics.
+If the text doesn't contain specific information about "{venue_name}", return fewer tags or an empty list rather than generic tags.
 
-Text: {text}
+Text about "{venue_name}":
+{text}
 
-Return ONLY a valid JSON list of 3-6 unique POSITIVE tags.
+Return ONLY a valid JSON list of 3-6 unique POSITIVE tags SPECIFIC to "{venue_name}".
 """
     try:
         client = get_openai_client()
@@ -5316,7 +5323,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
             "photo_url": photo,
             "description": intel.get("summary", ""),
-            "vibe_tags": vibe_tags,  # Use updated vibe_tags with Google Maps cuisine
+            "vibe_tags": vibe_tags,  # Venue-specific vibe tags extracted from filtered context
             "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly
             "address": address,  # Also get address while we're at it
             "neighborhood": final_neighborhood_to_use,  # Use strict neighborhood extraction (static overrides > lat/lon > address)
@@ -5324,6 +5331,12 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             "place_id": place_id,  # Store place_id for deduplication
             **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags", "vibe_keywords"]}
         }
+        
+        # CRITICAL: Ensure vibe_tags are venue-specific - log for debugging
+        if vibe_tags:
+            print(f"   🏷️ Extracted {len(vibe_tags)} vibe tags for {display_name}: {vibe_tags}")
+        else:
+            print(f"   ⚠️ No vibe tags extracted for {display_name}")
         return place_data
     
     # Run enrichment and photo fetching in parallel (max 5 concurrent to avoid rate limits)
