@@ -211,20 +211,30 @@ def extract_text_from_slideshow_google_vision(image_urls: List[str]) -> str:
     
     all_text = []
     
+    # CRITICAL: Process images in order and assign slide numbers based on position in list
+    # This ensures slide numbers match the actual order of images in the TikTok slideshow
     for idx, image_url in enumerate(image_urls, 1):
         try:
-            logger.info(f"🔍 Processing slide {idx}/{len(image_urls)} with Google Vision...")
+            logger.info(f"🔍 Processing slide {idx}/{len(image_urls)} (image {idx} of {len(image_urls)}) with Google Vision...")
             text = extract_text_with_google_vision(image_url)
             
+            # CRITICAL: Always add slide marker, even if no text detected
+            # This ensures slide numbers are sequential and match image order
             if text and len(text.strip()) > 0:
                 marked_text = f"SLIDE {idx}: {text}"
                 all_text.append(marked_text)
                 logger.info(f"✅ Slide {idx}: {len(text)} chars extracted")
             else:
-                logger.info(f"⚠️ Slide {idx}: No text detected")
+                # Still add slide marker even if no text - preserves slide numbering
+                marked_text = f"SLIDE {idx}:"
+                all_text.append(marked_text)
+                logger.info(f"⚠️ Slide {idx}: No text detected (marked as SLIDE {idx} to preserve order)")
         
         except Exception as e:
+            # Even on error, add slide marker to preserve numbering
             logger.error(f"Failed to process slide {idx}: {e}")
+            marked_text = f"SLIDE {idx}:"
+            all_text.append(marked_text)
             continue
     
     combined = "\n".join(all_text)

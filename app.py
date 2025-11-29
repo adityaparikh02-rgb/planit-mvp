@@ -378,14 +378,17 @@ def get_tiktok_post_data(url):
             image_post = item_struct["imagePost"]
             images = image_post.get("images", [])
             
+            # CRITICAL: Extract images in order from TikTok API to preserve slide order
+            # The order of images in the API response matches the order in the TikTok slideshow
             photo_urls = []
-            for img in images:
+            for idx, img in enumerate(images, 1):
                 image_url_obj = img.get("imageURL", {})
                 url_list = image_url_obj.get("urlList", [])
                 if url_list and len(url_list) > 0:
                     photo_urls.append(url_list[0])
+                    print(f"   📸 Image {idx}: {url_list[0][:60]}...")
             
-            print(f"✅ Extracted {len(photo_urls)} photo URLs from API")
+            print(f"✅ Extracted {len(photo_urls)} photo URLs from API in order (image 1 → image {len(photo_urls)})")
             return {
                 "type": "photo",
                 "caption": caption,
@@ -494,16 +497,19 @@ def get_tiktok_media(tiktok_url):
                 image_post_info = aweme["image_post_info"]
                 images = image_post_info.get("images", [])
                 
+                # CRITICAL: Extract images in order from TikTok API to preserve slide order
+                # The order of images in the API response matches the order in the TikTok slideshow
                 photo_urls = []
-                for img in images:
+                for idx, img in enumerate(images, 1):
                     display_image = img.get("display_image", {})
                     url_list = display_image.get("url_list", [])
                     if url_list and len(url_list) > 0:
                         photo_urls.append(url_list[0])
+                        print(f"   📸 Image {idx}: {url_list[0][:60]}...")
                 
                 media["photo_urls"] = photo_urls
                 if photo_urls:
-                    print(f"✅ Extracted {len(photo_urls)} photo URLs from API16")
+                    print(f"✅ Extracted {len(photo_urls)} photo URLs from API16 in order (image 1 → image {len(photo_urls)})")
             
             return media
             
@@ -561,13 +567,17 @@ def robust_tiktok_extractor(url):
                 result["caption"] = aweme.get("desc", "").strip()
                 
                 # Check for photo post
+                # CRITICAL: Extract images in order from TikTok API to preserve slide order
                 if "image_post_info" in aweme:
                     images = aweme["image_post_info"].get("images", [])
-                    result["photo_urls"] = [
-                        img["display_image"]["url_list"][0]
-                        for img in images
-                        if "display_image" in img and "url_list" in img["display_image"] and len(img["display_image"]["url_list"]) > 0
-                    ]
+                    photo_urls_ordered = []
+                    for idx, img in enumerate(images, 1):
+                        if "display_image" in img and "url_list" in img["display_image"] and len(img["display_image"]["url_list"]) > 0:
+                            photo_urls_ordered.append(img["display_image"]["url_list"][0])
+                            print(f"   📸 Image {idx}: {img['display_image']['url_list'][0][:60]}...")
+                    result["photo_urls"] = photo_urls_ordered
+                    if photo_urls_ordered:
+                        print(f"✅ Extracted {len(photo_urls_ordered)} photo URLs in order (image 1 → image {len(photo_urls_ordered)})")
                 
                 # Check for video post
                 if "video" in aweme and "play_addr" in aweme["video"]:
@@ -826,13 +836,16 @@ def fetch_tiktok_photo_post(url):
                     
                     if isinstance(obj, dict):
                         # Look for ImageList or similar structures
+                        # CRITICAL: Extract images in order to preserve slide order
                         if "ImageList" in obj:
                             urls = []
-                            for img in obj["ImageList"]:
+                            for idx, img in enumerate(obj["ImageList"], 1):
                                 if isinstance(img, dict) and "UrlList" in img:
                                     if isinstance(img["UrlList"], list) and len(img["UrlList"]) > 0:
                                         urls.append(img["UrlList"][0])
+                                        print(f"   📸 Image {idx} from ImageList: {img['UrlList'][0][:60]}...")
                             if urls:
+                                print(f"✅ Extracted {len(urls)} photo URLs from ImageList in order (image 1 → image {len(urls)})")
                                 return None, urls
                         
                         # Look for caption/description fields
@@ -3489,7 +3502,7 @@ If no venues found, output: (none)
 
         # Sort venues by slide order (earlier slides first)
         unique_venues.sort(key=lambda v: venue_to_slide_order.get(v, 999))
-        
+
         print(f"\n📖 Slide-aware extraction complete:")
         print(f"   Total unique venues: {len(unique_venues)} (ordered by slide appearance)")
         print(f"   Summary: {overall_summary}")
@@ -3564,7 +3577,7 @@ If no dish mentioned for a venue, leave it blank after the |."""
         except Exception as e:
             print(f"❌ Organized extraction failed: {e}")
             # Fall through to non-slideshow extraction
-
+    
     # Non-slideshow extraction (fallback to combined text)
     combined_text = "\n".join(x for x in [ocr_text, transcript, caption, comments] if x)
     
@@ -3814,7 +3827,7 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
                 known_acronyms = ['NYC', 'LES', 'UWS', 'UES', 'LIC', 'DUMBO', 'NOLITA', 'NOHO']
                 if v not in known_acronyms:
                     print(f"⚠️ Skipping all-caps single word (likely OCR error): {v}")
-                    continue
+                continue
             seen.add(v_lower)
             unique.append(v)
 
@@ -4176,7 +4189,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
@@ -5356,7 +5369,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
-                cuisine_map = {
+            cuisine_map = {
                 "restaurant": None,  # Too generic
                 "bar": None,  # Too generic
                 "cafe": None,  # Too generic
@@ -5381,14 +5394,14 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
             }
-                google_cuisine = None
+            google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
-                    if place_type in cuisine_map and cuisine_map[place_type]:
-                        google_cuisine = cuisine_map[place_type]
-                        break
-                if google_cuisine and google_cuisine not in vibe_tags:
-                    vibe_tags.append(google_cuisine)
+                if place_type in cuisine_map and cuisine_map[place_type]:
+                    google_cuisine = cuisine_map[place_type]
+                    break
+            if google_cuisine and google_cuisine not in vibe_tags:
+                vibe_tags.append(google_cuisine)
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
@@ -5626,12 +5639,12 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         merged_place["_slide_order"] = venue_to_order[venue_name.lower()]
                     else:
                         merged_place["_slide_order"] = 999  # Default to end if no slide info
-                    places_extracted.append(merged_place)
+                places_extracted.append(merged_place)
                     if place_id:
                         seen_place_ids[place_id] = merged_place
                     if place_name_lower:
                         seen_venue_names[place_name_lower] = merged_place
-                    if len(venues) > 1:
+                if len(venues) > 1:
                         print(f"✅ Enriched: {venue_name} (slide order: {merged_place.get('_slide_order', 'unknown')})")
                 else:
                     print(f"⏭️  Skipped duplicate: {venue_name}")
@@ -5661,7 +5674,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower 
                                   for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
-                    places_extracted.append(merged_place)
+                places_extracted.append(merged_place)
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
@@ -6873,8 +6886,11 @@ def extract_api():
                 update_status(extraction_id, "Reading text from images...")
                 try:
                     # Use the new high-quality OCR processor on slideshow images
+                    # CRITICAL: Process images in the exact order they appear in photo_urls
+                    # This ensures slide numbers match the actual order of images in the TikTok slideshow
                     image_sources = photo_urls  # Process ALL images (no limit)
-                    print(f"   🔍 Processing images: {[f'Image {i+1}' for i in range(len(image_sources))]}")
+                    print(f"   🔍 Processing {len(image_sources)} images in order: {[f'Image {i+1}' for i in range(len(image_sources))]}")
+                    print(f"   📋 Image order preserved from TikTok: image 1 → image {len(image_sources)}")
                     ocr_text = extract_text_from_slideshow(image_sources)
                     print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
                     if ocr_text:

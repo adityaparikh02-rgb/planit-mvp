@@ -65,22 +65,32 @@ def extract_text_from_slideshow(image_sources, detect_language=True):
     processor = get_ocr_processor()
     all_text = []
 
+    # CRITICAL: Process images in order and assign slide numbers based on position in list
+    # This ensures slide numbers match the actual order of images in the TikTok slideshow
     for idx, image_source in enumerate(image_sources, 1):
         try:
-            logger.debug(f"Extracting text from slide {idx}/{len(image_sources)}...")
+            logger.debug(f"Extracting text from slide {idx}/{len(image_sources)} (image {idx} of {len(image_sources)})...")
             # Pass detect_language parameter to OCR processor
             text = processor.run(image_source, use_inverted_secondary=True, detect_language=detect_language)
 
+            # CRITICAL: Always add slide marker, even if no text detected
+            # This ensures slide numbers are sequential and match image order
             if text and len(text.strip()) > 0:
                 # Add slide marker for context (helps with multi-slide analysis)
                 marked_text = f"SLIDE {idx}: {text}"
                 all_text.append(marked_text)
                 logger.info(f"✅ Slide {idx}: {len(text)} chars extracted")
             else:
-                logger.info(f"⚠️ Slide {idx}: No readable text detected")
+                # Still add slide marker even if no text - preserves slide numbering
+                marked_text = f"SLIDE {idx}:"
+                all_text.append(marked_text)
+                logger.info(f"⚠️ Slide {idx}: No readable text detected (marked as SLIDE {idx} to preserve order)")
 
         except Exception as e:
+            # Even on error, add slide marker to preserve numbering
             logger.error(f"Failed to process slide {idx}: {e}")
+            marked_text = f"SLIDE {idx}:"
+            all_text.append(marked_text)
             continue
 
     # Concatenate all text with newlines for clarity
