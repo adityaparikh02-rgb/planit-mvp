@@ -6597,8 +6597,13 @@ def extract_api():
     vid = get_tiktok_id(url)
     print(f"\n🟦 Extracting TikTok: {url}")
 
+    # Check for cache bypass flag (useful for testing)
+    bypass_cache = request.json.get("bypass_cache", False) or request.args.get("bypass_cache", "false").lower() == "true"
+    if bypass_cache:
+        print("🔄 Cache bypass enabled - will re-extract even if cached")
+
     cache = load_cache()
-    if vid and vid in cache:
+    if vid and vid in cache and not bypass_cache:
         cached_data = cache[vid]
         # Check if cached data has placeholder venues and clear it if so
         places = cached_data.get("places_extracted", [])

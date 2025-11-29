@@ -11,11 +11,11 @@ echo "URL: $URL"
 echo "Backend: $BACKEND_URL"
 echo ""
 
-# Make the extraction request
-echo "📤 Sending extraction request..."
+# Make the extraction request (with cache bypass for testing)
+echo "📤 Sending extraction request (bypass_cache=true)..."
 RESPONSE=$(curl -s -X POST "$BACKEND_URL/api/extract" \
   -H "Content-Type: application/json" \
-  -d "{\"video_url\": \"$URL\"}")
+  -d "{\"video_url\": \"$URL\", \"bypass_cache\": true}")
 
 # Check if we got a response
 if [ $? -eq 0 ]; then
