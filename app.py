@@ -4379,11 +4379,19 @@ Do NOT stop after extracting 1-2 items - extract ALL dishes, features, tips, and
             "comments_summary": safe_get_str("comments_summary", ""),
             "creator_insights": safe_get_str("creator_insights", ""),  # Personal recommendations and comparisons
         }
-        # Extract vibe_tags from the ORIGINAL slide context, not GPT-generated summaries
-        # This ensures tags are specific to each venue's slide, not generic
-        # Use the actual OCR text from the slide for more accurate tag extraction
+        # Extract vibe_tags from the FILTERED venue-specific context
+        # CRITICAL: The context has already been filtered to only include sentences about THIS venue
+        # This ensures tags are specific to each venue, not generic or bleeding from other venues
         # Pass venue name to ensure unique, context-specific tags
+        # The context variable here is venue-specific (filtered in lines 4020-4171)
+        print(f"   🏷️ Extracting vibe tags for {name} from {len(context)} chars of venue-specific context")
         data["vibe_tags"] = extract_vibe_tags(context, venue_name=name)
+        
+        # CRITICAL: Verify tags are venue-specific - log for debugging
+        if data["vibe_tags"]:
+            print(f"   ✅ Extracted {len(data['vibe_tags'])} vibe tags for {name}: {data['vibe_tags']}")
+        else:
+            print(f"   ⚠️ No vibe tags extracted for {name} (context may not contain specific vibe info)")
         
         # Fallback: Add important vibe keywords that GPT might have missed
         # Check if context mentions romantic/date night but GPT didn't extract it
