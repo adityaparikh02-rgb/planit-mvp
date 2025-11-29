@@ -2472,7 +2472,7 @@ def infer_nyc_neighborhood_from_address(address, venue_name=""):
     Returns:
         Neighborhood string from allowed list, or None if can't determine
     """
-    import re  # Import re at function level
+    import re  # Import re at function level to avoid scope issues
     
     if not address:
         return None
@@ -2594,7 +2594,6 @@ def infer_nyc_neighborhood_from_address(address, venue_name=""):
     }
 
     # Extract zip code from address
-    import re
     zip_match = re.search(r'\b(\d{5})\b', address)
     if zip_match:
         zip_code = zip_match.group(1)
@@ -3194,7 +3193,7 @@ def extract_places_and_context(transcript, ocr_text, caption, comments):
     print(f"   - Transcript: {len(transcript)} chars - {transcript[:100] if transcript else 'None'}...")
     print(f"   - OCR: {len(ocr_text)} chars - {ocr_text[:100] if ocr_text else 'None'}...")
     print(f"   - Comments: {len(comments)} chars - {comments[:100] if comments else 'None'}...")
-
+    
     # NEW: Organize slides by venue BEFORE extraction
     organized_context = ""
     if is_slideshow:
@@ -3418,7 +3417,7 @@ If no venues found, output: (none)
                 venue_to_slide[v_dict["name"]] = v_dict["source_slide"]
 
         return unique_venues, overall_summary, venue_to_slide, venue_to_context
-
+    
     # NEW: Organized slideshow extraction using book-style format
     elif organized_context:
         print(f"\n📚 Using organized slideshow extraction...")
@@ -4028,7 +4027,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             
             # Include if it mentions venue OR is a general tip
             if mentions_venue or is_general_tip:
-                relevant_sentences.append(sentence)
+                    relevant_sentences.append(sentence)
         
         # Remove sentences that mention OTHER venues
         # Filter AGGRESSIVELY to prevent context bleeding between venues
@@ -5191,30 +5190,30 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
                 cuisine_map = {
-                    "restaurant": None,  # Too generic
-                    "bar": None,  # Too generic
-                    "cafe": None,  # Too generic
-                    "meal_takeaway": None,  # Too generic
-                    "food": None,  # Too generic
-                    "establishment": None,  # Too generic
-                    "point_of_interest": None,  # Too generic
-                    # Specific cuisines
-                    "indian_restaurant": "Indian",
-                    "italian_restaurant": "Italian",
-                    "chinese_restaurant": "Chinese",
-                    "japanese_restaurant": "Japanese",
-                    "mexican_restaurant": "Mexican",
-                    "thai_restaurant": "Thai",
-                    "korean_restaurant": "Korean",
-                    "french_restaurant": "French",
-                    "greek_restaurant": "Greek",
-                    "mediterranean_restaurant": "Mediterranean",
-                    "american_restaurant": "American",
-                    "seafood_restaurant": "Seafood",
-                    "steak_house": "Steakhouse",
-                    "pizza_restaurant": "Pizza",
-                    "sushi_restaurant": "Sushi",
-                }
+                "restaurant": None,  # Too generic
+                "bar": None,  # Too generic
+                "cafe": None,  # Too generic
+                "meal_takeaway": None,  # Too generic
+                "food": None,  # Too generic
+                "establishment": None,  # Too generic
+                "point_of_interest": None,  # Too generic
+                # Specific cuisines
+                "indian_restaurant": "Indian",
+                "italian_restaurant": "Italian",
+                "chinese_restaurant": "Chinese",
+                "japanese_restaurant": "Japanese",
+                "mexican_restaurant": "Mexican",
+                "thai_restaurant": "Thai",
+                "korean_restaurant": "Korean",
+                "french_restaurant": "French",
+                "greek_restaurant": "Greek",
+                "mediterranean_restaurant": "Mediterranean",
+                "american_restaurant": "American",
+                "seafood_restaurant": "Seafood",
+                "steak_house": "Steakhouse",
+                "pizza_restaurant": "Pizza",
+                "sushi_restaurant": "Sushi",
+            }
                 google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
