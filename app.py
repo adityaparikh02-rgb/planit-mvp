@@ -3576,7 +3576,9 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • Ignore broad neighborhoods like "SoHo" or "Brooklyn" unless they're part of a venue name
    • CRITICAL: Do NOT invent or infer venue names. Only extract venues that are EXPLICITLY mentioned by name.
      For example, if text says "wine bar in Soho" but doesn't name the wine bar, do NOT extract "Soho Wine Bar".
-     Only extract venues that are actually named (e.g., "Marjories", "Employees Only", "Katana Kitten").
+     Only extract venues that are actually named (e.g., "Marjories", "Employees Only", "Katana Kitten", "Blank Street").
+   • IMPORTANT: Venue names can be single words or multiple words. Examples: "Blank Street" (two words), "The Elk" (two words), "caffe paradiso" (two words). Extract them exactly as written, preserving capitalization and spacing.
+   • If a venue name appears on a slide with its menu items, extract the venue name even if it's brief. Example: If slide says "Blank Street" followed by drink items, extract "Blank Street" as a venue.
    • ONLY list actual venue names that are mentioned. Do NOT use placeholders like "venue 1" or "<venue 1>".
    • IMPORTANT: OCR text may contain garbled characters or errors. Look for REAL venue names, not random words.
    • IMPORTANT: Transcript may have transcription errors. If transcript says "X dispo" but context suggests "X in Y", trust the context and extract "X"
@@ -4020,10 +4022,11 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Only include if it mentions this venue AND doesn't mention other venues
+            # CRITICAL: Be very strict - if sentence mentions other venues, exclude it to prevent item bleeding
             if mentions_this and not mentions_other:
                 filtered_sentences.append(sentence)
                 print(f"      ✓ Kept: '{sentence[:80]}...'")
-            # If both mentioned, be VERY strict - only keep if this venue is clearly the focus
+            # If both mentioned, be EXTREMELY strict - exclude to prevent bleeding unless this venue is clearly the ONLY focus
             elif mentions_this and mentions_other:
                 this_pos = sentence_lower.find(name_lower)
                 # Use word boundary regex for finding other venue positions
@@ -4040,12 +4043,13 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                         count = len(re.findall(r'\b' + re.escape(v) + r'\b', sentence_lower))
                         other_counts.append(count)
                 max_other_count = max(other_counts, default=0)
-                # Very strict: this venue must appear first AND be mentioned significantly more
-                if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count > max_other_count)):
+                # EXTREMELY strict: this venue must appear first AND be mentioned at least 2x more than others
+                # Also require that this venue appears at least twice if others are mentioned
+                if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count >= 2 * max_other_count and this_count >= 2)):
                     filtered_sentences.append(sentence)
-                    print(f"      ✓ Kept (primary): '{sentence[:80]}...'")
+                    print(f"      ✓ Kept (primary, strict): '{sentence[:80]}...'")
                 else:
-                    print(f"      ✗ Dropped (mentions other venues): '{sentence[:80]}...'")
+                    print(f"      ✗ Dropped (mentions other venues - strict filtering): '{sentence[:80]}...'")
             else:
                 print(f"      ✗ Dropped (doesn't mention venue): '{sentence[:80]}...'")
 
@@ -4092,12 +4096,13 @@ CRITICAL: Only extract information that is clearly about "{name}".
 - If context says "at Katana Kitten, try XYZ" but you're analyzing a different venue, do NOT include "at Katana Kitten" in the response
 - Only use information that directly relates to "{name}"
 - IMPORTANT: If this is from a slideshow, ONLY use information from the slide(s) that mention "{name}". Do NOT aggregate information from other slides about different venues.
+- CRITICAL FOR "must_try": Only include menu items/dishes that are EXPLICITLY mentioned for "{name}". If an item is mentioned for another venue (even in the same sentence), do NOT include it. Example: If context says "PB&J matcha latte at caffe paradiso" and you're analyzing "The Elk", do NOT include "PB&J matcha latte" even if it appears in the context.
 
 {{
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar').",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
-  "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list SPECIFIC dishes, drinks, or menu items mentioned by the creator. Even if they say 'I recommend everything on the menu' or 'everything is good', extract the SPECIFIC dishes they actually tried and mentioned liking (e.g., 'chicken harissa bowl', 'matbucha dip', 'sabik sandwich'). For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. Only include if mentioned SPECIFICALLY for {name}.",
+  "must_try": "What to get/order at {name}. For RESTAURANTS/FOOD places, list SPECIFIC dishes, drinks, or menu items mentioned by the creator. Even if they say 'I recommend everything on the menu' or 'everything is good', extract the SPECIFIC dishes they actually tried and mentioned liking (e.g., 'chicken harissa bowl', 'matbucha dip', 'sabik sandwich'). For BARS/LOUNGES, list signature cocktails, drink specials, or bar features. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights. Always prioritize SPECIFIC items the creator tried and mentioned over generic recommendations. CRITICAL: Only include items that are EXPLICITLY associated with {name} in the context. If an item appears but is associated with a different venue name in the same context, do NOT include it. Example: If context mentions 'PB&J matcha latte' near 'caffe paradiso' but you're analyzing 'The Elk', do NOT include 'PB&J matcha latte'.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required'). Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
@@ -4195,11 +4200,44 @@ Context (filtered to only include mentions of "{name}"):
         # Use the actual OCR text from the slide for more accurate tag extraction
         # Pass venue name to ensure unique, context-specific tags
         data["vibe_tags"] = extract_vibe_tags(context, venue_name=name)
+        
+        # Filter out cuisine tags for non-restaurants (cafes/bars shouldn't have cuisine tags)
+        context_lower = context.lower()
+        is_restaurant_context = any(word in context_lower for word in ["restaurant", "dining", "chef", "cuisine", "eatery", "bistro"])
+        is_bar_context = any(word in context_lower for word in ["bar", "cocktail", "drinks", "happy hour", "bartender"])
+        is_cafe_context = any(word in context_lower for word in ["cafe", "coffee", "latte", "espresso", "cappuccino"])
+        
+        # Remove cuisine tags if this is a cafe/bar (not a restaurant)
+        original_tag_count = len(data["vibe_tags"])
+        if data["vibe_tags"] and (is_cafe_context or is_bar_context) and not is_restaurant_context:
+            cuisine_tags = {"Thai", "Italian", "French", "Spanish", "Japanese", "Mexican", "Indian", "Greek", "Mediterranean", "Seafood", "Steakhouse", "Sushi", "Pasta", "Tapas", "Ramen", "Chinese", "Korean"}
+            data["vibe_tags"] = [tag for tag in data["vibe_tags"] if tag not in cuisine_tags]
+            if len(data["vibe_tags"]) < original_tag_count:
+                print(f"   🏷️ Filtered out cuisine tags for {name} (cafe/bar, not restaurant)")
 
         # CRITICAL FIX: Fallback to vibe_keywords if GPT extraction failed or returned empty list
+        # BUT: Filter out cuisine keywords (Thai, Italian, etc.) for non-restaurants
         if not data["vibe_tags"] and vibe_keywords:
-            data["vibe_tags"] = vibe_keywords[:6]  # Limit to 6 tags max
-            print(f"   ⚠️ GPT vibe_tags extraction failed for {name}, using vibe_keywords fallback: {data['vibe_tags']}")
+            # Determine if this is a restaurant from context
+            context_lower = context.lower()
+            is_restaurant_context = any(word in context_lower for word in ["restaurant", "dining", "chef", "cuisine", "eatery", "bistro"])
+            is_bar_context = any(word in context_lower for word in ["bar", "cocktail", "drinks", "happy hour", "bartender"])
+            is_cafe_context = any(word in context_lower for word in ["cafe", "coffee", "latte", "espresso", "cappuccino"])
+            
+            # Filter out cuisine keywords for cafes/bars (unless it's clearly a restaurant)
+            cuisine_keywords = {"Thai", "Italian", "French", "Spanish", "Japanese", "Mexican", "Indian", "Greek", "Mediterranean", "Seafood", "Steakhouse", "Sushi", "Pasta", "Tapas", "Ramen"}
+            filtered_keywords = []
+            for kw in vibe_keywords:
+                # Keep cuisine keywords only if it's a restaurant context (not cafe/bar)
+                if kw in cuisine_keywords:
+                    if is_restaurant_context and not is_cafe_context and not is_bar_context:
+                        filtered_keywords.append(kw)
+                else:
+                    # Keep non-cuisine keywords
+                    filtered_keywords.append(kw)
+            
+            data["vibe_tags"] = filtered_keywords[:6]  # Limit to 6 tags max
+            print(f"   ⚠️ GPT vibe_tags extraction failed for {name}, using filtered vibe_keywords fallback: {data['vibe_tags']}")
 
         # Add "Vegan" tag if explicitly mentioned in the context
         context_lower = context.lower()
@@ -4970,42 +5008,69 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         price = price_level_to_dollars(price_level)
 
         # Add cuisine type from Google Maps to vibe_tags (if available)
+        # CRITICAL: Only add cuisine tags if place is actually a restaurant (PRIMARY type, not secondary)
         vibe_tags = intel.get("vibe_tags", []).copy()  # Make a copy to avoid modifying original
         if place_types_from_google:
-            # Extract cuisine from Google Maps place types
-            cuisine_map = {
-                "restaurant": None,  # Too generic
-                "bar": None,  # Too generic
-                "cafe": None,  # Too generic
-                "meal_takeaway": None,  # Too generic
-                "food": None,  # Too generic
-                "establishment": None,  # Too generic
-                "point_of_interest": None,  # Too generic
-                # Specific cuisines
-                "indian_restaurant": "Indian",
-                "italian_restaurant": "Italian",
-                "chinese_restaurant": "Chinese",
-                "japanese_restaurant": "Japanese",
-                "mexican_restaurant": "Mexican",
-                "thai_restaurant": "Thai",
-                "korean_restaurant": "Korean",
-                "french_restaurant": "French",
-                "greek_restaurant": "Greek",
-                "mediterranean_restaurant": "Mediterranean",
-                "american_restaurant": "American",
-                "seafood_restaurant": "Seafood",
-                "steak_house": "Steakhouse",
-                "pizza_restaurant": "Pizza",
-                "sushi_restaurant": "Sushi",
-            }
-            google_cuisine = None
-            for place_type in place_types_from_google:
-                if place_type in cuisine_map and cuisine_map[place_type]:
-                    google_cuisine = cuisine_map[place_type]
-                    break
-            if google_cuisine and google_cuisine not in vibe_tags:
-                vibe_tags.append(google_cuisine)
-                print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine}")
+            # Google Maps returns types in order of relevance, so first few types are most important
+            primary_types = place_types_from_google[:3]  # Check first 3 types only
+            
+            # Check if PRIMARY type is a restaurant (exclude cafes, bars, bakeries even if they have restaurant types)
+            # CRITICAL: If primary type is cafe/bar/bakery, don't add cuisine tags even if there's a restaurant type
+            excluded_primary_types = {"cafe", "bar", "bakery", "store", "establishment", "point_of_interest", "food"}
+            
+            # First check: if any primary type is cafe/bar/bakery, exclude cuisine tags
+            has_excluded_primary = any(pt in excluded_primary_types for pt in primary_types)
+            
+            is_restaurant = False
+            if not has_excluded_primary:
+                # Check if any primary type is explicitly a restaurant
+                for pt in primary_types:
+                    if pt in ["restaurant", "meal_delivery", "meal_takeaway"]:
+                        is_restaurant = True
+                        break
+                    elif pt.endswith("_restaurant"):
+                        is_restaurant = True
+                        break
+            
+            # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
+            if is_restaurant:
+                # Extract cuisine from Google Maps place types (ONLY check primary types)
+                cuisine_map = {
+                    "restaurant": None,  # Too generic
+                    "bar": None,  # Too generic
+                    "cafe": None,  # Too generic
+                    "meal_takeaway": None,  # Too generic
+                    "food": None,  # Too generic
+                    "establishment": None,  # Too generic
+                    "point_of_interest": None,  # Too generic
+                    # Specific cuisines
+                    "indian_restaurant": "Indian",
+                    "italian_restaurant": "Italian",
+                    "chinese_restaurant": "Chinese",
+                    "japanese_restaurant": "Japanese",
+                    "mexican_restaurant": "Mexican",
+                    "thai_restaurant": "Thai",
+                    "korean_restaurant": "Korean",
+                    "french_restaurant": "French",
+                    "greek_restaurant": "Greek",
+                    "mediterranean_restaurant": "Mediterranean",
+                    "american_restaurant": "American",
+                    "seafood_restaurant": "Seafood",
+                    "steak_house": "Steakhouse",
+                    "pizza_restaurant": "Pizza",
+                    "sushi_restaurant": "Sushi",
+                }
+                google_cuisine = None
+                # CRITICAL: Only check PRIMARY types for cuisine (not all types)
+                for place_type in primary_types:
+                    if place_type in cuisine_map and cuisine_map[place_type]:
+                        google_cuisine = cuisine_map[place_type]
+                        break
+                if google_cuisine and google_cuisine not in vibe_tags:
+                    vibe_tags.append(google_cuisine)
+                    print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
+            else:
+                print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
 
         # Use strict neighborhood extraction function (PRIORITY: static overrides > lat/lon > address)
         strict_neighborhood = get_nyc_neighborhood_strict(
