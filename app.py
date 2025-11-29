@@ -3993,8 +3993,21 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         cleaned_slide_context = clean_slide_markers(slide_context)
         raw_context = "\n".join(x for x in [cleaned_slide_context, caption] if x)
         # FIXED: venue_to_context already contains venue-specific context built during slideshow extraction
-        # No need to re-filter as it's already isolated to this venue's slides
+        # CRITICAL: Ensure this context is ONLY from this venue's slide(s), not other slides
+        # Additional safety check: verify context doesn't mention other venues
         context_is_already_filtered = True
+        if all_venues and len(all_venues) > 1:
+            other_venues_lower = [v.lower() for v in all_venues if v.lower() != name.lower()]
+            slide_context_lower = slide_context.lower()
+            for other_venue in other_venues_lower:
+                if len(other_venue) > 3:
+                    # Check if other venue name appears in this venue's context (shouldn't happen)
+                    if re.search(r'\b' + re.escape(other_venue) + r'\b', slide_context_lower):
+                        print(f"   ⚠️ WARNING: slide_context for {name} mentions other venue '{other_venue}' - re-filtering to prevent bleeding")
+                        # Re-filter to be safe - don't trust slide_context if it mentions other venues
+                        context_is_already_filtered = False
+                        raw_context = slide_context  # Use slide_context as raw_context for filtering
+                        break
     elif source_slide:
         # Fallback: Parse slides if OCR has them
         slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
