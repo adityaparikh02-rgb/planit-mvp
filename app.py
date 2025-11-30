@@ -5290,11 +5290,29 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
                 })
         
         # Merge data (prefer new data but add other_videos_note and address)
+        # CRITICAL: Load cached place_data to merge intelligently (prefer new but keep old fields if new is missing)
+        cached_place_data = {}
+        if cached.get("place_data"):
+            try:
+                cached_place_data = json.loads(cached["place_data"])
+                print(f"   🔄 Found cached place_data for {place_name}, merging with new data")
+            except Exception as e:
+                print(f"   ⚠️ Failed to parse cached place_data: {e}")
+                cached_place_data = {}
+        
+        # Merge: prefer new place_data fields, but fall back to cached if new is empty/missing
         merged_data = {
-            **place_data, 
+            **cached_place_data,  # Start with cached data (may have old fields)
+            **place_data,  # Overwrite with new data (prefer new fields)
             "other_videos": other_videos_data,
-            "address": place_address
+            "address": place_address  # Always use current address
         }
+        
+        # CRITICAL: Ensure new fields are preserved even if cached data is old
+        # If new place_data has these fields, use them (even if empty)
+        for field in ["neighborhood", "vibe_tags", "description", "photo_url", "must_try", "good_to_know", "features"]:
+            if field in place_data:
+                merged_data[field] = place_data[field]
         
         # Update cache
         c.execute(
@@ -5309,7 +5327,17 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
         return merged_data
     else:
         # Create new cache entry - no other_videos_note for first extraction
-        place_data_with_note = {**place_data, "other_videos": [], "address": place_address}
+        # CRITICAL: Ensure all required fields are present
+        place_data_with_note = {
+            **place_data, 
+            "other_videos": [], 
+            "address": place_address,
+            # Ensure these fields exist even if empty
+            "neighborhood": place_data.get("neighborhood", "NYC"),
+            "vibe_tags": place_data.get("vibe_tags", []),
+            "description": place_data.get("description", ""),
+            "photo_url": place_data.get("photo_url", "https://via.placeholder.com/600x400?text=No+Photo")
+        }
         
         video_metadata = {}
         if video_summary:
