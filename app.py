@@ -2834,7 +2834,7 @@ def get_photo_url(name, place_id=None, photos=None):
             print(f"🔍 Fetching photo via Place Details API for place_id: {place_id[:20]}...")
             r = requests.get(
                 "https://maps.googleapis.com/maps/api/place/details/json",
-                params={"place_id": place_id, "fields": "photos,name", "key": GOOGLE_API_KEY},
+                params={"place_id": place_id, "fields": "photo,name", "key": GOOGLE_API_KEY},
                 timeout=10
             )
             r.raise_for_status()
