@@ -3468,7 +3468,7 @@ def extract_places_and_context(transcript, ocr_text, caption, comments, slides_w
         ocr_text = clean_ocr_text(ocr_text)
         if original_ocr_len != len(ocr_text):
             print(f"🧹 Cleaned OCR text: {len(ocr_text)} chars (was {original_ocr_len} chars before cleaning)")
-
+    
     # Parse OCR into slides for slide-aware extraction
     slide_dict = _parse_slide_text(ocr_text)
     is_slideshow = len(slide_dict) > 1
@@ -5365,17 +5365,23 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
 
         if has_attribution:
             # Use venue_attribution for slide context and source
+            attribution_found = False
             for key, attr in venue_attribution.items():
                 if key.lower() == venue_name_lower:
-                    slide_context = attr["full_context"]
-                    source_slide = f"slide_{attr['primary_slide']}"
+                    slide_context = attr.get("full_context", "")
+                    source_slide = f"slide_{attr.get('primary_slide', 1)}"
 
                     print(f"   📖 Enriching {venue_name} using attributed context:")
-                    print(f"      Primary slide: {attr['primary_slide']}")
-                    print(f"      Contextual slides: {attr['contextual_slides']}")
-                    print(f"      Total slides: {attr['all_slides']}")
+                    print(f"      Primary slide: {attr.get('primary_slide', 'N/A')}")
+                    print(f"      Contextual slides: {attr.get('contextual_slides', [])}")
+                    print(f"      Total slides: {attr.get('all_slides', [])}")
                     print(f"      Context length: {len(slide_context)} chars")
+                    attribution_found = True
                     break
+            
+            if not attribution_found:
+                print(f"   ⚠️ Attribution data exists but venue '{venue_name}' not found in attribution dict")
+                print(f"      Available venues in attribution: {list(venue_attribution.keys())}")
         else:
             # DEPRECATED: Fallback to old separate dicts
             for key, value in venue_to_slide.items():
@@ -5387,6 +5393,22 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 if key.lower() == venue_name_lower:
                     slide_context = value
                     break
+        if venue_attribution and venue_name.lower() in venue_attribution:
+            attr = venue_attribution[venue_name.lower()]
+            # Use full_context from attribution (already filtered to this venue's slides)
+            venue_specific_context = attr.get("full_context", "")
+            venue_specific_slides = attr.get("all_slides", [])
+            print(f"   📖 Using venue attribution context for {display_name} ({len(venue_specific_context)} chars from slides {venue_specific_slides})")
+
+        # CRITICAL: For hotels, ensure we have context even if filtered context is empty
+        # Hotels might not have much OCR context (they're not restaurants), so use caption/transcript
+        is_hotel = place_types_from_google and ("lodging" in place_types_from_google or any("hotel" in pt.lower() for pt in place_types_from_google))
+        if is_hotel and (not slide_context or len(slide_context.strip()) < 50):
+            # Use caption or transcript for hotels if slide_context is minimal
+            hotel_context = "\n".join(x for x in [caption, transcript] if x and len(x.strip()) > 10)
+            if hotel_context:
+                print(f"   🏨 Hotel detected with minimal context - using caption/transcript ({len(hotel_context)} chars)")
+                slide_context = hotel_context
 
         # Pass source_slide, slide_context, and all_venues to enrichment for slide-aware and venue-specific context
         intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
@@ -5454,6 +5476,11 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         place_types_from_google = result.get("types", [])
                         if place_types_from_google:
                             print(f"   🏷️ Google Maps types: {', '.join(place_types_from_google[:10])}")
+                        
+                        # Check if venue is a hotel (for special context handling)
+                        is_hotel = "lodging" in place_types_from_google or any("hotel" in pt.lower() for pt in place_types_from_google)
+                        if is_hotel:
+                            print(f"   🏨 Detected hotel/lodging venue: {display_name}")
                         # Also get formatted_address from Place Details (might be more accurate)
                         place_details_address = result.get("formatted_address")
                         if place_details_address and not address:
@@ -5837,29 +5864,29 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
                 cuisine_map = {
-                    "restaurant": None,  # Too generic
-                    "bar": None,  # Too generic
-                    "cafe": None,  # Too generic
-                    "meal_takeaway": None,  # Too generic
-                    "food": None,  # Too generic
-                    "establishment": None,  # Too generic
-                    "point_of_interest": None,  # Too generic
-                    # Specific cuisines
-                    "indian_restaurant": "Indian",
-                    "italian_restaurant": "Italian",
-                    "chinese_restaurant": "Chinese",
-                    "japanese_restaurant": "Japanese",
-                    "mexican_restaurant": "Mexican",
-                    "thai_restaurant": "Thai",
-                    "korean_restaurant": "Korean",
-                    "french_restaurant": "French",
-                    "greek_restaurant": "Greek",
-                    "mediterranean_restaurant": "Mediterranean",
-                    "american_restaurant": "American",
-                    "seafood_restaurant": "Seafood",
-                    "steak_house": "Steakhouse",
-                    "pizza_restaurant": "Pizza",
-                    "sushi_restaurant": "Sushi",
+                "restaurant": None,  # Too generic
+                "bar": None,  # Too generic
+                "cafe": None,  # Too generic
+                "meal_takeaway": None,  # Too generic
+                "food": None,  # Too generic
+                "establishment": None,  # Too generic
+                "point_of_interest": None,  # Too generic
+                # Specific cuisines
+                "indian_restaurant": "Indian",
+                "italian_restaurant": "Italian",
+                "chinese_restaurant": "Chinese",
+                "japanese_restaurant": "Japanese",
+                "mexican_restaurant": "Mexican",
+                "thai_restaurant": "Thai",
+                "korean_restaurant": "Korean",
+                "french_restaurant": "French",
+                "greek_restaurant": "Greek",
+                "mediterranean_restaurant": "Mediterranean",
+                "american_restaurant": "American",
+                "seafood_restaurant": "Seafood",
+                "steak_house": "Steakhouse",
+                "pizza_restaurant": "Pizza",
+                "sushi_restaurant": "Sushi",
                 }
                 google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
@@ -7362,7 +7389,7 @@ def extract_api():
                     else:
                         # Fallback for backward compatibility
                         ocr_text = ocr_result
-                        print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
+                    print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
                     if ocr_text:
                         print(f"📝 OCR preview: {ocr_text[:200]}...")
                         # Check if last slide text is present
