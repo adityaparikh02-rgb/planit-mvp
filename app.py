@@ -2711,10 +2711,12 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
     try:
         # Add "NYC" to search query for better matching (e.g., "Vee Ray's NYC")
         search_query = f"{place_name} NYC" if "NYC" not in place_name.upper() and "New York" not in place_name else place_name
-        print(f"🔍 Searching Google Places for: {search_query}")
+        # Add location hint to prioritize NYC results
+        location_hint_param = "New York, NY" if location_hint != "NYC" else "New York, NY"
+        print(f"🔍 Searching Google Places for: {search_query} (location hint: {location_hint_param})")
         r = requests.get(
             "https://maps.googleapis.com/maps/api/place/textsearch/json",
-            params={"query": search_query, "key": GOOGLE_API_KEY},
+            params={"query": search_query, "location": "40.7128,-74.0060", "radius": "50000", "key": GOOGLE_API_KEY},  # NYC coordinates, 50km radius
             timeout=10
         )
         r.raise_for_status()
@@ -2739,7 +2741,30 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
 
         res = data.get("results", [])
         if res and len(res) > 0:
-            place_info = res[0]
+            # Filter results to prioritize NYC venues
+            nyc_results = []
+            for place_info in res:
+                address = place_info.get("formatted_address", "").lower()
+                # Check if address indicates NYC
+                nyc_indicators = ["new york", "ny", "manhattan", "brooklyn", "queens", "bronx", "staten island"]
+                non_nyc_indicators = ["denver", "co", "colorado", "california", "ca", "los angeles", "la", "chicago", "il", "illinois", "miami", "fl", "florida", "boston", "ma", "massachusetts", "seattle", "wa", "washington", "portland", "or", "oregon", "philadelphia", "pa", "pennsylvania", "atlanta", "ga", "georgia", "dallas", "tx", "texas", "houston", "austin", "san francisco", "sf", "san diego", "phoenix", "az", "arizona", "las vegas", "nv", "nevada"]
+                is_nyc = any(indicator in address for indicator in nyc_indicators)
+                is_non_nyc = any(indicator in address for indicator in non_nyc_indicators)
+                if is_nyc and not is_non_nyc:
+                    nyc_results.append(place_info)
+            
+            # Use first NYC result if available, otherwise use first result
+            if nyc_results:
+                place_info = nyc_results[0]
+                print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
+            else:
+                place_info = res[0]
+                address_check = place_info.get("formatted_address", "").lower()
+                if any(indicator in address_check for indicator in ["denver", "co", "colorado", "california", "ca"]):
+                    print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
+                    # Try to find a better match by searching with more specific NYC terms
+                    return None, None, None, None, None, None
+            
             canonical_name = place_info.get("name", place_name)
             address = place_info.get("formatted_address")
             place_id = place_info.get("place_id")
@@ -4306,9 +4331,9 @@ CRITICAL: Only extract information that is clearly about "{name}".
 - CRITICAL FOR COMPLETENESS: Extract ALL dishes/items mentioned for "{name}" - do not skip any. Read EVERY WORD in the context, including smaller font text and fine print. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. If you see a list like "tostada de jaiba, tostada de pulpo, razor clams, seared scallop", extract ALL items, not just some of them. Be thorough and complete - capture every dish/item the creator mentioned FOR THIS SPECIFIC VENUE. Pay attention to all details, even if they're in smaller font or less prominent positions.
 
 {{
-  "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar').",
+  "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar'). CRITICAL: Include ALL details from the OCR text - do NOT skip any information. Read EVERY WORD and extract ALL descriptive details, features, and context mentioned about {name}. Present everything neatly in sentences, but include ALL information.",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
-  "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Include ALL descriptive details mentioned (e.g., 'very light and fluffy', 'super light and fluffy', 'very generous on the hot honey'). Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features.",
+  "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Include ALL descriptive details mentioned (e.g., 'very light and fluffy', 'super light and fluffy', 'very generous on the hot honey'). CRITICAL: Read EVERY WORD in the OCR text - do NOT truncate or cut off descriptions. If the OCR says 'A FUN, CREATIVE COCKTAIL SPOT KNOWN FOR FOOD-INSPIRED DRINKS AND GREAT CHICKEN SANDWICHES IN A COOL, LIVELY SPACE', extract ALL of it, not just 'A FUN, - IN A'. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features. Do NOT stop after extracting 1-2 words - extract the COMPLETE description.",
   "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing ALL SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE ONLY. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. Read EVERY WORD in the context, including smaller font text, fine print, and all details. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. Include ALL modifiers and details (e.g., 'very generous on the hot honey', 'very light and fluffy', 'deep fried short rib ragu pizza'). Format items naturally without unnecessary commas between adjectives and nouns (e.g., 'very yummy square pie' NOT 'very, yummy square, and pie'). If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence or in a different slide), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. Read the ENTIRE context carefully - do NOT miss items in smaller font or less prominent positions. But ONLY extract items that are clearly FOR {name}.",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly', 'Quality isn't always consistent', 'Long lines', 'Sometimes inconsistent'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, helpful advice, AND any warnings or negative feedback mentioned in the context (e.g., 'quality isn't always consistent', 'long lines', 'sometimes inconsistent'). Include both positive tips AND realistic warnings/limitations if mentioned. Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
@@ -5694,7 +5719,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
 
         # Check if address or neighborhood indicates NYC
         nyc_indicators = ["new york", "ny", "manhattan", "brooklyn", "queens", "bronx", "staten island"]
-        non_nyc_indicators = ["nj", "new jersey", "elwood", "jersey"]
+        non_nyc_indicators = ["nj", "new jersey", "elwood", "jersey", "denver", "co", "colorado", "california", "ca", "los angeles", "la", "chicago", "il", "illinois", "miami", "fl", "florida", "boston", "ma", "massachusetts", "seattle", "wa", "washington", "portland", "or", "oregon", "philadelphia", "pa", "pennsylvania", "atlanta", "ga", "georgia", "dallas", "tx", "texas", "houston", "austin", "san francisco", "sf", "san diego", "phoenix", "az", "arizona", "las vegas", "nv", "nevada"]
 
         is_nyc = any(indicator in address or indicator in neighborhood for indicator in nyc_indicators)
         is_non_nyc = any(indicator in address or indicator in neighborhood for indicator in non_nyc_indicators)

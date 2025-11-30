@@ -349,7 +349,7 @@ class OptimizedGeocodingService:
             f"&key={self.gmaps.key}"
         )
     
-    def _call_google_api(self, place_query: str, location_bias: Optional[str] = None) -> Optional[PlaceResult]:
+    def _call_google_api(self, place_query: str, location_bias: Optional[str] = None, prioritize_nyc: bool = False) -> Optional[PlaceResult]:
         """
         Make actual Google API calls (FindPlaceFromText + Place Details)
         This should be called RARELY due to caching
@@ -362,9 +362,12 @@ class OptimizedGeocodingService:
                 'fields': self.FINDPLACE_FIELDS
             }
             
-            # Add location bias if provided
+            # Add location bias if provided, or default to NYC for PlanIt
             if location_bias:
                 findplace_params['locationbias'] = f"circle:50000@{location_bias}"
+            elif prioritize_nyc:
+                # Default to NYC coordinates (40.7128, -74.0060) with 50km radius
+                findplace_params['locationbias'] = "circle:50000@40.7128,-74.0060"
             
             findplace_result = self.gmaps.find_place(**findplace_params)
             
@@ -372,8 +375,18 @@ class OptimizedGeocodingService:
                 logger.warning(f"No results found for: {place_query}")
                 return None
             
+            # Filter candidates to prioritize NYC venues if requested
+            candidates = findplace_result['candidates']
+            if prioritize_nyc:
+                nyc_candidates = []
+                for candidate in candidates:
+                    # We'll check address after Place Details call
+                    nyc_candidates.append(candidate)
+                # For now, use first candidate and check address later
+                candidates = nyc_candidates if nyc_candidates else candidates
+            
             # Get the first (best) candidate
-            candidate = findplace_result['candidates'][0]
+            candidate = candidates[0]
             place_id = candidate['place_id']
             
             # Step 2: Place Details (only if we need geometry/photos)
@@ -386,6 +399,36 @@ class OptimizedGeocodingService:
                 return None
             
             place = details_result['result']
+            
+            # Filter out non-NYC venues if prioritize_nyc is True
+            if prioritize_nyc:
+                address = place.get('formatted_address', '').lower()
+                nyc_indicators = ["new york", "ny", "manhattan", "brooklyn", "queens", "bronx", "staten island"]
+                non_nyc_indicators = ["denver", "co", "colorado", "california", "ca", "los angeles", "la", "chicago", "il", "illinois", "miami", "fl", "florida", "boston", "ma", "massachusetts", "seattle", "wa", "washington", "portland", "or", "oregon", "philadelphia", "pa", "pennsylvania", "atlanta", "ga", "georgia", "dallas", "tx", "texas", "houston", "austin", "san francisco", "sf", "san diego", "phoenix", "az", "arizona", "las vegas", "nv", "nevada"]
+                is_nyc = any(indicator in address for indicator in nyc_indicators)
+                is_non_nyc = any(indicator in address for indicator in non_nyc_indicators)
+                
+                if is_non_nyc or (not is_nyc and address):
+                    logger.warning(f"Non-NYC venue filtered out: {place.get('name')} ({address[:50]}...)")
+                    # Try next candidate if available
+                    if len(candidates) > 1:
+                        for next_candidate in candidates[1:]:
+                            next_place_id = next_candidate['place_id']
+                            next_details = self.gmaps.place(place_id=next_place_id, fields=self.DETAILS_FIELDS)
+                            if next_details.get('result'):
+                                next_place = next_details['result']
+                                next_address = next_place.get('formatted_address', '').lower()
+                                next_is_nyc = any(indicator in next_address for indicator in nyc_indicators)
+                                next_is_non_nyc = any(indicator in next_address for indicator in non_nyc_indicators)
+                                if next_is_nyc and not next_is_non_nyc:
+                                    place = next_place
+                                    break
+                        else:
+                            # No NYC candidate found, return None
+                            return None
+                    else:
+                        # No more candidates, return None
+                        return None
             
             # Extract photo URL and photos array
             photo_url = None
@@ -468,11 +511,15 @@ class OptimizedGeocodingService:
         logger.info(f"Cache miss - calling Google API for: {place_name}")
         
         # Build query with location hint if available
+        # Always prioritize NYC results for PlanIt
         query = place_name
         if location_hint:
             query = f"{place_name} {location_hint}"
+        else:
+            # Add NYC hint if no location hint provided
+            query = f"{place_name} NYC"
         
-        result = self._call_google_api(query)
+        result = self._call_google_api(query, prioritize_nyc=True)
         
         if result:
             # Result is already a dict with photos array
