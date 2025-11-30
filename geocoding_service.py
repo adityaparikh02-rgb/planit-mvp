@@ -366,6 +366,13 @@ class OptimizedGeocodingService:
             
             findplace_result = self.gmaps.find_place(**findplace_params)
             
+            # Check for API errors
+            if findplace_result.get('status') and findplace_result['status'] != 'OK':
+                error_status = findplace_result.get('status')
+                error_message = findplace_result.get('error_message', 'Unknown error')
+                logger.error(f"Google Places API error for '{place_query}': {error_status} - {error_message}")
+                return None
+            
             if not findplace_result.get('candidates'):
                 logger.warning(f"No results found for: {place_query}")
                 return None
