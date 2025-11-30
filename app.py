@@ -4012,6 +4012,8 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
      These are chain locations, not specific venues. Only extract the base venue name if it's mentioned WITHOUT a location suffix.
      If you see "WatchHouse" mentioned alone, extract it. But if you see "WatchHouse 5th Ave" or "WatchHouse (5th Ave)", do NOT extract it.
      Same for "HEYTEA" alone vs "HEYTEA (Times Square)" - only extract if mentioned without the location.
+   • CRITICAL: Extract venues with special characters and accents (e.g., "TÁN", "Café", "José"). 
+     Do NOT skip venues just because they have accents or special characters. Extract them exactly as written.
    • Be thorough - if the content is about NYC venues, there ARE venues to extract (likely in OCR text)
    • If no venues are found after careful analysis, return an empty list (no venues, just the Summary line).
 {ocr_emphasis}
@@ -4161,6 +4163,10 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
             "Brooklyn", "Queens", "Manhattan", "Bronx", "Staten Island"
         ]
         filtered_unique = []
+        ocr_text_lower = ocr_text.lower() if ocr_text else ""
+        caption_lower = caption.lower() if caption else ""
+        combined_text_lower = f"{ocr_text_lower} {caption_lower}".lower()
+        
         for v in unique:
             v_lower = v.lower()
             # Check if venue name ends with a known neighborhood/address
@@ -4172,7 +4178,29 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
                     is_chain_location = True
                     print(f"⚠️ Filtering out chain location: '{v}' (contains location '{neighborhood}')")
                     break
+            
+            # CRITICAL: Verify venue is actually mentioned in OCR/caption (filter false positives)
             if not is_chain_location:
+                # Check if venue name (or key parts) appears in OCR/caption
+                venue_words = v_lower.split()
+                # For multi-word venues, check if at least 2 words appear, or if single word appears
+                if len(venue_words) > 1:
+                    # Multi-word: check if at least 2 words appear together or separately
+                    words_found = sum(1 for word in venue_words if len(word) > 2 and word in combined_text_lower)
+                    if words_found < min(2, len(venue_words) - 1):
+                        print(f"⚠️ Filtering out venue not mentioned in OCR/caption: '{v}' (only {words_found}/{len(venue_words)} words found)")
+                        continue
+                else:
+                    # Single word: must appear in text (but allow for OCR variations)
+                    if len(v_lower) > 3 and v_lower not in combined_text_lower:
+                        # Try normalized version (remove accents, special chars)
+                        import unicodedata
+                        normalized_v = unicodedata.normalize('NFD', v_lower).encode('ascii', 'ignore').decode('ascii')
+                        normalized_text = unicodedata.normalize('NFD', combined_text_lower).encode('ascii', 'ignore').decode('ascii')
+                        if normalized_v not in normalized_text:
+                            print(f"⚠️ Filtering out venue not mentioned in OCR/caption: '{v}'")
+                            continue
+                
                 filtered_unique.append(v)
         
         unique = filtered_unique
@@ -5092,8 +5120,10 @@ CRITICAL: Only extract tags that are EXPLICITLY mentioned or clearly implied abo
 CRITICAL: If the text mentions multiple venues, ONLY extract tags that are clearly about "{venue_name}" - do NOT extract tags from descriptions of other venues.
 CRITICAL: Do NOT extract generic tags like 'Fun', 'Good', 'Nice' unless specifically emphasized for "{venue_name}".
 CRITICAL: If the text doesn't contain specific information about "{venue_name}", return fewer tags or an empty list rather than generic tags.
-CRITICAL: Do NOT extract generic tags like "Fun", "Good", "Nice" unless they're specifically emphasized for this venue.
+CRITICAL: Do NOT extract generic tags like "Fun", "Good", "Nice", "Views", "Rooftop" unless they're specifically emphasized for this venue.
 CRITICAL: If the text mentions multiple venues, ONLY extract tags that are clearly about "{venue_name}".
+CRITICAL: Do NOT extract cuisine tags (like "Mexican", "Italian") unless the text explicitly states "{venue_name}" serves that cuisine. If "{venue_name}" is not mentioned with a cuisine, do NOT extract cuisine tags.
+CRITICAL: If you see "rooftop" or "views" mentioned for OTHER venues but not for "{venue_name}", do NOT include "Rooftop" or "Views" tags for "{venue_name}".
 
 Only use POSITIVE, APPEALING descriptors. NEVER use negative words like "Crowded", "Loud", "Busy", "Packed", "Expensive", etc.
 
@@ -5494,6 +5524,18 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         # Define generic locations to filter out
                         generic_locations = ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "New York"]
                         
+                        # Extract country code/name from address components FIRST (before neighborhood extraction)
+                        country_code = None
+                        country_name = None
+                        for component in address_components:
+                            types = component.get("types", [])
+                            if "country" in types:
+                                country_code = component.get("short_name", "")
+                                country_name = component.get("long_name", "")
+                                print(f"   🌍 Found country: {country_name} ({country_code})")
+                                break
+                        
+                        # Now extract neighborhood from address components
                         for component in address_components:
                             types = component.get("types", [])
                             neighborhood_name = component.get("long_name")
@@ -5944,10 +5986,13 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             photo = "https://via.placeholder.com/600x400?text=No+Photo"
             print(f"   ⚠️ No photo found for {display_name}, using placeholder")
 
+        # Store country code/name for NYC filtering
+        country_for_filtering = country_code or country_name or ""
+        
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
-            "photo_url": photo,
+            "photo_url": photo,  # CRITICAL: Ensure photo URL is always set
             "description": intel.get("summary", ""),
             "vibe_tags": vibe_tags,  # Venue-specific vibe tags extracted from filtered context
             "vibe_keywords": intel.get("vibe_keywords", []),  # Add vibe keywords explicitly
@@ -5955,8 +6000,14 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             "neighborhood": final_neighborhood_to_use,  # Use strict neighborhood extraction (static overrides > lat/lon > address)
             "price": price,  # Price level from Google Maps ($, $$, $$$, $$$$)
             "place_id": place_id,  # Store place_id for deduplication
+            "country": country_for_filtering,  # Store country for NYC filtering
             **{k: v for k, v in intel.items() if k not in ["summary", "vibe_tags", "vibe_keywords"]}
         }
+        
+        # CRITICAL: Verify photo URL is set (should never be empty at this point)
+        if not place_data.get("photo_url") or place_data["photo_url"].strip() == "":
+            place_data["photo_url"] = "https://via.placeholder.com/600x400?text=No+Photo"
+            print(f"   ⚠️ WARNING: Photo URL was empty for {display_name}, set to placeholder")
         
         # CRITICAL: Ensure vibe_tags are venue-specific - log for debugging
         if vibe_tags:
@@ -6179,9 +6230,22 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
 
     nyc_places = []
     for place in places_extracted:
+        # Get country from place data if available (set during enrichment)
+        address = place.get("address") or ""
+        country = place.get("country", "")  # Set during enrichment from Google Maps API
+        if not country and address:
+            # Try to extract country from end of address (usually last component)
+            address_parts = [p.strip() for p in address.split(",")]
+            if len(address_parts) > 0:
+                last_part = address_parts[-1].lower()
+                # Check if last part is a country name or code
+                if last_part not in ["usa", "us", "united states", "united states of america"]:
+                    country = address_parts[-1]
+        
         is_nyc, reason = is_nyc_venue(
-            place.get("address") or "",
-            place.get("neighborhood") or ""
+            address,
+            place.get("neighborhood") or "",
+            country
         )
 
         if is_nyc:
