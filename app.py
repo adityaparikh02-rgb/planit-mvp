@@ -3840,10 +3840,13 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
                 continue
             # Filter out venues that don't look like real venue names
             # Exclude single words that are too generic or don't look like venue names
+            # BUT: Allow famous venue names like "Rao's" (has apostrophe) or known NYC venues
             if len(v.split()) == 1 and len(v) <= 5:
                 # Single short words like "KWORK", "Fidelity" are likely not venues
-                # Unless they're common venue name patterns
-                if not re.search(r'^(the|le|la|les|el|los|las)\s+', v_lower) and v_lower not in ['bar', 'cafe', 'pub']:
+                # Unless they're common venue name patterns or famous venues
+                known_famous_venues = ["rao's", "raos", "joes", "joe's", "lukes", "luke's", "pats", "pat's"]
+                has_apostrophe = "'" in v or "'" in v  # Allow names with apostrophes
+                if not re.search(r'^(the|le|la|les|el|los|las)\s+', v_lower) and v_lower not in ['bar', 'cafe', 'pub'] and v_lower not in known_famous_venues and not has_apostrophe:
                     print(f"⚠️ Skipping single short word that doesn't look like venue: {v}")
                     continue
             # Exclude all-caps single words that are likely OCR errors (unless they're acronyms)
@@ -7403,7 +7406,8 @@ def extract_api():
                     "places_extracted": [],
                     "extraction_id": extraction_id,  # Add extraction_id for status polling
                     "ocr_text": ocr_text,  # Include OCR text for debugging/testing
-                    "transcript": transcript  # Include transcript for debugging/testing
+                    "transcript": transcript,  # Include transcript for debugging/testing
+                    "venue_contexts": venue_to_context if venue_to_context else {}  # Include all extracted context for each venue
                 }
                 
                 if venues:

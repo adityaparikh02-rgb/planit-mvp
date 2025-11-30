@@ -356,18 +356,13 @@ class OptimizedGeocodingService:
         """
         try:
             # Step 1: FindPlaceFromText (cheaper than geocoding)
+            # Note: find_place doesn't support locationbias parameter
+            # We rely on "NYC" in the query string to prioritize NYC results
             findplace_params = {
                 'input': place_query,
                 'input_type': 'textquery',
                 'fields': self.FINDPLACE_FIELDS
             }
-            
-            # Add location bias if provided, or default to NYC for PlanIt
-            if location_bias:
-                findplace_params['locationbias'] = f"circle:50000@{location_bias}"
-            elif prioritize_nyc:
-                # Default to NYC coordinates (40.7128, -74.0060) with 50km radius
-                findplace_params['locationbias'] = "circle:50000@40.7128,-74.0060"
             
             findplace_result = self.gmaps.find_place(**findplace_params)
             
