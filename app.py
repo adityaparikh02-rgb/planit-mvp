@@ -3839,23 +3839,31 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
                 print(f"⚠️ Skipping placeholder-like venue: {v}")
                 continue
             # Filter out venues that don't look like real venue names
-            # Exclude single words that are too generic or don't look like venue names
-            # BUT: Allow famous venue names like "Rao's" (has apostrophe) or known NYC venues
-            if len(v.split()) == 1 and len(v) <= 5:
-                # Single short words like "KWORK", "Fidelity" are likely not venues
-                # Unless they're common venue name patterns or famous venues
-                known_famous_venues = ["rao's", "raos", "joes", "joe's", "lukes", "luke's", "pats", "pat's"]
+            # Only filter out very obvious OCR garbage - be lenient with short names
+            # Many legitimate venues have short names (e.g., "Rao's", "Joe's", "Luke's", "Pat's", "L'Artusi", etc.)
+            
+            # Only filter out single words that are VERY short (<= 3 chars) AND look like OCR garbage
+            # AND don't have common venue patterns (apostrophes, known venues, etc.)
+            if len(v.split()) == 1 and len(v) <= 3:
+                # Very short single words like "KW", "RA", "AM" are likely OCR garbage
+                # But allow if they have apostrophes or are known venues
+                known_famous_venues = ["rao's", "raos", "joes", "joe's", "lukes", "luke's", "pats", "pat's", "l'artusi", "lartusi"]
                 has_apostrophe = "'" in v or "'" in v  # Allow names with apostrophes
-                if not re.search(r'^(the|le|la|les|el|los|las)\s+', v_lower) and v_lower not in ['bar', 'cafe', 'pub'] and v_lower not in known_famous_venues and not has_apostrophe:
-                    print(f"⚠️ Skipping single short word that doesn't look like venue: {v}")
+                is_all_caps_garbage = v.isupper() and len(v) <= 3  # Very short all-caps like "KW", "RA"
+                
+                # Only filter if it's very short, all caps, AND doesn't have venue patterns
+                if is_all_caps_garbage and not has_apostrophe and v_lower not in known_famous_venues:
+                    print(f"⚠️ Skipping very short all-caps word (likely OCR garbage): {v}")
                     continue
-            # Exclude all-caps single words that are likely OCR errors (unless they're acronyms)
-            if v.isupper() and len(v.split()) == 1 and len(v) <= 6:
+            
+            # Exclude all-caps single words that are likely OCR errors (unless they're acronyms or have context)
+            # Only filter if VERY short (<= 4 chars) and all caps
+            if v.isupper() and len(v.split()) == 1 and len(v) <= 4:
                 # Check if it's a known acronym or if it appears with context
                 known_acronyms = ['NYC', 'LES', 'UWS', 'UES', 'LIC', 'DUMBO', 'NOLITA', 'NOHO']
                 if v not in known_acronyms:
-                    print(f"⚠️ Skipping all-caps single word (likely OCR error): {v}")
-                continue
+                    print(f"⚠️ Skipping very short all-caps word (likely OCR error): {v}")
+                    continue
             seen.add(v_lower)
             unique.append(v)
 
