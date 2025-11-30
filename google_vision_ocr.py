@@ -195,49 +195,98 @@ def extract_text_with_google_vision(image_url: str, detect_language: bool = True
         return None
 
 
-def extract_text_from_slideshow_google_vision(image_urls: List[str]) -> str:
+def extract_text_from_slideshow_google_vision(image_urls: List[str], return_attribution: bool = False):
     """
     Extract text from multiple images using Google Cloud Vision API.
-    
+
     Args:
         image_urls: List of image URLs to process
-        
+        return_attribution: If True, returns dict with attribution data. If False, returns formatted text string (backward compatible)
+
     Returns:
-        Concatenated text from all images with slide markers
+        If return_attribution=False (default): Concatenated text from all images with slide markers (str)
+        If return_attribution=True: Dict with {
+            "formatted_text": str,  # Backward compatible formatted text
+            "slides_with_attribution": [  # Attribution data
+                {
+                    "slide_number": int,
+                    "tiktok_photo_index": int,  # Same as slide_number (1-indexed)
+                    "ocr_lines": [str],  # Individual lines of text
+                    "full_text": str  # Combined text for this slide
+                },
+                ...
+            ]
+        }
     """
     if not GOOGLE_VISION_AVAILABLE:
         logger.warning("Google Cloud Vision not available")
+        if return_attribution:
+            return {"formatted_text": "", "slides_with_attribution": []}
         return ""
-    
+
     all_text = []
-    
+    slides_with_attribution = []
+
     # CRITICAL: Process images in order and assign slide numbers based on position in list
     # This ensures slide numbers match the actual order of images in the TikTok slideshow
     for idx, image_url in enumerate(image_urls, 1):
         try:
             logger.info(f"🔍 Processing slide {idx}/{len(image_urls)} (image {idx} of {len(image_urls)}) with Google Vision...")
             text = extract_text_with_google_vision(image_url)
-            
+
             # CRITICAL: Always add slide marker, even if no text detected
             # This ensures slide numbers are sequential and match image order
             if text and len(text.strip()) > 0:
                 marked_text = f"SLIDE {idx}: {text}"
                 all_text.append(marked_text)
                 logger.info(f"✅ Slide {idx}: {len(text)} chars extracted")
+
+                # Build attribution data
+                ocr_lines = text.split('\n')
+                slides_with_attribution.append({
+                    "slide_number": idx,
+                    "tiktok_photo_index": idx,  # Same as slide_number (1-indexed, matches TikTok photo position)
+                    "ocr_lines": ocr_lines,
+                    "full_text": text
+                })
             else:
                 # Still add slide marker even if no text - preserves slide numbering
                 marked_text = f"SLIDE {idx}:"
                 all_text.append(marked_text)
                 logger.info(f"⚠️ Slide {idx}: No text detected (marked as SLIDE {idx} to preserve order)")
-        
+
+                # Build attribution data for empty slide
+                slides_with_attribution.append({
+                    "slide_number": idx,
+                    "tiktok_photo_index": idx,
+                    "ocr_lines": [],
+                    "full_text": ""
+                })
+
         except Exception as e:
             # Even on error, add slide marker to preserve numbering
             logger.error(f"Failed to process slide {idx}: {e}")
             marked_text = f"SLIDE {idx}:"
             all_text.append(marked_text)
+
+            # Build attribution data for failed slide
+            slides_with_attribution.append({
+                "slide_number": idx,
+                "tiktok_photo_index": idx,
+                "ocr_lines": [],
+                "full_text": ""
+            })
             continue
-    
+
     combined = "\n".join(all_text)
     logger.info(f"📊 Google Vision extraction complete: {len(image_urls)} slides, {len(combined)} chars total")
-    return combined
+
+    if return_attribution:
+        return {
+            "formatted_text": combined,
+            "slides_with_attribution": slides_with_attribution
+        }
+    else:
+        # Backward compatible: return just the formatted text string
+        return combined
 

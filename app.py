@@ -2760,7 +2760,7 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
             else:
                 from location_filters import is_nyc_venue
 
-                place_info = res[0]
+            place_info = res[0]
                 is_nyc, reason = is_nyc_venue(place_info.get("formatted_address", ""))
 
                 if not is_nyc:
@@ -3344,17 +3344,139 @@ def _validate_venue_context_isolation(venue_to_context, all_venue_names):
     return validated_context
 
 
-def extract_places_and_context(transcript, ocr_text, caption, comments):
+def _build_venue_attribution(unique_venues, venue_to_slide, slides_with_attribution, all_venues_per_slide):
+    """
+    Build explicit venue attribution mapping with slide ownership.
+
+    Args:
+        unique_venues: List of venue names
+        venue_to_slide: Dict mapping venue -> slide_key (e.g., {"Venue A": "slide_1"})
+        slides_with_attribution: List of slide attribution dicts from OCR
+        all_venues_per_slide: Dict mapping slide_key -> [venues] showing which venues are on each slide
+
+    Returns:
+        Dict mapping venue_name -> attribution data:
+        {
+            "VENUE_NAME": {
+                "primary_slide": int,  # Slide number where venue first appears
+                "contextual_slides": [int],  # Following slides that belong to this venue
+                "all_slides": [int],  # All slides (primary + contextual)
+                "ocr_content": {"slide_N": "text"},  # OCR text for each slide
+                "full_context": str  # Combined text from all slides
+            }
+        }
+    """
+    venue_attribution = {}
+
+    # Create slide_number -> slide_data mapping for quick lookup
+    slide_lookup = {s["slide_number"]: s for s in slides_with_attribution}
+
+    # Extract slide number from slide_key (e.g., "slide_3" -> 3)
+    def get_slide_number(slide_key):
+        try:
+            return int(slide_key.split('_')[1])
+        except (IndexError, ValueError):
+            return None
+
+    # Build attribution for each venue
+    for venue in unique_venues:
+        primary_slide_key = venue_to_slide.get(venue)
+        if not primary_slide_key:
+            continue
+
+        primary_slide_num = get_slide_number(primary_slide_key)
+        if primary_slide_num is None:
+            continue
+
+        # Find which slides this venue appears on (primary)
+        # and which following slides belong to it (contextual)
+        contextual_slides = []
+        all_slides = [primary_slide_num]
+        ocr_content = {}
+
+        # Add primary slide content
+        if primary_slide_num in slide_lookup:
+            ocr_content[f"slide_{primary_slide_num}"] = slide_lookup[primary_slide_num]["full_text"]
+
+        # Find contextual slides: slides after primary until next venue
+        # Iterate through all slides after the primary
+        for slide_num in sorted(slide_lookup.keys()):
+            if slide_num <= primary_slide_num:
+                continue  # Skip slides before or at primary
+
+            # Check if this slide has a new venue
+            slide_key = f"slide_{slide_num}"
+            has_new_venue = any(
+                slide_key == venue_to_slide.get(v)
+                for v in unique_venues if v != venue
+            )
+
+            if has_new_venue:
+                # New venue starts here, stop collecting contextual slides
+                break
+
+            # This slide belongs to the current venue as contextual
+            contextual_slides.append(slide_num)
+            all_slides.append(slide_num)
+            if slide_num in slide_lookup:
+                ocr_content[f"slide_{slide_num}"] = slide_lookup[slide_num]["full_text"]
+
+        # Build full context by combining all slide texts
+        context_parts = []
+        for slide_num in sorted(all_slides):
+            slide_key = f"slide_{slide_num}"
+            if slide_key in ocr_content:
+                context_parts.append(ocr_content[slide_key])
+
+        full_context = "\n".join(context_parts)
+
+        # Store attribution
+        venue_attribution[venue] = {
+            "primary_slide": primary_slide_num,
+            "contextual_slides": contextual_slides,
+            "all_slides": all_slides,
+            "ocr_content": ocr_content,
+            "full_context": full_context
+        }
+
+        print(f"   📍 {venue}: slide {primary_slide_num} (primary) + {len(contextual_slides)} contextual slides")
+        print(f"      All slides: {all_slides}")
+        print(f"      Context: {len(full_context)} chars")
+
+    return venue_attribution
+
+
+def extract_places_and_context(transcript, ocr_text, caption, comments, slides_with_attribution=None):
+    """
+    Extract venues and context from TikTok content.
+
+    Args:
+        transcript: Audio transcript text
+        ocr_text: OCR text (formatted with SLIDE markers)
+        caption: TikTok caption
+        comments: Comments text
+        slides_with_attribution: Optional list of dicts with slide attribution data from OCR
+            Format: [{"slide_number": int, "tiktok_photo_index": int, "ocr_lines": [str], "full_text": str}, ...]
+
+    Returns:
+        4-tuple: (venues, summary, venue_to_slide, venue_to_context)
+            OR 5-tuple: (venues, summary, venue_to_slide, venue_to_context, venue_attribution) when slides_with_attribution provided
+    """
     # Clean OCR text before processing
     original_ocr_len = len(ocr_text) if ocr_text else 0
     if ocr_text:
         ocr_text = clean_ocr_text(ocr_text)
         if original_ocr_len != len(ocr_text):
             print(f"🧹 Cleaned OCR text: {len(ocr_text)} chars (was {original_ocr_len} chars before cleaning)")
-    
+
     # Parse OCR into slides for slide-aware extraction
     slide_dict = _parse_slide_text(ocr_text)
     is_slideshow = len(slide_dict) > 1
+
+    # NEW: Track if we have attribution data
+    has_attribution = slides_with_attribution is not None and len(slides_with_attribution) > 0
+    if has_attribution:
+        print(f"✅ Using explicit slide attribution data ({len(slides_with_attribution)} slides)")
 
     if is_slideshow:
         print(f"📖 SLIDE-AWARE EXTRACTION: Detected {len(slide_dict)} slides")
@@ -3651,8 +3773,23 @@ If no venues found, output: (none)
         print(f"\n🔍 Validating venue context isolation...")
         venue_to_context = _validate_venue_context_isolation(venue_to_context, all_venue_names)
 
+        # NEW: Build venue attribution if we have explicit slide attribution data
+        venue_attribution = None
+        if has_attribution:
+            print(f"\n🔗 Building explicit venue attribution...")
+            venue_attribution = _build_venue_attribution(
+                unique_venues,
+                venue_to_slide,
+                slides_with_attribution,
+                all_venues_per_slide
+            )
+
         # Return tuple: (venue_names, summary, venue_to_slide_mapping, venue_to_context_mapping)
-        return unique_venues, overall_summary, venue_to_slide, venue_to_context
+        # FUTURE: Will return 5-tuple with venue_attribution when ready
+        if venue_attribution:
+            return unique_venues, overall_summary, venue_to_slide, venue_to_context, venue_attribution
+        else:
+            return unique_venues, overall_summary, venue_to_slide, venue_to_context
     
     # NEW: Organized slideshow extraction using book-style format
     elif organized_context:
@@ -3870,6 +4007,11 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • CRITICAL: Do NOT extract venues that are mentioned as "team behind", "created by", "made by", "founded by", or similar contexts. 
      For example, if text says "the team behind Sami & Susu made Shifka", extract ONLY "Shifka", NOT "Sami & Susu".
      Only extract venues that are actually being featured/reviewed/visited, not venues mentioned as creators or previous projects.
+   • CRITICAL: Do NOT extract chain locations with addresses/neighborhoods in parentheses or as suffixes.
+     Examples to EXCLUDE: "WatchHouse 5th Ave", "HEYTEA (Times Square)", "Starbucks Times Square", "Chipotle Broadway"
+     These are chain locations, not specific venues. Only extract the base venue name if it's mentioned WITHOUT a location suffix.
+     If you see "WatchHouse" mentioned alone, extract it. But if you see "WatchHouse 5th Ave" or "WatchHouse (5th Ave)", do NOT extract it.
+     Same for "HEYTEA" alone vs "HEYTEA (Times Square)" - only extract if mentioned without the location.
    • Be thorough - if the content is about NYC venues, there ARE venues to extract (likely in OCR text)
    • If no venues are found after careful analysis, return an empty list (no venues, just the Summary line).
 {ocr_emphasis}
@@ -4008,6 +4150,32 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
             seen.add(v_lower)
             unique.append(v)
 
+        # CRITICAL: Filter out chain locations with addresses/neighborhoods
+        # Pattern: "VenueName (Location)" or "VenueName Location" where Location is a neighborhood/address
+        nyc_neighborhoods = [
+            "Times Square", "5th Ave", "5th Avenue", "Broadway", "Madison Ave", "Park Ave",
+            "SoHo", "Soho", "Nolita", "NoHo", "TriBeCa", "Tribeca", "West Village", "East Village",
+            "Upper East Side", "UES", "Upper West Side", "UWS", "Lower East Side", "LES",
+            "Chinatown", "Little Italy", "Greenwich Village", "Chelsea", "Flatiron", "Gramercy",
+            "Midtown", "Midtown West", "Midtown East", "Hell's Kitchen", "Koreatown", "KTown",
+            "Brooklyn", "Queens", "Manhattan", "Bronx", "Staten Island"
+        ]
+        filtered_unique = []
+        for v in unique:
+            v_lower = v.lower()
+            # Check if venue name ends with a known neighborhood/address
+            is_chain_location = False
+            for neighborhood in nyc_neighborhoods:
+                neighborhood_lower = neighborhood.lower()
+                # Check patterns: "VenueName (Location)" or "VenueName Location"
+                if f"({neighborhood_lower})" in v_lower or v_lower.endswith(f" {neighborhood_lower}"):
+                    is_chain_location = True
+                    print(f"⚠️ Filtering out chain location: '{v}' (contains location '{neighborhood}')")
+                    break
+            if not is_chain_location:
+                filtered_unique.append(v)
+        
+        unique = filtered_unique
         print(f"🧠 Parsed {len(unique)} venues: {unique}")
         print(f"🧠 Parsed summary: {summary}")
         return unique, summary, {}, {}  # Empty venue_to_slide and venue_to_context for non-slideshow videos
@@ -4243,6 +4411,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
     
     # Use pre-built slide context if available (already includes sequential reading)
     # NOTE: We still need to filter slide_context to prevent bleeding between venues on the same slide
+    needs_strict_filtering = False  # Track if we need strict filtering (no lenient mode) due to context bleeding
     if slide_context:
         print(f"   📖 Enriching {name} using pre-built slide context (already filtered, {len(slide_context)} chars)")
         # Clean slide markers from context
@@ -4259,10 +4428,13 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 if len(other_venue) > 3:
                     # Check if other venue name appears in this venue's context (shouldn't happen)
                     if re.search(r'\b' + re.escape(other_venue) + r'\b', slide_context_lower):
-                        print(f"   ⚠️ WARNING: slide_context for {name} mentions other venue '{other_venue}' - re-filtering to prevent bleeding")
+                        print(f"   ⚠️ WARNING: slide_context for {name} mentions other venue '{other_venue}' - re-filtering STRICTLY to prevent bleeding")
                         # Re-filter to be safe - don't trust slide_context if it mentions other venues
+                        # CRITICAL: Use STRICT filtering, not lenient mode, when context bleeding is detected
                         context_is_already_filtered = False
                         raw_context = slide_context  # Use slide_context as raw_context for filtering
+                        # Mark that we need strict filtering (no lenient mode)
+                        needs_strict_filtering = True
                         break
     elif source_slide:
         # Fallback: Parse slides if OCR has them
@@ -4366,7 +4538,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
@@ -4441,8 +4613,9 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences kept for {name}")
             
             # CRITICAL FIX: If filtered context is very short (< 200 chars), be more lenient
-            # This prevents venues like "The Clocktower" from having no context
-            if len(context) < 200:
+            # BUT: Do NOT use lenient mode if context bleeding was detected (needs_strict_filtering)
+            # This prevents venues like "The Clocktower" from having no context, but prevents bleeding
+            if len(context) < 200 and not needs_strict_filtering:
                 print(f"   ⚠️ Filtered context is very short ({len(context)} chars) for {name} - being more lenient")
                 # Re-filter with relaxed rules: keep sentences that mention venue even if they mention other venues
                 # (if venue appears first or multiple times)
@@ -5633,7 +5806,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
-                cuisine_map = {
+            cuisine_map = {
                 "restaurant": None,  # Too generic
                 "bar": None,  # Too generic
                 "cafe": None,  # Too generic
@@ -5657,15 +5830,15 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "steak_house": "Steakhouse",
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
-                }
-                google_cuisine = None
+            }
+            google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
-                    if place_type in cuisine_map and cuisine_map[place_type]:
-                        google_cuisine = cuisine_map[place_type]
-                        break
-                if google_cuisine and google_cuisine not in vibe_tags:
-                    vibe_tags.append(google_cuisine)
+                if place_type in cuisine_map and cuisine_map[place_type]:
+                    google_cuisine = cuisine_map[place_type]
+                    break
+            if google_cuisine and google_cuisine not in vibe_tags:
+                vibe_tags.append(google_cuisine)
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
@@ -5938,7 +6111,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower
                                   for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
-                    places_extracted.append(merged_place)
+                places_extracted.append(merged_place)
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
@@ -7136,6 +7309,7 @@ def extract_api():
 
             # Use new advanced OCR pipeline for slideshow extraction
             ocr_text = ""
+            slides_with_attribution = []  # NEW: Store slide attribution data
 
             if ADVANCED_OCR_AVAILABLE and len(photo_urls) > 0:
                 print(f"🔍 Processing {len(photo_urls)} images with advanced OCR pipeline...")
@@ -7148,8 +7322,17 @@ def extract_api():
                     image_sources = photo_urls  # Process ALL images (no limit)
                     print(f"   🔍 Processing {len(image_sources)} images in order: {[f'Image {i+1}' for i in range(len(image_sources))]}")
                     print(f"   📋 Image order preserved from TikTok: image 1 → image {len(image_sources)}")
-                    ocr_text = extract_text_from_slideshow(image_sources)
-                    print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
+
+                    # NEW: Request attribution data from OCR
+                    ocr_result = extract_text_from_slideshow(image_sources, return_attribution=True)
+                    if isinstance(ocr_result, dict):
+                        ocr_text = ocr_result["formatted_text"]
+                        slides_with_attribution = ocr_result["slides_with_attribution"]
+                        print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides with attribution")
+                    else:
+                        # Fallback for backward compatibility
+                        ocr_text = ocr_result
+                        print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
                     if ocr_text:
                         print(f"📝 OCR preview: {ocr_text[:200]}...")
                         # Check if last slide text is present
@@ -7258,7 +7441,17 @@ def extract_api():
             comments_text = ""
             print(f"   Input to GPT: transcript={len(transcript)} chars, ocr={len(ocr_text)} chars, caption={len(caption)} chars, comments={len(comments_text)} chars")
             try:
-                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                # NEW: Pass slides_with_attribution to enable explicit attribution tracking
+                result = extract_places_and_context(transcript, ocr_text, caption, comments_text, slides_with_attribution=slides_with_attribution)
+
+                # Handle both 4-tuple and 5-tuple returns
+                venue_attribution = None
+                if len(result) == 5:
+                    venues, context_title, venue_to_slide, venue_to_context, venue_attribution = result
+                    print(f"✅ Received venue attribution data for {len(venue_attribution)} venues")
+                else:
+                    venues, context_title, venue_to_slide, venue_to_context = result
+
                 print(f"🤖 GPT returned {len(venues)} venues: {venues}")
                 print(f"🤖 GPT returned title: {context_title}")
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
@@ -7271,6 +7464,7 @@ def extract_api():
                 context_title = caption or "TikTok Photo Post"
                 venue_to_slide = {}
                 venue_to_context = {}
+                venue_attribution = None
             update_status(extraction_id, f"Found {len(venues)} venues...")
             
             # Build response with same JSON structure as video extraction
@@ -7362,7 +7556,12 @@ def extract_api():
             transcript = ""
             ocr_text = ""
             comments_text = ""
-            venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            result = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+            # Handle both 4-tuple and 5-tuple returns
+            if len(result) == 5:
+                venues, context_title, venue_to_slide, venue_to_context, _venue_attribution = result
+            else:
+                venues, context_title, venue_to_slide, venue_to_context = result
             venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
             
             # Build response
@@ -7618,7 +7817,12 @@ def extract_api():
                 if ocr_text: sources.append("OCR")
                 print(f"📝 Extracting venues from: {', '.join(sources) if sources else 'no sources available'}")
                 update_status(extraction_id, "Identifying venues and locations...")
-                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                result = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+                # Handle both 4-tuple and 5-tuple returns
+                if len(result) == 5:
+                    venues, context_title, venue_to_slide, venue_to_context, _venue_attribution = result
+                else:
+                    venues, context_title, venue_to_slide, venue_to_context = result
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
                 update_status(extraction_id, f"Found {len(venues)} venues...")
                 
@@ -7807,7 +8011,12 @@ def extract_api():
                 pass
 
         update_status(extraction_id, "Identifying venues and locations...")
-        venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+        result = extract_places_and_context(transcript, ocr_text, caption, comments_text)
+        # Handle both 4-tuple and 5-tuple returns
+        if len(result) == 5:
+            venues, context_title, venue_to_slide, venue_to_context, _venue_attribution = result
+        else:
+            venues, context_title, venue_to_slide, venue_to_context = result
 
         # Filter out any remaining placeholder-like venues
         venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
@@ -7908,7 +8117,12 @@ def extract_api():
                 transcript = ""
                 ocr_text = ""
                 comments_text = ""
-                venues, context_title, venue_to_slide, venue_to_context = extract_places_and_context(transcript, ocr_text, html_caption, comments_text)
+                result = extract_places_and_context(transcript, ocr_text, html_caption, comments_text)
+                # Handle both 4-tuple and 5-tuple returns
+                if len(result) == 5:
+                    venues, context_title, venue_to_slide, venue_to_context, _venue_attribution = result
+                else:
+                    venues, context_title, venue_to_slide, venue_to_context = result
                 venues = [v for v in venues if not re.search(r"<.*venue.*\d+.*>|^venue\s*\d+$|placeholder", v, re.I)]
                 
                 data = {

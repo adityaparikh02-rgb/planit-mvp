@@ -26,7 +26,7 @@ except ImportError:
     logger.warning("⚠️ Google Vision OCR module not available - using Tesseract only")
 
 
-def extract_text_from_slideshow(image_sources, detect_language=True):
+def extract_text_from_slideshow(image_sources, detect_language=True, return_attribution=False):
     """
     Extract text from all images in a slideshow with automatic language detection.
 
@@ -36,12 +36,27 @@ def extract_text_from_slideshow(image_sources, detect_language=True):
     Args:
         image_sources: List of image URLs, file paths, or bytes
         detect_language: Enable automatic language detection (default: True)
+        return_attribution: If True, returns dict with attribution data. If False, returns formatted text string (backward compatible)
 
     Returns:
-        Concatenated OCR text from all slides in original language
+        If return_attribution=False (default): Concatenated OCR text from all slides in original language (str)
+        If return_attribution=True: Dict with {
+            "formatted_text": str,  # Backward compatible formatted text
+            "slides_with_attribution": [  # Attribution data
+                {
+                    "slide_number": int,
+                    "tiktok_photo_index": int,  # Same as slide_number (1-indexed)
+                    "ocr_lines": [str],  # Individual lines of text
+                    "full_text": str  # Combined text for this slide
+                },
+                ...
+            ]
+        }
     """
     if not image_sources:
         logger.warning("No images provided to slideshow extractor")
+        if return_attribution:
+            return {"formatted_text": "", "slides_with_attribution": []}
         return ""
 
     # Try Google Cloud Vision first (much more accurate + automatic language detection)
@@ -52,11 +67,19 @@ def extract_text_from_slideshow(image_sources, detect_language=True):
         if url_sources:
             logger.info(f"🎯 Using Google Cloud Vision API for {len(url_sources)} images (auto language detection)")
             try:
-                result = extract_text_from_slideshow_google_vision(url_sources)
-                if result and len(result.strip()) > 50:  # Only use if we got substantial text
-                    return result
+                result = extract_text_from_slideshow_google_vision(url_sources, return_attribution=return_attribution)
+
+                # Handle attribution mode
+                if return_attribution:
+                    if result and result.get("formatted_text") and len(result["formatted_text"].strip()) > 50:
+                        return result
+                    else:
+                        logger.warning("⚠️ Google Vision returned little/no text, falling back to Tesseract")
                 else:
-                    logger.warning("⚠️ Google Vision returned little/no text, falling back to Tesseract")
+                    if result and len(result.strip()) > 50:  # Only use if we got substantial text
+                        return result
+                    else:
+                        logger.warning("⚠️ Google Vision returned little/no text, falling back to Tesseract")
             except Exception as e:
                 logger.error(f"Google Vision failed: {e}, falling back to Tesseract")
 
@@ -64,6 +87,7 @@ def extract_text_from_slideshow(image_sources, detect_language=True):
     logger.info(f"📝 Using Tesseract OCR for {len(image_sources)} images with language detection")
     processor = get_ocr_processor()
     all_text = []
+    slides_with_attribution = []
 
     # CRITICAL: Process images in order and assign slide numbers based on position in list
     # This ensures slide numbers match the actual order of images in the TikTok slideshow
@@ -80,24 +104,56 @@ def extract_text_from_slideshow(image_sources, detect_language=True):
                 marked_text = f"SLIDE {idx}: {text}"
                 all_text.append(marked_text)
                 logger.info(f"✅ Slide {idx}: {len(text)} chars extracted")
+
+                # Build attribution data
+                ocr_lines = text.split('\n')
+                slides_with_attribution.append({
+                    "slide_number": idx,
+                    "tiktok_photo_index": idx,
+                    "ocr_lines": ocr_lines,
+                    "full_text": text
+                })
             else:
                 # Still add slide marker even if no text - preserves slide numbering
                 marked_text = f"SLIDE {idx}:"
                 all_text.append(marked_text)
                 logger.info(f"⚠️ Slide {idx}: No readable text detected (marked as SLIDE {idx} to preserve order)")
 
+                # Build attribution data for empty slide
+                slides_with_attribution.append({
+                    "slide_number": idx,
+                    "tiktok_photo_index": idx,
+                    "ocr_lines": [],
+                    "full_text": ""
+                })
+
         except Exception as e:
             # Even on error, add slide marker to preserve numbering
             logger.error(f"Failed to process slide {idx}: {e}")
             marked_text = f"SLIDE {idx}:"
             all_text.append(marked_text)
+
+            # Build attribution data for failed slide
+            slides_with_attribution.append({
+                "slide_number": idx,
+                "tiktok_photo_index": idx,
+                "ocr_lines": [],
+                "full_text": ""
+            })
             continue
 
     # Concatenate all text with newlines for clarity
     combined = "\n".join(all_text)
 
     logger.info(f"📊 Slideshow extraction complete: {len(image_sources)} slides, {len(combined)} chars total")
-    return combined
+
+    if return_attribution:
+        return {
+            "formatted_text": combined,
+            "slides_with_attribution": slides_with_attribution
+        }
+    else:
+        return combined
 
 
 def extract_text_from_slideshow_weighted(
