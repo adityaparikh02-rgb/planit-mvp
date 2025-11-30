@@ -5992,16 +5992,16 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "steak_house": "Steakhouse",
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
-            }
-            google_cuisine = None
-            # CRITICAL: Only check PRIMARY types for cuisine (not all types)
-            for place_type in primary_types:
-                if place_type in cuisine_map and cuisine_map[place_type]:
-                    google_cuisine = cuisine_map[place_type]
-                    break
-            if google_cuisine and google_cuisine not in vibe_tags:
-                vibe_tags.append(google_cuisine)
-                print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
+                }
+                google_cuisine = None
+                # CRITICAL: Only check PRIMARY types for cuisine (not all types)
+                for place_type in primary_types:
+                    if place_type in cuisine_map and cuisine_map[place_type]:
+                        google_cuisine = cuisine_map[place_type]
+                        break
+                if google_cuisine and google_cuisine not in vibe_tags:
+                    vibe_tags.append(google_cuisine)
+                    print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
 
@@ -6270,7 +6270,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         merged_place["_slide_order"] = venue_to_order[venue_name.lower()]
                     else:
                         merged_place["_slide_order"] = 999  # Default to end if no slide info
-                places_extracted.append(merged_place)
+                    places_extracted.append(merged_place)
                 if place_id:
                     seen_place_ids[place_id] = merged_place
                 if place_name_lower:
@@ -6299,10 +6299,20 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     neighborhood = ""
                     price_level = None
                 
+                # Try to get photo even if enrichment failed
+                photo_url_fallback = "https://via.placeholder.com/600x400?text=No+Photo"
+                if place_id:
+                    try:
+                        photo_fallback = get_photo_url(canonical_name, place_id=place_id, photos=photos)
+                        if photo_fallback:
+                            photo_url_fallback = photo_fallback
+                    except Exception as pe:
+                        print(f"   ⚠️ Failed to get photo fallback: {pe}")
+                
                 place_data = {
                     "name": canonical_name,
                     "maps_url": f"https://www.google.com/maps/search/{canonical_name.replace(' ', '+')}",
-                    "photo_url": "https://via.placeholder.com/600x400?text=No+Photo",
+                    "photo_url": photo_url_fallback,
                     "address": address,
                     "neighborhood": neighborhood or "NYC",
                     "place_id": place_id,
