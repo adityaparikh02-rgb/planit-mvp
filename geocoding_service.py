@@ -403,7 +403,9 @@ class OptimizedGeocodingService:
                 is_nyc = any(indicator in address for indicator in nyc_indicators)
                 is_non_nyc = any(indicator in address for indicator in non_nyc_indicators)
                 
-                if is_non_nyc or (not is_nyc and address):
+                # Only filter out if it's EXPLICITLY non-NYC (has non-NYC indicators)
+                # If it's NYC or unclear, keep it (don't filter out NYC venues!)
+                if is_non_nyc:
                     logger.warning(f"Non-NYC venue filtered out: {place.get('name')} ({address[:50]}...)")
                     # Try next candidate if available
                     if len(candidates) > 1:
@@ -424,6 +426,9 @@ class OptimizedGeocodingService:
                     else:
                         # No more candidates, return None
                         return None
+                # If it's NYC or unclear (no address or no clear indicators), keep it
+                elif is_nyc:
+                    logger.info(f"✅ Keeping NYC venue: {place.get('name')} ({address[:50]}...)")
             
             # Extract photo URL and photos array
             photo_url = None
