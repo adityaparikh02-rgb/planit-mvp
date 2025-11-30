@@ -5271,19 +5271,34 @@ def extract_username_from_url(url):
     match = re.search(r"@([^/]+)", url)
     return match.group(1) if match else None
 
-def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text, url, username, context_title, venue_to_slide=None, venue_to_context=None, photo_urls=None):
+def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text, url, username, context_title, venue_to_slide=None, venue_to_context=None, photo_urls=None, venue_attribution=None):
     """Enrich multiple places in parallel for better performance.
 
     Args:
         venues: List of venue names to enrich
-        venue_to_slide: Optional dict mapping venue names to their source slides
-        venue_to_context: Optional dict mapping venue names to their slide-specific context
+        venue_to_slide: Optional dict mapping venue names to their source slides (DEPRECATED: use venue_attribution)
+        venue_to_context: Optional dict mapping venue names to their slide-specific context (DEPRECATED: use venue_attribution)
         photo_urls: Optional list of photo URLs from TikTok photo post (first image used as thumbnail)
+        venue_attribution: Optional dict with full attribution data per venue
+            Format: {
+                "VENUE_NAME": {
+                    "primary_slide": int,
+                    "contextual_slides": [int],
+                    "all_slides": [int],
+                    "ocr_content": {"slide_N": "text"},
+                    "full_context": str
+                }
+            }
     """
     if venue_to_slide is None:
         venue_to_slide = {}
     if venue_to_context is None:
         venue_to_context = {}
+
+    # NEW: Track if we have attribution data
+    has_attribution = venue_attribution is not None and len(venue_attribution) > 0
+    if has_attribution:
+        print(f"✅ Using venue attribution data for enrichment ({len(venue_attribution)} venues)")
     
     # Combine caption and context_title for neighborhood extraction (title often contains location info)
     # Example: "The Cutest New Spot in Soho" -> extract "Soho" as neighborhood
@@ -5343,20 +5358,35 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         else:
             display_name = venue_name
         
-        # Get source slide for this venue if available (case-insensitive lookup)
+        # NEW: Get attribution data if available
         source_slide = None
-        venue_name_lower = venue_name.lower()
-        for key, value in venue_to_slide.items():
-            if key.lower() == venue_name_lower:
-                source_slide = value
-                break
-
-        # Get pre-built context for this venue (from sequential slide reading) (case-insensitive lookup)
         slide_context = None
-        for key, value in venue_to_context.items():
-            if key.lower() == venue_name_lower:
-                slide_context = value
-                break
+        venue_name_lower = venue_name.lower()
+
+        if has_attribution:
+            # Use venue_attribution for slide context and source
+            for key, attr in venue_attribution.items():
+                if key.lower() == venue_name_lower:
+                    slide_context = attr["full_context"]
+                    source_slide = f"slide_{attr['primary_slide']}"
+
+                    print(f"   📖 Enriching {venue_name} using attributed context:")
+                    print(f"      Primary slide: {attr['primary_slide']}")
+                    print(f"      Contextual slides: {attr['contextual_slides']}")
+                    print(f"      Total slides: {attr['all_slides']}")
+                    print(f"      Context length: {len(slide_context)} chars")
+                    break
+        else:
+            # DEPRECATED: Fallback to old separate dicts
+            for key, value in venue_to_slide.items():
+                if key.lower() == venue_name_lower:
+                    source_slide = value
+                    break
+
+            for key, value in venue_to_context.items():
+                if key.lower() == venue_name_lower:
+                    slide_context = value
+                    break
 
         # Pass source_slide, slide_context, and all_venues to enrichment for slide-aware and venue-specific context
         intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
@@ -7488,7 +7518,8 @@ def extract_api():
                 username = extract_username_from_url(url)
                 places_extracted = enrich_places_parallel(
                     venues, transcript, ocr_text, caption, comments_text,
-                    url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context, photo_urls=photo_urls
+                    url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context, photo_urls=photo_urls,
+                    venue_attribution=venue_attribution  # NEW: Pass attribution data
                 )
                 print(f"✅ Enriched {len(places_extracted)} places successfully")
                 update_status(extraction_id, "Finalizing results...")
