@@ -7737,7 +7737,12 @@ def extract_api():
                 "photo_urls": photo_urls,  # Include photo URLs in response
                 "caption_extracted": caption,  # Include actual caption for debugging
                 "ocr_text": ocr_text,  # Include OCR text for debugging/testing
-                "transcript": transcript  # Include transcript (empty for photo posts)
+                "transcript": transcript,  # Include transcript (empty for photo posts)
+                "_debug_attribution": {
+                    "slides_with_attribution_count": len(slides_with_attribution) if slides_with_attribution else 0,
+                    "venue_attribution_count": len(venue_attribution) if venue_attribution else 0,
+                    "venue_attribution_is_none": venue_attribution is None
+                }
             }
             
             # Enrich places if any were found
