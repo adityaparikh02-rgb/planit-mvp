@@ -2758,12 +2758,17 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
                 place_info = nyc_results[0]
                 print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
             else:
+                from location_filters import is_nyc_venue
+
                 place_info = res[0]
-                address_check = place_info.get("formatted_address", "").lower()
-                if any(indicator in address_check for indicator in ["denver", "co", "colorado", "california", "ca"]):
-                    print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
+                is_nyc, reason = is_nyc_venue(place_info.get("formatted_address", ""))
+
+                if not is_nyc:
+                    print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} - {reason}")
                     # Try to find a better match by searching with more specific NYC terms
                     return None, None, None, None, None, None
+
+                print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
             
             canonical_name = place_info.get("name", place_name)
             address = place_info.get("formatted_address")
@@ -5745,33 +5750,20 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
+    from location_filters import is_nyc_venue
+
     nyc_places = []
     for place in places_extracted:
-        address = (place.get("address") or "").lower()
-        neighborhood = (place.get("neighborhood") or "").lower()
+        is_nyc, reason = is_nyc_venue(
+            place.get("address") or "",
+            place.get("neighborhood") or ""
+        )
 
-        # Check if address or neighborhood indicates NYC
-        nyc_indicators = ["new york", "ny", "manhattan", "brooklyn", "queens", "bronx", "staten island"]
-        non_nyc_indicators = ["nj", "new jersey", "elwood", "jersey", "denver", "co", "colorado", "california", "ca", "los angeles", "la", "chicago", "il", "illinois", "miami", "fl", "florida", "boston", "ma", "massachusetts", "seattle", "wa", "washington", "portland", "or", "oregon", "philadelphia", "pa", "pennsylvania", "atlanta", "ga", "georgia", "dallas", "tx", "texas", "houston", "austin", "san francisco", "sf", "san diego", "phoenix", "az", "arizona", "las vegas", "nv", "nevada"]
-
-        is_nyc = any(indicator in address or indicator in neighborhood for indicator in nyc_indicators)
-        is_non_nyc = any(indicator in address or indicator in neighborhood for indicator in non_nyc_indicators)
-
-        # Keep venue if:
-        # 1. Has NYC indicators and no non-NYC indicators
-        # 2. Has no location indicators at all (assume NYC for MVP)
-        # Reject only if has non-NYC indicators
-        if is_non_nyc and not is_nyc:
-            # Definitely not NYC - filter out
-            print(f"   ❌ Filtered out non-NYC venue: {place.get('name')} ({address or neighborhood})")
-        elif is_nyc:
-            # Has NYC indicators - keep it
+        if is_nyc:
             nyc_places.append(place)
-            print(f"   ✅ Kept NYC venue: {place.get('name')}")
+            print(f"   ✅ Kept NYC venue: {place.get('name')} - {reason}")
         else:
-            # No clear indicators - keep it (assume NYC for MVP)
-            nyc_places.append(place)
-            print(f"   ⚠️ Kept venue with unclear location: {place.get('name')}")
+            print(f"   ❌ Filtered out non-NYC venue: {place.get('name')} - {reason}")
 
     if len(nyc_places) < len(places_extracted):
         print(f"🗽 NYC Filter: Kept {len(nyc_places)}/{len(places_extracted)} venues")

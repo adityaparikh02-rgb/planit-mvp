@@ -404,16 +404,16 @@ class OptimizedGeocodingService:
             
             # Filter out non-NYC venues if prioritize_nyc is True
             if prioritize_nyc:
-                address = place.get('formatted_address', '').lower()
-                nyc_indicators = ["new york", "ny", "manhattan", "brooklyn", "queens", "bronx", "staten island"]
-                non_nyc_indicators = ["denver", "co", "colorado", "california", "ca", "los angeles", "la", "chicago", "il", "illinois", "miami", "fl", "florida", "boston", "ma", "massachusetts", "seattle", "wa", "washington", "portland", "or", "oregon", "philadelphia", "pa", "pennsylvania", "atlanta", "ga", "georgia", "dallas", "tx", "texas", "houston", "austin", "san francisco", "sf", "san diego", "phoenix", "az", "arizona", "las vegas", "nv", "nevada"]
-                is_nyc = any(indicator in address for indicator in nyc_indicators)
-                is_non_nyc = any(indicator in address for indicator in non_nyc_indicators)
-                
-                # Only filter out if it's EXPLICITLY non-NYC (has non-NYC indicators)
-                # If it's NYC or unclear, keep it (don't filter out NYC venues!)
-                if is_non_nyc:
-                    logger.warning(f"Non-NYC venue filtered out: {place.get('name')} ({address[:50]}...)")
+                from location_filters import is_nyc_venue
+
+                is_nyc, reason = is_nyc_venue(
+                    place.get('formatted_address', ''),
+                    place.get('vicinity', '')
+                )
+
+                if not is_nyc:
+                    # Definitely not NYC - filter out
+                    logger.warning(f"Non-NYC venue filtered out: {place.get('name')} - {reason}")
                     # Try next candidate if available
                     if len(candidates) > 1:
                         for next_candidate in candidates[1:]:
@@ -421,11 +421,13 @@ class OptimizedGeocodingService:
                             next_details = self.gmaps.place(place_id=next_place_id, fields=self.DETAILS_FIELDS)
                             if next_details.get('result'):
                                 next_place = next_details['result']
-                                next_address = next_place.get('formatted_address', '').lower()
-                                next_is_nyc = any(indicator in next_address for indicator in nyc_indicators)
-                                next_is_non_nyc = any(indicator in next_address for indicator in non_nyc_indicators)
-                                if next_is_nyc and not next_is_non_nyc:
+                                next_is_nyc, next_reason = is_nyc_venue(
+                                    next_place.get('formatted_address', ''),
+                                    next_place.get('vicinity', '')
+                                )
+                                if next_is_nyc:
                                     place = next_place
+                                    logger.info(f"✅ Keeping NYC venue: {next_place.get('name')} - {next_reason}")
                                     break
                         else:
                             # No NYC candidate found, return None
@@ -433,9 +435,9 @@ class OptimizedGeocodingService:
                     else:
                         # No more candidates, return None
                         return None
-                # If it's NYC or unclear (no address or no clear indicators), keep it
-                elif is_nyc:
-                    logger.info(f"✅ Keeping NYC venue: {place.get('name')} ({address[:50]}...)")
+                else:
+                    # Is NYC - keep it
+                    logger.info(f"✅ Keeping NYC venue: {place.get('name')} - {reason}")
             
             # Extract photo URL and photos array
             photo_url = None
