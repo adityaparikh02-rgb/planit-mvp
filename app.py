@@ -6046,6 +6046,15 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             print(f"   🏷️ Extracted {len(vibe_tags)} vibe tags for {display_name}: {vibe_tags}")
         else:
             print(f"   ⚠️ No vibe tags extracted for {display_name}")
+        
+        # CRITICAL: Log all fields being returned to debug missing data
+        print(f"   📊 Returning place_data for {display_name}:")
+        print(f"      - neighborhood: {place_data.get('neighborhood', 'MISSING')}")
+        print(f"      - vibe_tags: {len(place_data.get('vibe_tags', []))} tags")
+        print(f"      - description: {len(place_data.get('description', ''))} chars")
+        print(f"      - photo_url: {'SET' if place_data.get('photo_url') else 'MISSING'}")
+        print(f"      - address: {place_data.get('address', 'MISSING')[:50] if place_data.get('address') else 'MISSING'}")
+        
         return place_data
     
     # Run enrichment and photo fetching in parallel (max 5 concurrent to avoid rate limits)
@@ -6082,8 +6091,22 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             venue_name = future_to_venue[future]
             try:
                 place_data = future.result()
+                # CRITICAL: Log place_data before merge to debug missing fields
+                print(f"   📦 place_data BEFORE merge for {venue_name}:")
+                print(f"      - neighborhood: {place_data.get('neighborhood', 'MISSING')}")
+                print(f"      - vibe_tags: {len(place_data.get('vibe_tags', []))} tags")
+                print(f"      - description: {len(place_data.get('description', ''))} chars")
+                print(f"      - photo_url: {'SET' if place_data.get('photo_url') else 'MISSING'}")
+                
                 # Merge with cached places - pass video summary
                 merged_place = merge_place_with_cache(place_data, url, username, context_title)
+                
+                # CRITICAL: Log merged_place after merge to debug missing fields
+                print(f"   📦 merged_place AFTER merge for {venue_name}:")
+                print(f"      - neighborhood: {merged_place.get('neighborhood', 'MISSING')}")
+                print(f"      - vibe_tags: {len(merged_place.get('vibe_tags', []))} tags")
+                print(f"      - description: {len(merged_place.get('description', ''))} chars")
+                print(f"      - photo_url: {'SET' if merged_place.get('photo_url') else 'MISSING'}")
                 
                 # Deduplicate by place_id (if Google Maps returned same place_id, it's the same venue)
                 place_id = merged_place.get("place_id") or merged_place.get("address")  # Use address as fallback
@@ -6231,11 +6254,31 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     
             except Exception as e:
                 print(f"⚠️ Failed to enrich {venue_name}: {e}")
+                import traceback
+                print(f"   📋 Traceback: {traceback.format_exc()[:500]}")
                 # Add basic place data even if enrichment fails
+                # Try to get at least address from Google Maps
+                try:
+                    canonical_name, address, place_id, photos, neighborhood, price_level = get_place_info_from_google(venue_name, use_cache=True, location_hint="NYC")
+                    if not canonical_name:
+                        canonical_name = venue_name
+                except Exception as ge:
+                    print(f"   ⚠️ Failed to get Google Maps info: {ge}")
+                    canonical_name = venue_name
+                    address = ""
+                    place_id = None
+                    photos = []
+                    neighborhood = ""
+                    price_level = None
+                
                 place_data = {
-                    "name": venue_name,
-                    "maps_url": f"https://www.google.com/maps/search/{venue_name.replace(' ', '+')}",
+                    "name": canonical_name,
+                    "maps_url": f"https://www.google.com/maps/search/{canonical_name.replace(' ', '+')}",
                     "photo_url": "https://via.placeholder.com/600x400?text=No+Photo",
+                    "address": address,
+                    "neighborhood": neighborhood or "NYC",
+                    "place_id": place_id,
+                    "price": price_level,
                     "summary": "",
                     "description": "",
                     "when_to_go": "",
