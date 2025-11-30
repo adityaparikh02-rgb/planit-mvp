@@ -7710,6 +7710,7 @@ def extract_api():
                         url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context
                     )
                     data["places_extracted"] = places_extracted
+                    data["venue_contexts"] = venue_to_context if venue_to_context else {}  # Include all extracted context for each venue
                     update_status(extraction_id, "Finalizing results...")
                     update_status(extraction_id, "Complete")
 
