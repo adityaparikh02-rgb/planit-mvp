@@ -2932,6 +2932,46 @@ def get_photo_url(name, place_id=None, photos=None):
 # ─────────────────────────────
 # Organize Slides by Venue
 # ─────────────────────────────
+def _is_slide_unrelated_content(slide_text):
+    """
+    Detect if slide contains unrelated TikTok content (hashtags, CTAs, etc.)
+    that should not be attributed to any venue.
+
+    Returns True if slide appears to be unrelated/promotional content.
+    """
+    if not slide_text or len(slide_text.strip()) < 10:
+        return True
+
+    # Count hashtags
+    hashtag_count = slide_text.count('#')
+    if hashtag_count > 3:
+        print(f"      🚫 Detected unrelated content: excessive hashtags ({hashtag_count})")
+        return True
+
+    # Check for common TikTok CTAs (like, follow, share, subscribe)
+    cta_patterns = [
+        r'\bfollow\s+for\s+more\b',
+        r'\blike\s+and\s+subscribe\b',
+        r'\bshare\s+this\s+video\b',
+        r'\bturn\s+on\s+notifications\b',
+        r'\blink\s+in\s+bio\b',
+        r'\bfollow\s+me\s+on\b',
+        r'\bcheck\s+out\s+my\b',
+    ]
+    for pattern in cta_patterns:
+        if re.search(pattern, slide_text.lower()):
+            print(f"      🚫 Detected unrelated content: TikTok CTA pattern")
+            return True
+
+    # If slide is mostly hashtags or symbols, it's unrelated
+    alphanumeric = sum(1 for c in slide_text if c.isalnum() or c.isspace())
+    if alphanumeric / len(slide_text) < 0.5:
+        print(f"      🚫 Detected unrelated content: mostly non-alphanumeric")
+        return True
+
+    return False
+
+
 def organize_slides_by_venue(ocr_text):
     """
     Organize OCR text from slides by venue attribution.
@@ -3042,7 +3082,11 @@ Place names only:"""
                 current_place = place
         else:
             # Rule 2: No place name -> context slide
-            if current_place:
+            # CRITICAL: Check if slide is unrelated content (TikTok CTAs, hashtags, etc.)
+            if _is_slide_unrelated_content(slide_text):
+                print(f"   ⚠️ {slide_key}: Skipping unrelated content")
+                # Don't attach to any venue or buffer it
+            elif current_place:
                 # Attach to most recent place
                 place_to_slides[current_place].append(f"{slide_key}: {slide_text}")
             else:
@@ -3239,6 +3283,65 @@ def _sort_slides_by_number(slide_dict):
     
     # Sort by numeric slide number
     return sorted(slide_dict.items(), key=lambda x: get_slide_number(x[0]))
+
+
+def _validate_venue_context_isolation(venue_to_context, all_venue_names):
+    """
+    Validate that each venue's context doesn't mention other venues.
+    Returns cleaned venue_to_context dict with warnings for any bleeding detected.
+
+    This is a final safety check to catch any context bleeding that slipped through
+    earlier filters during context building.
+    """
+    validated_context = {}
+
+    for venue, context in venue_to_context.items():
+        if not context:
+            validated_context[venue] = context
+            continue
+
+        context_lower = context.lower()
+        venue_lower = venue.lower()
+
+        # Check if context mentions other venues
+        other_venues = [v for v in all_venue_names if v.lower() != venue_lower]
+        mentions_others = []
+
+        for other_venue in other_venues:
+            other_lower = other_venue.lower()
+            # Use word boundary to avoid false positives (e.g., "bar" matching "Monkey Bar")
+            if len(other_lower) > 3 and re.search(r'\b' + re.escape(other_lower) + r'\b', context_lower):
+                mentions_others.append(other_venue)
+
+        if mentions_others:
+            print(f"   ⚠️ CONTEXT BLEEDING DETECTED: {venue} context mentions {mentions_others}")
+            print(f"   🔧 Re-filtering to remove sentences mentioning other venues...")
+
+            # Re-filter: split into sentences, keep only those mentioning THIS venue
+            sentences = re.split(r'[.!?]\s+', context)
+            clean_sentences = []
+
+            for sentence in sentences:
+                sentence_lower = sentence.lower()
+                # Check if sentence mentions this venue (word boundary matching)
+                mentions_this = re.search(r'\b' + re.escape(venue_lower) + r'\b', sentence_lower)
+                # Check if mentions other venues (word boundary matching)
+                mentions_other = any(
+                    len(v.lower()) > 3 and re.search(r'\b' + re.escape(v.lower()) + r'\b', sentence_lower)
+                    for v in other_venues
+                )
+
+                # Only keep sentences that mention THIS venue and NOT other venues
+                if mentions_this and not mentions_other:
+                    clean_sentences.append(sentence)
+
+            cleaned_context = ". ".join(clean_sentences)
+            validated_context[venue] = cleaned_context
+            print(f"   ✅ Cleaned context: {len(cleaned_context)} chars (was {len(context)})")
+        else:
+            validated_context[venue] = context
+
+    return validated_context
 
 
 def extract_places_and_context(transcript, ocr_text, caption, comments):
@@ -3439,13 +3542,13 @@ If no venues found, output: (none)
                     venue_specific_sentences = []
                     for sentence in sentences:
                         sentence_lower = sentence.lower()
-                        # Check if sentence mentions this venue
-                        if venue_lower in sentence_lower:
+                        # Check if sentence mentions this venue (use word boundaries to avoid substring matches)
+                        if re.search(r'\b' + re.escape(venue_lower) + r'\b', sentence_lower):
                             venue_specific_sentences.append(sentence)
                         elif len(venue_words) > 1:
-                            # For multi-word names, check if most words appear
-                            words_found = sum(1 for word in venue_words if word in sentence_lower)
-                            if words_found >= min(2, len(venue_words) - 1):
+                            # For multi-word names, require ALL words to be present (strict matching)
+                            words_found = sum(1 for word in venue_words if re.search(r'\b' + re.escape(word) + r'\b', sentence_lower))
+                            if words_found >= len(venue_words):  # All words must be present
                                 venue_specific_sentences.append(sentence)
                     
                     if venue_specific_sentences:
@@ -3468,15 +3571,18 @@ If no venues found, output: (none)
                     if next_key in all_venues_per_slide:
                         break
                     
-                    # Check if this contextual slide mentions the current venue
+                    # Check if this contextual slide mentions the current venue (word boundary matching)
                     next_text_lower = next_text.lower()
                     mentions_venue = (
-                        venue_lower in next_text_lower or
-                        (len(venue_words) > 1 and sum(1 for word in venue_words if word in next_text_lower) >= min(2, len(venue_words) - 1))
+                        re.search(r'\b' + re.escape(venue_lower) + r'\b', next_text_lower) or
+                        (len(venue_words) > 1 and sum(1 for word in venue_words if re.search(r'\b' + re.escape(word) + r'\b', next_text_lower)) >= len(venue_words))
                     )
-                    
-                    # Check if it mentions other venues
-                    mentions_other_venue = any(v_lower in next_text_lower for v_lower in all_venue_names_lower if v_lower != venue_lower)
+
+                    # Check if it mentions other venues (word boundary matching to avoid false positives)
+                    mentions_other_venue = any(
+                        len(v_lower) > 3 and re.search(r'\b' + re.escape(v_lower) + r'\b', next_text_lower)
+                        for v_lower in all_venue_names_lower if v_lower != venue_lower
+                    )
                     
                     # Only include if it mentions the venue and doesn't mention other venues
                     # FIXED: Removed permissive "short slide fallback" that caused context bleeding
@@ -3490,7 +3596,11 @@ If no venues found, output: (none)
                 # Combine all context for this venue
                 full_context = "\n".join(context_parts)
                 venue_to_context[venue] = full_context
-                print(f"   📝 {venue}: {len(full_context)} chars of context from {len(context_parts)} slide(s) (venue-specific)")
+
+                # DEBUG: Show which slides were included for this venue
+                slides_included = [slide_key] + [slides_sorted[slide_idx + i + 1][0] for i in range(len(context_parts) - 1) if slide_idx + i + 1 < len(slides_sorted)]
+                print(f"   📝 {venue}: {len(full_context)} chars of context from {len(context_parts)} slide(s)")
+                print(f"      Slides: {', '.join(slides_included)}")
 
         # Combine venues from all slides (preserving slide info for enrichment)
         all_venues_with_slides = []
@@ -3536,6 +3646,10 @@ If no venues found, output: (none)
         print(f"\n📖 Slide-aware extraction complete:")
         print(f"   Total unique venues: {len(unique_venues)} (ordered by slide appearance)")
         print(f"   Summary: {overall_summary}")
+
+        # CRITICAL: Validate venue context isolation (final safety check for bleeding)
+        print(f"\n🔍 Validating venue context isolation...")
+        venue_to_context = _validate_venue_context_isolation(venue_to_context, all_venue_names)
 
         # Return tuple: (venue_names, summary, venue_to_slide_mapping, venue_to_context_mapping)
         return unique_venues, overall_summary, venue_to_slide, venue_to_context
