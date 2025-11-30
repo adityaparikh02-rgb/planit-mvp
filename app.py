@@ -3680,11 +3680,15 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
 1️⃣ Extract every **specific** bar, restaurant, café, or food/drink venue mentioned.
 {caption_emphasis}
    • CRITICAL PRIORITY: Check the OCR text FIRST - photo posts show venue names IN THE IMAGES
-   • CRITICAL: Venue names often appear at the START of lines or in PARENTHESES with descriptions
+   • CRITICAL: Venue names often appear at the START of lines or BEFORE parentheses with descriptions
      Example: "Club Room (It's a classy spot...)" → Extract "Club Room"
      Example: "Paul's Baby Grand (This is one of...)" → Extract "Paul's Baby Grand"
      Example: "The Blond (One of the top spots...)" → Extract "The Blond"
-     If you see "VenueName (description)", extract "VenueName" - the name is BEFORE the parenthesis
+     Example: "Loosies (This is a trendy spot...)" → Extract "Loosies"
+     Example: "The Box (Great spot if you...)" → Extract "The Box"
+     CRITICAL: If you see "VenueName (description)", extract "VenueName" - the name is ALWAYS BEFORE the opening parenthesis
+     CRITICAL: Even if the description is long, extract the venue name that appears BEFORE the parenthesis
+     CRITICAL: Check EVERY slide - each slide may have a venue name followed by a description in parentheses
    • CRITICAL: Check ALL slides including the LAST slide - venue names are often on the final slide
      Example: "Elvis Noho" might only appear on the last slide - make sure to check SLIDE N (where N is the last slide number)
      If you see "SLIDE 1:", "SLIDE 2:", "SLIDE 3:", make sure to check "SLIDE 3:" for venue names
