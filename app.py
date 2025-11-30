@@ -4439,6 +4439,68 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         if filtered_sentences:
             context = ". ".join(filtered_sentences)
             print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences kept for {name}")
+            
+            # CRITICAL FIX: If filtered context is very short (< 200 chars), be more lenient
+            # This prevents venues like "The Clocktower" from having no context
+            if len(context) < 200:
+                print(f"   ⚠️ Filtered context is very short ({len(context)} chars) for {name} - being more lenient")
+                # Re-filter with relaxed rules: keep sentences that mention venue even if they mention other venues
+                # (if venue appears first or multiple times)
+                relaxed_sentences = []
+                for sentence in sentences:
+                    sentence_lower = sentence.lower()
+                    sentence_stripped = sentence.strip()
+                    
+                    # Skip very short sentences
+                    if len(sentence_stripped) < 10:
+                        continue
+                    
+                    # Check if sentence mentions this venue
+                    mentions_this = False
+                    if name_lower in sentence_lower:
+                        mentions_this = True
+                    elif len(name_words) > 1:
+                        words_found = sum(1 for word in name_words if word in sentence_lower)
+                        if words_found >= min(2, len(name_words) - 1):
+                            mentions_this = True
+                    elif len(name_words) == 1:
+                        if re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower):
+                            mentions_this = True
+                    
+                    # If it mentions this venue, keep it even if it mentions other venues
+                    # (as long as this venue appears first or multiple times)
+                    if mentions_this:
+                        mentions_other = False
+                        for v in other_venues:
+                            if len(v) > 2:
+                                if re.search(r'\b' + re.escape(v) + r'\b', sentence_lower):
+                                    mentions_other = True
+                                    break
+                        
+                        if not mentions_other:
+                            # Safe: mentions this venue, no other venues
+                            if sentence not in filtered_sentences:
+                                relaxed_sentences.append(sentence)
+                        else:
+                            # Mentions both - check if this venue appears first or multiple times
+                            this_pos = sentence_lower.find(name_lower)
+                            other_positions = []
+                            for v in other_venues:
+                                if len(v) > 2:
+                                    match = re.search(r'\b' + re.escape(v) + r'\b', sentence_lower)
+                                    if match:
+                                        other_positions.append(match.start())
+                            this_count = len(re.findall(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
+                            # More lenient: keep if venue appears first OR appears 2+ times
+                            if this_pos != -1 and (not other_positions or this_pos < min(other_positions) or this_count >= 2):
+                                if sentence not in filtered_sentences:
+                                    relaxed_sentences.append(sentence)
+                                    print(f"      ✓ Kept (lenient mode): '{sentence[:80]}...'")
+                
+                # Add relaxed sentences to context
+                if relaxed_sentences:
+                    context = ". ".join(filtered_sentences + relaxed_sentences)
+                    print(f"   ✂️ Added {len(relaxed_sentences)} more sentences in lenient mode (total: {len(filtered_sentences) + len(relaxed_sentences)} sentences, {len(context)} chars)")
         else:
             # No venue-specific sentences found - use full raw context as fallback
             # This can happen with uncommon venue names or abbreviated names in OCR
@@ -5403,6 +5465,22 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         is_permanently_closed = business_status == "CLOSED_PERMANENTLY"
         if is_permanently_closed:
             print(f"   ⚠️ {display_name} is permanently closed - skipping photo fetch")
+        
+        # CRITICAL: Add "Permanently Closed" to good_to_know field if venue is permanently closed
+        # This should happen even if Google Maps API fails to return other data
+        if is_permanently_closed:
+            # Update good_to_know in intel dict if it exists
+            if "good_to_know" in intel:
+                if intel["good_to_know"]:
+                    # Prepend "Permanently Closed" if good_to_know already has content
+                    intel["good_to_know"] = "Permanently Closed. " + intel["good_to_know"]
+                else:
+                    # Set to "Permanently Closed" if good_to_know is empty
+                    intel["good_to_know"] = "Permanently Closed"
+            else:
+                # Create good_to_know field if it doesn't exist
+                intel["good_to_know"] = "Permanently Closed"
+            print(f"   ✅ Added 'Permanently Closed' to good_to_know for {display_name}")
 
         # Try to get photo from the specific slide this venue came from (only if not permanently closed)
         if source_slide and photo_urls:
