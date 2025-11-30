@@ -3474,9 +3474,20 @@ def extract_places_and_context(transcript, ocr_text, caption, comments, slides_w
     is_slideshow = len(slide_dict) > 1
 
     # NEW: Track if we have attribution data
+    print(f"🔍 DEBUG: extract_places_and_context called with slides_with_attribution={type(slides_with_attribution)}")
+    if slides_with_attribution is not None:
+        print(f"🔍 DEBUG: slides_with_attribution is not None, length={len(slides_with_attribution)}")
+    else:
+        print(f"🔍 DEBUG: slides_with_attribution is None")
+
     has_attribution = slides_with_attribution is not None and len(slides_with_attribution) > 0
+    print(f"🔍 DEBUG: has_attribution={has_attribution}")
+
     if has_attribution:
         print(f"✅ Using explicit slide attribution data ({len(slides_with_attribution)} slides)")
+        print(f"🔍 DEBUG: First slide attribution sample: {slides_with_attribution[0] if slides_with_attribution else 'N/A'}")
+    else:
+        print(f"⚠️ DEBUG: NOT using slide attribution (will use old sentence-level filtering)")
 
     if is_slideshow:
         print(f"📖 SLIDE-AWARE EXTRACTION: Detected {len(slide_dict)} slides")
@@ -7561,14 +7572,25 @@ def extract_api():
                     print(f"   📋 Image order preserved from TikTok: image 1 → image {len(image_sources)}")
 
                     # NEW: Request attribution data from OCR
+                    print(f"🔍 DEBUG: Calling extract_text_from_slideshow with return_attribution=True")
                     ocr_result = extract_text_from_slideshow(image_sources, return_attribution=True)
+
+                    # CRITICAL DEBUG: Log what type was returned
+                    print(f"🔍 DEBUG: OCR result type: {type(ocr_result)}")
                     if isinstance(ocr_result, dict):
+                        print(f"🔍 DEBUG: OCR returned dict with keys: {ocr_result.keys()}")
                         ocr_text = ocr_result["formatted_text"]
                         slides_with_attribution = ocr_result["slides_with_attribution"]
+                        print(f"🔍 DEBUG: slides_with_attribution length: {len(slides_with_attribution)}")
+                        print(f"🔍 DEBUG: First 2 slides attribution: {slides_with_attribution[:2] if len(slides_with_attribution) >= 2 else slides_with_attribution}")
                         print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides with attribution")
+                        print(f"✅ Got {len(slides_with_attribution)} slides with attribution data")
                     else:
                         # Fallback for backward compatibility
+                        print(f"⚠️ DEBUG: OCR returned string instead of dict! Falling back to legacy mode.")
+                        print(f"⚠️ DEBUG: String length: {len(ocr_result) if isinstance(ocr_result, str) else 'N/A'}")
                         ocr_text = ocr_result
+                        print(f"⚠️ WARNING: slides_with_attribution will be empty (OCR didn't return dict)")
                     print(f"✅ Advanced OCR pipeline extracted {len(ocr_text)} chars from {len(image_sources)} slides")
                     if ocr_text:
                         print(f"📝 OCR preview: {ocr_text[:200]}...")
