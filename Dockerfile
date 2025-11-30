@@ -52,6 +52,7 @@ COPY ocr_processor.py .
 COPY google_vision_ocr.py .
 COPY slideshow_extractor.py .
 COPY geocoding_service.py .
+COPY location_filters.py .
 COPY Procfile .
 
 # Expose port (Render will set PORT env var)
