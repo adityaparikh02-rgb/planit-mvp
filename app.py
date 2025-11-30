@@ -4233,7 +4233,7 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
 # ─────────────────────────────
 # GPT: Enrichment + Vibe Tags
 # ─────────────────────────────
-def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_slide=None, slide_context=None, all_venues=None):
+def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_slide=None, slide_context=None, all_venues=None, venue_attribution=None):
     """
     Enrich place information with slide-aware context.
     If slide_context is provided, use that pre-built context (reads slides sequentially "like a book").
@@ -4452,18 +4452,50 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
         if all_venues and len(all_venues) > 1:
             other_venues_lower = [v.lower() for v in all_venues if v.lower() != name.lower()]
             slide_context_lower = slide_context.lower()
+            mentions_other_venue = False
+            detected_other_venue = None
             for other_venue in other_venues_lower:
                 if len(other_venue) > 3:
                     # Check if other venue name appears in this venue's context (shouldn't happen)
                     if re.search(r'\b' + re.escape(other_venue) + r'\b', slide_context_lower):
-                        print(f"   ⚠️ WARNING: slide_context for {name} mentions other venue '{other_venue}' - re-filtering STRICTLY to prevent bleeding")
-                        # Re-filter to be safe - don't trust slide_context if it mentions other venues
-                        # CRITICAL: Use STRICT filtering, not lenient mode, when context bleeding is detected
-                        context_is_already_filtered = False
-                        raw_context = slide_context  # Use slide_context as raw_context for filtering
-                        # Mark that we need strict filtering (no lenient mode)
-                        needs_strict_filtering = True
+                        mentions_other_venue = True
+                        detected_other_venue = other_venue
                         break
+            
+            if mentions_other_venue:
+                print(f"   ⚠️ WARNING: slide_context for {name} mentions other venue '{detected_other_venue}' - extracting ONLY from venue's specific slide(s)")
+                # CRITICAL FIX: If we have venue_attribution, extract context ONLY from this venue's slides
+                # Don't use slide_context which may contain other venues - use ocr_content from attribution
+                if venue_attribution and name in venue_attribution:
+                    attr = venue_attribution[name]
+                    ocr_content = attr.get("ocr_content", {})
+                    all_slides = attr.get("all_slides", [])
+                    
+                    # Extract context ONLY from this venue's slides
+                    venue_specific_parts = []
+                    for slide_num in sorted(all_slides):
+                        slide_key = f"slide_{slide_num}"
+                        if slide_key in ocr_content:
+                            slide_text = ocr_content[slide_key]
+                            # Clean slide markers
+                            cleaned_slide_text = clean_slide_markers(slide_text)
+                            venue_specific_parts.append(cleaned_slide_text)
+                    
+                    # Build context ONLY from this venue's slides
+                    isolated_context = "\n".join(venue_specific_parts)
+                    raw_context = "\n".join(x for x in [isolated_context, caption] if x)
+                    print(f"   ✅ Extracted isolated context from {len(all_slides)} slide(s) for {name}: {len(isolated_context)} chars")
+                    print(f"      Slides used: {all_slides}")
+                    # Still need to filter to remove any sentences mentioning other venues
+                    context_is_already_filtered = False
+                    needs_strict_filtering = True
+                else:
+                    # No attribution data - re-filter slide_context strictly
+                    print(f"   ⚠️ No venue_attribution available - re-filtering slide_context STRICTLY to prevent bleeding")
+                    context_is_already_filtered = False
+                    raw_context = slide_context  # Use slide_context as raw_context for filtering
+                    # Mark that we need strict filtering (no lenient mode)
+                    needs_strict_filtering = True
     elif source_slide:
         # Fallback: Parse slides if OCR has them
         slide_dict = _parse_slide_text(ocr_text) if ocr_text else {}
@@ -5444,7 +5476,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 slide_context = hotel_context
 
         # Pass source_slide, slide_context, and all_venues to enrichment for slide-aware and venue-specific context
-        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues)
+        intel = enrich_place_intel(display_name, transcript, ocr_text, caption, comments_text, source_slide=source_slide, slide_context=slide_context, all_venues=venues, venue_attribution=venue_attribution)
 
         # PRIORITY ORDER FOR NEIGHBORHOOD EXTRACTION:
         # 1. Google Maps Place Details API (most reliable - factual data with specific neighborhoods)
@@ -5932,16 +5964,16 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "steak_house": "Steakhouse",
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
-                }
-                google_cuisine = None
-                # CRITICAL: Only check PRIMARY types for cuisine (not all types)
-                for place_type in primary_types:
-                    if place_type in cuisine_map and cuisine_map[place_type]:
-                        google_cuisine = cuisine_map[place_type]
-                        break
-                if google_cuisine and google_cuisine not in vibe_tags:
-                    vibe_tags.append(google_cuisine)
-                    print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
+            }
+            google_cuisine = None
+            # CRITICAL: Only check PRIMARY types for cuisine (not all types)
+            for place_type in primary_types:
+                if place_type in cuisine_map and cuisine_map[place_type]:
+                    google_cuisine = cuisine_map[place_type]
+                    break
+            if google_cuisine and google_cuisine not in vibe_tags:
+                vibe_tags.append(google_cuisine)
+                print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
 
@@ -5988,7 +6020,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
 
         # Store country code/name for NYC filtering
         country_for_filtering = country_code or country_name or ""
-        
+
         place_data = {
             "name": display_name,  # Use canonical name from Google Maps
             "maps_url": f"https://www.google.com/maps/search/{display_name.replace(' ', '+')}",
