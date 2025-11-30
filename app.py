@@ -5316,6 +5316,9 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # Track business_status (will be set from Place Details API)
         business_status = None
         
+        # Initialize place_types_from_google early (used for hotel detection and cuisine extraction)
+        place_types_from_google = []
+        
         # Use canonical name, but be careful about major changes
         # If canonical name is too different from original (e.g., "LEI" → "LES"), prefer original
         # Only use canonical name if it's a minor spelling correction or capitalization fix
@@ -5423,7 +5426,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         final_neighborhood = None
         text_extracted_neighborhood = None  # Store text-extracted neighborhood separately
         google_maps_neighborhood = None  # Store Google Maps neighborhood separately
-        place_types_from_google = []  # Store Google Maps place types for cuisine extraction
+        # place_types_from_google already initialized above
         latitude = None  # Store latitude for strict neighborhood extraction
         longitude = None  # Store longitude for strict neighborhood extraction
 
