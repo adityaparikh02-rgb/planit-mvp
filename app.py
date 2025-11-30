@@ -4189,7 +4189,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
@@ -4212,21 +4212,26 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             ]
             mentions_food_items = any(re.search(pattern, sentence_lower) for pattern in food_item_patterns)
             
-            # Include if:
-            # 1. Mentions this venue AND doesn't mention other venues (always include)
-            # 2. Is a general tip AND doesn't mention other venues AND doesn't mention food items (to prevent bleeding)
+            # CRITICAL: Be EXTREMELY strict to prevent bleeding
+            # ONLY include sentences that:
+            # 1. Mention THIS venue AND don't mention other venues (always include)
+            # 2. Are general tips (pricing/reservations) AND don't mention other venues AND don't mention food items
+            # 3. If both venues mentioned, exclude UNLESS this venue is mentioned 3x more and appears first
+            
             if mentions_this and not mentions_other:
+                # Safe: mentions this venue, no other venues
                 filtered_sentences.append(sentence)
-                print(f"      ✓ Kept (mentions venue): '{sentence[:80]}...'")
-            elif is_general_tip and not mentions_other and not mentions_food_items:
-                # Only include general tips that don't mention food items (to prevent item bleeding)
+                print(f"      ✓ Kept (mentions venue only): '{sentence[:80]}...'")
+            elif is_general_tip and not mentions_other and not mentions_food_items and not mentions_this:
+                # Safe: general tip (pricing/reservations) with no venue mentions and no food items
+                # Only include if it's truly general (like "save your $$", "cash only")
                 filtered_sentences.append(sentence)
-                print(f"      ✓ Kept (general tip, no food items): '{sentence[:80]}...'")
+                print(f"      ✓ Kept (general tip, no venues/food): '{sentence[:80]}...'")
             elif is_general_tip and mentions_food_items:
-                # Exclude general tips that mention food items - they can bleed
+                # Exclude: general tips with food items can bleed between venues
                 print(f"      ✗ Dropped (general tip with food items - prevents bleeding): '{sentence[:80]}...'")
-            # If both mentioned, be EXTREMELY strict - exclude to prevent bleeding unless this venue is clearly the ONLY focus
             elif mentions_this and mentions_other:
+                # CRITICAL: Both venues mentioned - be EXTREMELY strict
                 this_pos = sentence_lower.find(name_lower)
                 # Use word boundary regex for finding other venue positions
                 other_positions = []
@@ -4242,13 +4247,14 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                         count = len(re.findall(r'\b' + re.escape(v) + r'\b', sentence_lower))
                         other_counts.append(count)
                 max_other_count = max(other_counts, default=0)
-                # EXTREMELY strict: this venue must appear first AND be mentioned at least 2x more than others
-                # Also require that this venue appears at least twice if others are mentioned
-                if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count >= 2 * max_other_count and this_count >= 2)):
+                # EXTREMELY strict: this venue must appear first AND be mentioned at least 3x more than others
+                # Also require that this venue appears at least 3 times if others are mentioned
+                # This prevents sentences like "Don Angie is great, Sartiano's is also good" from bleeding
+                if this_pos != -1 and (not other_positions or (this_pos < min(other_positions) and this_count >= 3 * max_other_count and this_count >= 3)):
                     filtered_sentences.append(sentence)
-                    print(f"      ✓ Kept (primary, strict): '{sentence[:80]}...'")
+                    print(f"      ✓ Kept (primary, very strict): '{sentence[:80]}...'")
                 else:
-                    print(f"      ✗ Dropped (mentions other venues - strict filtering): '{sentence[:80]}...'")
+                    print(f"      ✗ Dropped (mentions other venues - very strict filtering): '{sentence[:80]}...'")
             else:
                 print(f"      ✗ Dropped (doesn't mention venue): '{sentence[:80]}...'")
 
@@ -4671,6 +4677,9 @@ Tags should be SHORT (1-2 words) and capture the SPECIFIC atmosphere, style, or 
 
 CRITICAL: This text is SPECIFICALLY about "{venue_name}" only. Extract tags that are SPECIFIC to THIS venue, not generic tags that could apply to any venue.
 CRITICAL: Only extract tags that are EXPLICITLY mentioned or clearly implied about THIS specific venue in the text.
+CRITICAL: If the text mentions multiple venues, ONLY extract tags that are clearly about "{venue_name}" - do NOT extract tags from descriptions of other venues.
+CRITICAL: Do NOT extract generic tags like 'Fun', 'Good', 'Nice' unless specifically emphasized for "{venue_name}".
+CRITICAL: If the text doesn't contain specific information about "{venue_name}", return fewer tags or an empty list rather than generic tags.
 CRITICAL: Do NOT extract generic tags like "Fun", "Good", "Nice" unless they're specifically emphasized for this venue.
 CRITICAL: If the text mentions multiple venues, ONLY extract tags that are clearly about "{venue_name}".
 
@@ -5369,7 +5378,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
-                cuisine_map = {
+            cuisine_map = {
                 "restaurant": None,  # Too generic
                 "bar": None,  # Too generic
                 "cafe": None,  # Too generic
@@ -5393,15 +5402,15 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "steak_house": "Steakhouse",
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
-                }
-                google_cuisine = None
+            }
+            google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
-                    if place_type in cuisine_map and cuisine_map[place_type]:
-                        google_cuisine = cuisine_map[place_type]
-                        break
-                if google_cuisine and google_cuisine not in vibe_tags:
-                    vibe_tags.append(google_cuisine)
+                if place_type in cuisine_map and cuisine_map[place_type]:
+                    google_cuisine = cuisine_map[place_type]
+                    break
+            if google_cuisine and google_cuisine not in vibe_tags:
+                vibe_tags.append(google_cuisine)
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
@@ -5639,12 +5648,12 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         merged_place["_slide_order"] = venue_to_order[venue_name.lower()]
                     else:
                         merged_place["_slide_order"] = 999  # Default to end if no slide info
-                    places_extracted.append(merged_place)
+                places_extracted.append(merged_place)
                     if place_id:
                         seen_place_ids[place_id] = merged_place
                     if place_name_lower:
                         seen_venue_names[place_name_lower] = merged_place
-                    if len(venues) > 1:
+                if len(venues) > 1:
                         print(f"✅ Enriched: {venue_name} (slide order: {merged_place.get('_slide_order', 'unknown')})")
                 else:
                     print(f"⏭️  Skipped duplicate: {venue_name}")
@@ -5674,7 +5683,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower 
                                   for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
-                    places_extracted.append(merged_place)
+                places_extracted.append(merged_place)
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
