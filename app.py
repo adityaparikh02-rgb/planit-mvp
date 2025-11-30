@@ -5757,15 +5757,21 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         is_nyc = any(indicator in address or indicator in neighborhood for indicator in nyc_indicators)
         is_non_nyc = any(indicator in address or indicator in neighborhood for indicator in non_nyc_indicators)
 
-        if is_nyc and not is_non_nyc:
+        # Keep venue if:
+        # 1. Has NYC indicators and no non-NYC indicators
+        # 2. Has no location indicators at all (assume NYC for MVP)
+        # Reject only if has non-NYC indicators
+        if is_non_nyc and not is_nyc:
+            # Definitely not NYC - filter out
+            print(f"   ❌ Filtered out non-NYC venue: {place.get('name')} ({address or neighborhood})")
+        elif is_nyc:
+            # Has NYC indicators - keep it
             nyc_places.append(place)
             print(f"   ✅ Kept NYC venue: {place.get('name')}")
-        elif not is_nyc and not is_non_nyc:
-            # If unclear, keep it (assume NYC for MVP)
+        else:
+            # No clear indicators - keep it (assume NYC for MVP)
             nyc_places.append(place)
             print(f"   ⚠️ Kept venue with unclear location: {place.get('name')}")
-        else:
-            print(f"   ❌ Filtered out non-NYC venue: {place.get('name')} ({address or neighborhood})")
 
     if len(nyc_places) < len(places_extracted):
         print(f"🗽 NYC Filter: Kept {len(nyc_places)}/{len(places_extracted)} venues")
