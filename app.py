@@ -2761,14 +2761,14 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
                 from location_filters import is_nyc_venue
 
             place_info = res[0]
-                is_nyc, reason = is_nyc_venue(place_info.get("formatted_address", ""))
+            is_nyc, reason = is_nyc_venue(place_info.get("formatted_address", ""))
 
-                if not is_nyc:
-                    print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} - {reason}")
-                    # Try to find a better match by searching with more specific NYC terms
-                    return None, None, None, None, None, None
+            if not is_nyc:
+                print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} - {reason}")
+                # Try to find a better match by searching with more specific NYC terms
+                return None, None, None, None, None, None
 
-                print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
+            print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
             
             canonical_name = place_info.get("name", place_name)
             address = place_info.get("formatted_address")
@@ -4538,7 +4538,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
