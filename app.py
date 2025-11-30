@@ -2758,7 +2758,7 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
                 place_info = nyc_results[0]
                 print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
             else:
-            place_info = res[0]
+                place_info = res[0]
                 address_check = place_info.get("formatted_address", "").lower()
                 if any(indicator in address_check for indicator in ["denver", "co", "colorado", "california", "ca"]):
                     print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
@@ -4225,7 +4225,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
@@ -5414,7 +5414,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
-            cuisine_map = {
+                cuisine_map = {
                 "restaurant": None,  # Too generic
                 "bar": None,  # Too generic
                 "cafe": None,  # Too generic
@@ -5438,15 +5438,15 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "steak_house": "Steakhouse",
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
-            }
-            google_cuisine = None
+                }
+                google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
-                if place_type in cuisine_map and cuisine_map[place_type]:
-                    google_cuisine = cuisine_map[place_type]
-                    break
-            if google_cuisine and google_cuisine not in vibe_tags:
-                vibe_tags.append(google_cuisine)
+                    if place_type in cuisine_map and cuisine_map[place_type]:
+                        google_cuisine = cuisine_map[place_type]
+                        break
+                if google_cuisine and google_cuisine not in vibe_tags:
+                    vibe_tags.append(google_cuisine)
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
@@ -5719,7 +5719,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower 
                                   for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
-                places_extracted.append(merged_place)
+                    places_extracted.append(merged_place)
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
