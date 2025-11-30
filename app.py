@@ -3451,8 +3451,10 @@ If no venues found, output: (none)
                     if venue_specific_sentences:
                         context_parts = [". ".join(venue_specific_sentences)]
                     else:
-                        # Fallback: use full slide if no specific sentences found
-                        context_parts = [current_slide_text]
+                        # FIXED: Don't use full slide when multiple venues - too risky for bleeding
+                        # Instead, use empty context and rely on venue name only
+                        print(f"   ⚠️ {venue}: No specific sentences found on shared slide, using venue name only")
+                        context_parts = []
                 else:
                     # Only one venue on this slide - use full slide content
                     context_parts = [current_slide_text]
@@ -3477,14 +3479,12 @@ If no venues found, output: (none)
                     mentions_other_venue = any(v_lower in next_text_lower for v_lower in all_venue_names_lower if v_lower != venue_lower)
                     
                     # Only include if it mentions the venue and doesn't mention other venues
-                    # OR if it's clearly contextual (short, descriptive) and doesn't mention other venues
+                    # FIXED: Removed permissive "short slide fallback" that caused context bleeding
+                    # Now we ONLY include slides that explicitly mention this venue
                     if mentions_venue and not mentions_other_venue:
                         context_parts.append(next_text)
-                    elif not mentions_other_venue and len(next_text) < 200:
-                        # Short contextual slide that doesn't mention other venues - include it
-                        context_parts.append(next_text)
                     else:
-                        # Stop if we hit content that mentions other venues or doesn't relate to this venue
+                        # Stop if slide doesn't mention this venue or mentions other venues
                         break
 
                 # Combine all context for this venue
