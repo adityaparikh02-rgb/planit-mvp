@@ -7079,6 +7079,7 @@ def extract_api():
                 print(f"✅ Enriched {len(places_extracted)} places successfully")
                 update_status(extraction_id, "Finalizing results...")
                 data["places_extracted"] = places_extracted
+                data["venue_contexts"] = venue_to_context if venue_to_context else {}  # Include all extracted context for each venue
                 # Mark as complete - frontend will stop polling
                 update_status(extraction_id, "Complete")
             else:
@@ -7162,8 +7163,10 @@ def extract_api():
                     url, username, context_title, venue_to_slide=venue_to_slide, venue_to_context=venue_to_context
                 )
                 data["places_extracted"] = places_extracted
+                data["venue_contexts"] = venue_to_context if venue_to_context else {}  # Include all extracted context for each venue
             else:
                 data["places_extracted"] = []
+                data["venue_contexts"] = {}  # No venues, so no contexts
 
             # Cache the result
             vid = get_tiktok_id(url)
