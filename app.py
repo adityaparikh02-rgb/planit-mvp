@@ -3794,10 +3794,17 @@ If no venues found, output: (none)
                 slides_with_attribution,
                 all_venues_per_slide
             )
+            print(f"🔍 DEBUG: _build_venue_attribution returned: {type(venue_attribution)}, len={len(venue_attribution) if venue_attribution else 0}")
+            print(f"🔍 DEBUG: venue_attribution is None: {venue_attribution is None}")
+            print(f"🔍 DEBUG: venue_attribution is truthy: {bool(venue_attribution)}")
+            if venue_attribution:
+                print(f"🔍 DEBUG: First venue in attribution: {list(venue_attribution.keys())[:1] if venue_attribution else []}")
 
         # Return tuple: (venue_names, summary, venue_to_slide_mapping, venue_to_context_mapping)
-        # FUTURE: Will return 5-tuple with venue_attribution when ready
-        if venue_attribution:
+        # CRITICAL FIX: Always return 5-tuple if attribution was requested, even if empty
+        if has_attribution:
+            if not venue_attribution:
+                print(f"⚠️ WARNING: venue_attribution is empty/None despite has_attribution=True!")
             return unique_venues, overall_summary, venue_to_slide, venue_to_context, venue_attribution
         else:
             return unique_venues, overall_summary, venue_to_slide, venue_to_context
