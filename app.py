@@ -3788,6 +3788,10 @@ If no venues found, output: (none)
         venue_attribution = None
         if has_attribution:
             print(f"\n🔗 Building explicit venue attribution...")
+            print(f"🔍 DEBUG: unique_venues count: {len(unique_venues)}")
+            print(f"🔍 DEBUG: venue_to_slide: {venue_to_slide}")
+            print(f"🔍 DEBUG: slides_with_attribution count: {len(slides_with_attribution)}")
+            print(f"🔍 DEBUG: all_venues_per_slide: {all_venues_per_slide}")
             venue_attribution = _build_venue_attribution(
                 unique_venues,
                 venue_to_slide,
