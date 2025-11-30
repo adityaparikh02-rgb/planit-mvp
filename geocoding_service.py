@@ -337,7 +337,7 @@ class OptimizedGeocodingService:
             'name',
             'formatted_address',
             'geometry',
-            'photos'  # Get photos array
+            'photo'  # Get photo field (singular - Google API requirement)
         ]
     
     def _get_photo_url(self, photo_reference: str) -> str:
