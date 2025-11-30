@@ -3680,15 +3680,18 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
 1️⃣ Extract every **specific** bar, restaurant, café, or food/drink venue mentioned.
 {caption_emphasis}
    • CRITICAL PRIORITY: Check the OCR text FIRST - photo posts show venue names IN THE IMAGES
-   • CRITICAL: Venue names often appear at the START of lines or BEFORE parentheses with descriptions
-     Example: "Club Room (It's a classy spot...)" → Extract "Club Room"
-     Example: "Paul's Baby Grand (This is one of...)" → Extract "Paul's Baby Grand"
-     Example: "The Blond (One of the top spots...)" → Extract "The Blond"
-     Example: "Loosies (This is a trendy spot...)" → Extract "Loosies"
-     Example: "The Box (Great spot if you...)" → Extract "The Box"
-     CRITICAL: If you see "VenueName (description)", extract "VenueName" - the name is ALWAYS BEFORE the opening parenthesis
-     CRITICAL: Even if the description is long, extract the venue name that appears BEFORE the parenthesis
-     CRITICAL: Check EVERY slide - each slide may have a venue name followed by a description in parentheses
+   • CRITICAL: Venue names appear in MULTIPLE formats - extract them ALL:
+     Format 1: "VenueName (description)" → Extract "VenueName" (name is BEFORE parenthesis)
+       Example: "Club Room (It's a classy spot...)" → Extract "Club Room"
+       Example: "Paul's Baby Grand (This is one of...)" → Extract "Paul's Baby Grand"
+     Format 2: "VenueName\nNeighborhood\nRating\nDescription" → Extract "VenueName" (name is FIRST LINE)
+       Example: "↑ Supper\nEast Village\n9/10\nYou get this room..." → Extract "Supper" (ignore arrow symbols)
+       Example: "9 Bar Veloce\nNolita\n10/10\nIt's free to rent..." → Extract "9 Bar Veloce"
+       Example: "12 Chairs\nSoho\n9/10\nMore of a lowkey vibe..." → Extract "12 Chairs"
+       Example: "Solas\nEast Village\n5/10\nThis is a rite..." → Extract "Solas"
+     CRITICAL: If a slide starts with a venue name followed by neighborhood/rating/description, extract the FIRST LINE as the venue name
+     CRITICAL: Ignore symbols like arrows (↑), numbers (9/10, 10/10), and neighborhood names - extract the ACTUAL VENUE NAME
+     CRITICAL: Check EVERY slide - each slide may have a venue name at the start
    • CRITICAL: Check ALL slides including the LAST slide - venue names are often on the final slide
      Example: "Elvis Noho" might only appear on the last slide - make sure to check SLIDE N (where N is the last slide number)
      If you see "SLIDE 1:", "SLIDE 2:", "SLIDE 3:", make sure to check "SLIDE 3:" for venue names
