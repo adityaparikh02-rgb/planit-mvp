@@ -3811,7 +3811,7 @@ If no venues found, output: (none)
                 print(f"⚠️ WARNING: venue_attribution is empty/None despite has_attribution=True!")
             return unique_venues, overall_summary, venue_to_slide, venue_to_context, venue_attribution
         else:
-            return unique_venues, overall_summary, venue_to_slide, venue_to_context
+        return unique_venues, overall_summary, venue_to_slide, venue_to_context
     
     # NEW: Organized slideshow extraction using book-style format
     elif organized_context:
@@ -4620,7 +4620,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
@@ -6035,38 +6035,38 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
                 cuisine_map = {
-                "restaurant": None,  # Too generic
-                "bar": None,  # Too generic
-                "cafe": None,  # Too generic
-                "meal_takeaway": None,  # Too generic
-                "food": None,  # Too generic
-                "establishment": None,  # Too generic
-                "point_of_interest": None,  # Too generic
-                # Specific cuisines
-                "indian_restaurant": "Indian",
-                "italian_restaurant": "Italian",
-                "chinese_restaurant": "Chinese",
-                "japanese_restaurant": "Japanese",
-                "mexican_restaurant": "Mexican",
-                "thai_restaurant": "Thai",
-                "korean_restaurant": "Korean",
-                "french_restaurant": "French",
-                "greek_restaurant": "Greek",
-                "mediterranean_restaurant": "Mediterranean",
-                "american_restaurant": "American",
-                "seafood_restaurant": "Seafood",
-                "steak_house": "Steakhouse",
-                "pizza_restaurant": "Pizza",
-                "sushi_restaurant": "Sushi",
-            }
-            google_cuisine = None
+                    "restaurant": None,  # Too generic
+                    "bar": None,  # Too generic
+                    "cafe": None,  # Too generic
+                    "meal_takeaway": None,  # Too generic
+                    "food": None,  # Too generic
+                    "establishment": None,  # Too generic
+                    "point_of_interest": None,  # Too generic
+                    # Specific cuisines
+                    "indian_restaurant": "Indian",
+                    "italian_restaurant": "Italian",
+                    "chinese_restaurant": "Chinese",
+                    "japanese_restaurant": "Japanese",
+                    "mexican_restaurant": "Mexican",
+                    "thai_restaurant": "Thai",
+                    "korean_restaurant": "Korean",
+                    "french_restaurant": "French",
+                    "greek_restaurant": "Greek",
+                    "mediterranean_restaurant": "Mediterranean",
+                    "american_restaurant": "American",
+                    "seafood_restaurant": "Seafood",
+                    "steak_house": "Steakhouse",
+                    "pizza_restaurant": "Pizza",
+                    "sushi_restaurant": "Sushi",
+                }
+                google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
-                if place_type in cuisine_map and cuisine_map[place_type]:
-                    google_cuisine = cuisine_map[place_type]
-                    break
-            if google_cuisine and google_cuisine not in vibe_tags:
-                vibe_tags.append(google_cuisine)
+                    if place_type in cuisine_map and cuisine_map[place_type]:
+                        google_cuisine = cuisine_map[place_type]
+                        break
+                if google_cuisine and google_cuisine not in vibe_tags:
+                    vibe_tags.append(google_cuisine)
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
