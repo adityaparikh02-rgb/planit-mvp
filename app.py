@@ -6401,7 +6401,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower
                                   for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
-                places_extracted.append(merged_place)
+                    places_extracted.append(merged_place)
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
