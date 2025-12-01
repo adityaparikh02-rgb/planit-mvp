@@ -3811,7 +3811,7 @@ If no venues found, output: (none)
                 print(f"⚠️ WARNING: venue_attribution is empty/None despite has_attribution=True!")
             return unique_venues, overall_summary, venue_to_slide, venue_to_context, venue_attribution
         else:
-        return unique_venues, overall_summary, venue_to_slide, venue_to_context
+            return unique_venues, overall_summary, venue_to_slide, venue_to_context
     
     # NEW: Organized slideshow extraction using book-style format
     elif organized_context:
