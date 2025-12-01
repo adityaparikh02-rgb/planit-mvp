@@ -4620,7 +4620,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
@@ -6034,7 +6034,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
-            cuisine_map = {
+                cuisine_map = {
                 "restaurant": None,  # Too generic
                 "bar": None,  # Too generic
                 "cafe": None,  # Too generic
