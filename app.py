@@ -4803,7 +4803,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar'). CRITICAL: Include ALL details from the OCR text - do NOT skip any information. Read EVERY WORD and extract ALL descriptive details, features, and context mentioned about {name}. Present everything neatly in sentences, but include ALL information.",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Include ALL descriptive details mentioned (e.g., 'very light and fluffy', 'super light and fluffy', 'very generous on the hot honey'). CRITICAL: Read EVERY WORD in the OCR text - do NOT truncate or cut off descriptions. If the OCR says 'A FUN, CREATIVE COCKTAIL SPOT KNOWN FOR FOOD-INSPIRED DRINKS AND GREAT CHICKEN SANDWICHES IN A COOL, LIVELY SPACE', extract ALL of it, not just 'A FUN, - IN A'. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features. Do NOT stop after extracting 1-2 words - extract the COMPLETE description.",
-  "must_try": "What to get/order at {name}. Format as a natural sentence or sentences listing ALL SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE ONLY. Use commas and 'and' to connect items naturally (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'The Miami mocha and perfect egg sandwich are must-tries'). CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. Read EVERY WORD in the context, including smaller font text, fine print, and all details. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. Include ALL modifiers and details (e.g., 'very generous on the hot honey', 'very light and fluffy', 'deep fried short rib ragu pizza'). Format items naturally without unnecessary commas between adjectives and nouns (e.g., 'very yummy square pie' NOT 'very, yummy square, and pie'). If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence or in a different slide), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. Read the ENTIRE context carefully - do NOT miss items in smaller font or less prominent positions. But ONLY extract items that are clearly FOR {name}.",
+  "must_try": "What to get/order at {name}. Format as a natural, grammatically correct sentence listing ONLY the SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE. Start with 'Try the' followed by the items. Use proper grammar: no unnecessary commas between adjectives and nouns, proper use of 'and', and natural phrasing (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'Try the Miami mocha and perfect egg sandwich'). CRITICAL GRAMMAR RULES: (1) No commas between adjectives unless they're coordinate adjectives (e.g., 'very tasty slice' NOT 'very, tasty slice'), (2) Use 'and' only to connect the last two items in a list, (3) Ensure proper articles (a/an/the) are used correctly, (4) Never write incomplete phrases like 'and of' or 'the and'. CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. Read EVERY WORD in the context, including smaller font text, fine print, and all details. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. Include ALL modifiers and details (e.g., 'very generous hot honey', 'very light and fluffy pancakes', 'deep fried short rib ragu pizza'). If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence or in a different slide), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. Read the ENTIRE context carefully - do NOT miss items in smaller font or less prominent positions. But ONLY extract items that are clearly FOR {name}. DO NOT include generic category names without specific items (e.g., if the context only says 'dinner' or 'American food' without mentioning specific dishes, leave this field blank).",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly', 'Quality isn't always consistent', 'Long lines', 'Sometimes inconsistent'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, helpful advice, AND any warnings or negative feedback mentioned in the context (e.g., 'quality isn't always consistent', 'long lines', 'sometimes inconsistent'). Include both positive tips AND realistic warnings/limitations if mentioned. Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
@@ -4845,24 +4845,62 @@ Do NOT stop after extracting 1-2 items - extract ALL dishes, features, tips, and
         else:
             must_try_value = str(must_try_raw).strip() if must_try_raw else ""
         
-        # Post-processing: Remove items that appear incomplete or suspicious
-        # If must_try_value starts with "Try the and" or similar incomplete patterns, it's likely bleeding
-        if must_try_value and re.search(r'^(try|get|order)\s+(the|a|an)\s+and\s+', must_try_value.lower()):
-            print(f"   ⚠️ Detected incomplete 'must_try' (likely bleeding): '{must_try_value}' - clearing it")
-            must_try_value = ""
-        
-        # CRITICAL: Fix grammar issues - remove incorrect commas in phrases like "very, yummy square, and pie"
-        # This happens when GPT returns items with incorrect comma placement
+        # Post-processing: Fix grammar issues and validate output
         if must_try_value:
-            # Fix patterns like "very, yummy square, and pie" -> "very yummy square pie"
-            # Remove commas that appear between adjectives/modifiers and nouns
+            # CRITICAL: Fix grammar issues - remove incorrect commas and fix malformed phrases
+
+            # 1. Fix incorrect commas between adjectives/modifiers and nouns
+            # "very, tasty" -> "very tasty"
             must_try_value = re.sub(r'\b(very|super|really|quite|pretty|so|too|extremely|incredibly|absolutely)\s*,\s*', r'\1 ', must_try_value, flags=re.IGNORECASE)
-            # Fix patterns like "square, and pie" -> "square pie" (when it's one item)
-            must_try_value = re.sub(r'\b(square|round|thin|thick|deep|fried|grilled|baked)\s*,\s*and\s+(\w+)\b', r'\1 \2', must_try_value, flags=re.IGNORECASE)
-            # Remove standalone commas between words that should be together (e.g., "very, yummy" -> "very yummy")
-            must_try_value = re.sub(r'\b(\w+)\s*,\s*(\w+)\b', lambda m: f"{m.group(1)} {m.group(2)}" if len(m.group(1)) < 8 and len(m.group(2)) < 8 else m.group(0), must_try_value)
-            # Clean up multiple spaces
-            must_try_value = re.sub(r'\s+', ' ', must_try_value).strip()
+
+            # 2. Fix malformed phrases like "and of pizza" -> just remove them
+            must_try_value = re.sub(r'\band\s+of\b', '', must_try_value, flags=re.IGNORECASE)
+
+            # 3. Fix patterns like "tasty good slice, and of pizza" -> "tasty good slice of pizza"
+            must_try_value = re.sub(r',\s+and\s+of\b', ' of', must_try_value, flags=re.IGNORECASE)
+
+            # 4. Fix incorrect commas in compound adjectives: "tasty, good slice" -> "tasty good slice"
+            # Only remove comma if both words are short (likely adjectives)
+            must_try_value = re.sub(r'\b([a-z]{3,8})\s*,\s*([a-z]{3,8})\s+', lambda m: f"{m.group(1)} {m.group(2)} " if m.group(2).lower() in ['good', 'tasty', 'fresh', 'hot', 'cold', 'spicy', 'sweet', 'yummy', 'crispy', 'fluffy', 'light', 'heavy'] else m.group(0), must_try_value, flags=re.IGNORECASE)
+
+            # 5. Remove generic category names without specifics
+            # If it only says "Try the American and dinner" or "Try the dinner", clear it
+            generic_only_patterns = [
+                r'^try\s+the\s+(american|italian|french|chinese|japanese|mexican|thai|indian|greek)\s+and\s+(dinner|lunch|breakfast|brunch)\s*\.?$',
+                r'^try\s+the\s+(dinner|lunch|breakfast|brunch)\s*\.?$',
+                r'^try\s+the\s+(food|cuisine|meal)\s*\.?$',
+                r'^try\s+the\s+(american|italian|french|chinese|japanese|mexican|thai|indian|greek)\s*\.?$'
+            ]
+            for pattern in generic_only_patterns:
+                if re.match(pattern, must_try_value.lower()):
+                    print(f"   ⚠️ Detected generic-only 'must_try' (no specific dishes): '{must_try_value}' - clearing it")
+                    must_try_value = ""
+                    break
+
+            # 6. Fix "Try the and X" patterns (incomplete)
+            if must_try_value and re.search(r'^(try|get|order)\s+(the|a|an)\s+and\s+', must_try_value.lower()):
+                print(f"   ⚠️ Detected incomplete 'must_try' (starts with 'Try the and'): '{must_try_value}' - clearing it")
+                must_try_value = ""
+
+            # 7. Fix redundant category names: "cheesecake and dessert" -> "cheesecake"
+            # Remove generic category if it's redundant with a specific item
+            redundant_patterns = [
+                (r'\bcheesecake\s+and\s+dessert\b', 'cheesecake'),
+                (r'\bpizza\s+and\s+(slice|pie)\b', 'pizza'),
+                (r'\b(burger|hamburger)\s+and\s+sandwich\b', r'\1'),
+                (r'\b(latte|cappuccino|espresso|mocha)\s+and\s+coffee\b', r'\1'),
+                (r'\bpasta\s+and\s+(italian|dinner)\b', 'pasta'),
+            ]
+            for pattern, replacement in redundant_patterns:
+                if re.search(pattern, must_try_value, flags=re.IGNORECASE):
+                    must_try_value = re.sub(pattern, replacement, must_try_value, flags=re.IGNORECASE)
+                    print(f"   ℹ️ Fixed redundant category in 'must_try': {pattern} -> {replacement}")
+
+            # 8. Clean up multiple spaces and trim
+            if must_try_value:
+                must_try_value = re.sub(r'\s+', ' ', must_try_value).strip()
+                # Remove trailing periods if present
+                must_try_value = must_try_value.rstrip('.')
         
         # Clean up formatting: if it's still space-separated (old format), convert to sentence
         # Detect space-separated items and intelligently split them into proper items
