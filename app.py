@@ -3811,7 +3811,7 @@ If no venues found, output: (none)
                 print(f"⚠️ WARNING: venue_attribution is empty/None despite has_attribution=True!")
             return unique_venues, overall_summary, venue_to_slide, venue_to_context, venue_attribution
         else:
-            return unique_venues, overall_summary, venue_to_slide, venue_to_context
+        return unique_venues, overall_summary, venue_to_slide, venue_to_context
     
     # NEW: Organized slideshow extraction using book-style format
     elif organized_context:
@@ -4620,7 +4620,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 mentions_this = bool(re.search(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
             else:
                 # Multi-word - check if name appears or if key words appear together
-                mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
+            mentions_this = name_lower in sentence_lower or any(word in sentence_lower for word in name_words)
             
             # Check if sentence is a general tip/advice (even if it doesn't mention venue name)
             # Common tip patterns: "save your $$", "cash only", "reserve ahead", "worth it", etc.
@@ -4802,12 +4802,12 @@ CRITICAL: Only extract information that is clearly about "{name}".
 {{
   "summary": "2–3 sentence vivid description about {name} specifically, using ONLY information from this venue's slide/page. Be concise and focus on key details. Do NOT include information from other venues or slides. CRITICAL: Write in THIRD PERSON only - NEVER use first-person pronouns like 'I', 'we', 'our', 'my', 'us'. Rephrase any personal opinions from the creator into objective descriptions (e.g., instead of 'our favorite wine bar' say 'a popular wine bar' or 'highly rated wine bar'). CRITICAL: Include ALL details from the OCR text - do NOT skip any information. Read EVERY WORD and extract ALL descriptive details, features, and context mentioned about {name}. Present everything neatly in sentences, but include ALL information.",
   "when_to_go": "Mention best time/day for {name} if clearly stated, else blank",
-  "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Include ALL descriptive details mentioned (e.g., 'very light and fluffy', 'super light and fluffy', 'very generous on the hot honey'). CRITICAL: Read EVERY WORD in the OCR text - do NOT truncate or cut off descriptions. If the OCR says 'A FUN, CREATIVE COCKTAIL SPOT KNOWN FOR FOOD-INSPIRED DRINKS AND GREAT CHICKEN SANDWICHES IN A COOL, LIVELY SPACE', extract ALL of it, not just 'A FUN, - IN A'. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, and notable features. Do NOT stop after extracting 1-2 words - extract the COMPLETE description.",
+  "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Include ALL descriptive details mentioned (e.g., 'very light and fluffy', 'super light and fluffy', 'very generous on the hot honey', 'perfect level of crisp', 'unique and flavorful', 'sourdough crust was bomb'). CRITICAL: Read EVERY WORD in the OCR text - do NOT truncate or cut off descriptions. If the OCR says 'A FUN, CREATIVE COCKTAIL SPOT KNOWN FOR FOOD-INSPIRED DRINKS AND GREAT CHICKEN SANDWICHES IN A COOL, LIVELY SPACE', extract ALL of it, not just 'A FUN, - IN A'. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, food quality, texture, and notable features. Do NOT stop after extracting 1-2 words - extract the COMPLETE description. CRITICAL: Extract ALL food quality descriptors (e.g., 'perfect level of crisp', 'unique and flavorful', 'bomb', 'so flimsy') - these are part of the vibe/experience.",
   "must_try": "What to get/order at {name}. Format as a natural, grammatically correct sentence listing ONLY the SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE. Start with 'Try the' followed by the items. Use proper grammar: no unnecessary commas between adjectives and nouns, proper use of 'and', and natural phrasing (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'Try the Miami mocha and perfect egg sandwich'). CRITICAL GRAMMAR RULES: (1) No commas between adjectives unless they're coordinate adjectives (e.g., 'very tasty slice' NOT 'very, tasty slice'), (2) Use 'and' only to connect the last two items in a list, (3) Ensure proper articles (a/an/the) are used correctly, (4) Never write incomplete phrases like 'and of' or 'the and'. CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. Read EVERY WORD in the context, including smaller font text, fine print, and all details. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. Include ALL modifiers and details (e.g., 'very generous hot honey', 'very light and fluffy pancakes', 'deep fried short rib ragu pizza'). If the creator mentions multiple dishes FOR {name} (e.g., 'tostada de jaiba, tostada de pulpo, razor clams, seared scallop'), include ALL of them. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence or in a different slide), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned liking AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. Read the ENTIRE context carefully - do NOT miss items in smaller font or less prominent positions. But ONLY extract items that are clearly FOR {name}. DO NOT include generic category names without specific items (e.g., if the context only says 'dinner' or 'American food' without mentioning specific dishes, leave this field blank).",
-  "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly', 'Quality isn't always consistent', 'Long lines', 'Sometimes inconsistent'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, helpful advice, AND any warnings or negative feedback mentioned in the context (e.g., 'quality isn't always consistent', 'long lines', 'sometimes inconsistent'). Include both positive tips AND realistic warnings/limitations if mentioned. Only include if clearly mentioned in the context.",
+  "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly', 'Quality isn't always consistent', 'Long lines', 'Sometimes inconsistent', 'a little on the sweeter side', 'pizza is flimsy', 'new special pizza every week'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, helpful advice, AND any warnings or negative feedback mentioned in the context (e.g., 'quality isn't always consistent', 'long lines', 'sometimes inconsistent', 'a little on the sweeter side', 'pizza is flimsy'). Include both positive tips AND realistic warnings/limitations if mentioned. CRITICAL: Extract ALL descriptive details about food quality, texture, taste characteristics, and special features (e.g., 'perfect level of crisp', 'unique and flavorful', 'sourdough crust was bomb', 'new special pizza every week'). Read EVERY WORD in the context - do NOT skip descriptive details. Only include if clearly mentioned in the context.",
   "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
-  "specials": "Real deals, special events, pricing tips, or money-saving information at {name} if mentioned (e.g., 'Save your $$', 'Happy hour deals', 'Weekend specials', 'Affordable prices'). Capture any cost-related tips or special offers mentioned.",
+  "specials": "Real deals, special events, pricing tips, or money-saving information at {name} if mentioned (e.g., 'Save your $$', 'Happy hour deals', 'Weekend specials', 'Affordable prices', 'new special pizza every week'). Capture any cost-related tips or special offers mentioned. CRITICAL: Extract ALL recurring specials or rotating menu items (e.g., 'new special pizza every week', 'rotating menu', 'weekly specials'). Read EVERY WORD in the context - do NOT skip special features or recurring events.",
   "comments_summary": "Short insight from comments about {name} if available",
   "creator_insights": "Capture personal recommendations, comparisons, or unique context from the creator SPECIFICALLY about {name}. This is where first-person opinions should go (e.g., 'quickly become our favorite', 'we rank every meal'). Examples: 'I'm from California and this is the only burger comparable to In-N-Out', 'This place reminds me of my favorite spot back home', 'Only place in NYC that does X like this', 'Has quickly become our favorite wine bar', 'We rank them an 8.7'. Include personal anecdotes, ratings, comparisons to other places, or unique selling points the creator emphasizes ABOUT {name}. Keep the creator's authentic voice and first-person language here - this will be shown in a 'Show More' section."
 }}
@@ -4858,6 +4858,12 @@ Do NOT stop after extracting 1-2 items - extract ALL dishes, features, tips, and
 
             # 3. Fix patterns like "tasty good slice, and of pizza" -> "tasty good slice of pizza"
             must_try_value = re.sub(r',\s+and\s+of\b', ' of', must_try_value, flags=re.IGNORECASE)
+
+            # 2.5. Fix "with and" -> "with" (e.g., "with and hot honey" -> "with hot honey")
+            must_try_value = re.sub(r'\bwith\s+and\s+', 'with ', must_try_value, flags=re.IGNORECASE)
+
+            # 2.6. Fix "slice with a," -> "slice with" (e.g., "mushroom, slice with a," -> "mushroom slice with")
+            must_try_value = re.sub(r'\bslice\s+with\s+a\s*,?\s*', 'slice with ', must_try_value, flags=re.IGNORECASE)
 
             # 4. Fix incorrect commas in compound adjectives: "tasty, good slice" -> "tasty good slice"
             # Only remove comma if both words are short (likely adjectives)
@@ -6028,7 +6034,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
-                cuisine_map = {
+            cuisine_map = {
                 "restaurant": None,  # Too generic
                 "bar": None,  # Too generic
                 "cafe": None,  # Too generic
@@ -6052,15 +6058,15 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 "steak_house": "Steakhouse",
                 "pizza_restaurant": "Pizza",
                 "sushi_restaurant": "Sushi",
-                }
-                google_cuisine = None
+            }
+            google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
                 for place_type in primary_types:
-                    if place_type in cuisine_map and cuisine_map[place_type]:
-                        google_cuisine = cuisine_map[place_type]
-                        break
-                if google_cuisine and google_cuisine not in vibe_tags:
-                    vibe_tags.append(google_cuisine)
+                if place_type in cuisine_map and cuisine_map[place_type]:
+                    google_cuisine = cuisine_map[place_type]
+                    break
+            if google_cuisine and google_cuisine not in vibe_tags:
+                vibe_tags.append(google_cuisine)
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
@@ -6330,7 +6336,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                         merged_place["_slide_order"] = venue_to_order[venue_name.lower()]
                     else:
                         merged_place["_slide_order"] = 999  # Default to end if no slide info
-                    places_extracted.append(merged_place)
+                places_extracted.append(merged_place)
                 if place_id:
                     seen_place_ids[place_id] = merged_place
                 if place_name_lower:
@@ -6395,7 +6401,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                 is_duplicate = any(place_name_lower in seen.lower() or seen.lower() in place_name_lower
                                   for seen in seen_venue_names.keys() if len(place_name_lower) > 4 and len(seen) > 4)
                 if not is_duplicate:
-                    places_extracted.append(merged_place)
+                places_extracted.append(merged_place)
                     seen_venue_names[place_name_lower] = merged_place
     
     # Filter to keep only NYC venues (MVP requirement)
