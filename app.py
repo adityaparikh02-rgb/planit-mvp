@@ -5204,7 +5204,7 @@ def extract_vibe_keywords(text):
     return found_keywords
 
 
-def extract_adjectives_from_text(text, max_words=10):
+def extract_adjectives_from_text(text, max_words=10, venue_name=None):
     """
     Extract 1-word adjectives from text for vibe tags.
     Returns list of capitalized adjectives.
@@ -5212,12 +5212,18 @@ def extract_adjectives_from_text(text, max_words=10):
     This function looks for common single-word adjectives that describe
     venue vibes, atmosphere, and style. Only returns adjectives explicitly
     found in the text.
+
+    Args:
+        text: Text to extract adjectives from
+        max_words: Maximum number of adjectives to return
+        venue_name: If provided, only extract adjectives near this venue name (within 150 chars)
     """
     if not text or len(text.strip()) < 5:
         return []
 
     # Common vibe adjectives to look for (1 word only)
     # These should be positive, appealing descriptors
+    # EXCLUDE cuisine types - those come from Google Places API
     vibe_adjectives = {
         'casual', 'cozy', 'romantic', 'lively', 'upscale', 'trendy',
         'authentic', 'modern', 'classic', 'intimate', 'energetic',
@@ -5235,9 +5241,34 @@ def extract_adjectives_from_text(text, max_words=10):
     found = []
     import re
 
+    # If venue_name provided and text is long (likely multi-venue), only look near venue name
+    if venue_name and len(text) > 500:
+        # Find all occurrences of venue name (case-insensitive)
+        venue_lower = venue_name.lower()
+        # Look for venue name mentions
+        venue_pattern = r'\b' + re.escape(venue_lower) + r'\b'
+        matches = list(re.finditer(venue_pattern, text_lower, re.IGNORECASE))
+
+        if matches:
+            # Extract text chunks around venue name mentions (150 chars before/after)
+            relevant_chunks = []
+            for match in matches:
+                start = max(0, match.start() - 150)
+                end = min(len(text), match.end() + 150)
+                relevant_chunks.append(text_lower[start:end])
+
+            # Search only in relevant chunks
+            search_text = " ".join(relevant_chunks)
+        else:
+            # Venue name not found - don't extract adjectives (avoid bleeding)
+            return []
+    else:
+        # Short text or no venue name - search entire text
+        search_text = text_lower
+
     for adj in vibe_adjectives:
         # Use word boundary matching to avoid partial matches
-        if re.search(r'\b' + re.escape(adj) + r'\b', text_lower):
+        if re.search(r'\b' + re.escape(adj) + r'\b', search_text):
             # Capitalize for display consistency
             found.append(adj.capitalize())
             if len(found) >= max_words:
@@ -5299,7 +5330,8 @@ Return ONLY a valid JSON list of 3-6 unique POSITIVE tags SPECIFIC to "{venue_na
 
     # NEW: Extract adjectives as supplementary tags
     # This catches simple descriptive words that GPT might miss
-    adjective_tags = extract_adjectives_from_text(text, max_words=3)
+    # Pass venue_name to avoid extracting adjectives from other venues in multi-venue text
+    adjective_tags = extract_adjectives_from_text(text, max_words=3, venue_name=venue_name)
 
     # Merge GPT tags + adjective tags (deduplicate, case-insensitive)
     all_tags = []
