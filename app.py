@@ -5204,6 +5204,48 @@ def extract_vibe_keywords(text):
     return found_keywords
 
 
+def extract_adjectives_from_text(text, max_words=10):
+    """
+    Extract 1-word adjectives from text for vibe tags.
+    Returns list of capitalized adjectives.
+
+    This function looks for common single-word adjectives that describe
+    venue vibes, atmosphere, and style. Only returns adjectives explicitly
+    found in the text.
+    """
+    if not text or len(text.strip()) < 5:
+        return []
+
+    # Common vibe adjectives to look for (1 word only)
+    # These should be positive, appealing descriptors
+    vibe_adjectives = {
+        'casual', 'cozy', 'romantic', 'lively', 'upscale', 'trendy',
+        'authentic', 'modern', 'classic', 'intimate', 'energetic',
+        'chill', 'vibrant', 'relaxed', 'stylish', 'chic', 'elegant',
+        'rustic', 'minimalist', 'eclectic', 'bohemian', 'industrial',
+        'warm', 'inviting', 'sophisticated', 'playful', 'quirky',
+        'sleek', 'contemporary', 'traditional', 'hip', 'cool', 'fancy',
+        'charming', 'classy', 'luxurious', 'polished', 'artsy',
+        'creative', 'unique', 'refined', 'welcoming', 'friendly',
+        'popular', 'hidden', 'local', 'fun', 'scenic', 'outdoor'
+    }
+
+    # Simple extraction: find adjectives in text using word boundaries
+    text_lower = text.lower()
+    found = []
+    import re
+
+    for adj in vibe_adjectives:
+        # Use word boundary matching to avoid partial matches
+        if re.search(r'\b' + re.escape(adj) + r'\b', text_lower):
+            # Capitalize for display consistency
+            found.append(adj.capitalize())
+            if len(found) >= max_words:
+                break
+
+    return found
+
+
 def extract_vibe_tags(text, venue_name=None):
     if not text.strip():
         return []
@@ -5239,6 +5281,8 @@ Text about "{venue_name}":
 
 Return ONLY a valid JSON list of 3-6 unique POSITIVE tags SPECIFIC to "{venue_name}".
 """
+    # Try GPT extraction first
+    gpt_tags = []
     try:
         client = get_openai_client()
         r = client.chat.completions.create(
@@ -5248,10 +5292,27 @@ Return ONLY a valid JSON list of 3-6 unique POSITIVE tags SPECIFIC to "{venue_na
             max_tokens=50,  # Increased from 40 to allow for longer tag lists
         )
         raw = r.choices[0].message.content.strip()
-        return json.loads(raw) if raw.startswith("[") else []
+        gpt_tags = json.loads(raw) if raw.startswith("[") else []
     except Exception as e:
         print("⚠️ vibe_tags generation failed:", e)
-        return []
+        gpt_tags = []
+
+    # NEW: Extract adjectives as supplementary tags
+    # This catches simple descriptive words that GPT might miss
+    adjective_tags = extract_adjectives_from_text(text, max_words=3)
+
+    # Merge GPT tags + adjective tags (deduplicate, case-insensitive)
+    all_tags = []
+    seen = set()
+
+    for tag in gpt_tags + adjective_tags:
+        tag_lower = tag.lower()
+        if tag_lower not in seen:
+            seen.add(tag_lower)
+            all_tags.append(tag)
+
+    # Limit to 6 tags max
+    return all_tags[:6]
 
 # ─────────────────────────────
 # Helper Functions for Place Merging
@@ -6034,6 +6095,7 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
             # Only add cuisine tags for actual restaurants (not cafes/bars with secondary restaurant types)
             if is_restaurant:
                 # Extract cuisine from Google Maps place types (ONLY check primary types)
+                # Comprehensive cuisine map covering 50+ cuisine types
                 cuisine_map = {
                     "restaurant": None,  # Too generic
                     "bar": None,  # Too generic
@@ -6042,22 +6104,90 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     "food": None,  # Too generic
                     "establishment": None,  # Too generic
                     "point_of_interest": None,  # Too generic
-                    # Specific cuisines
+                    # Asian Cuisines
                     "indian_restaurant": "Indian",
-                    "italian_restaurant": "Italian",
                     "chinese_restaurant": "Chinese",
                     "japanese_restaurant": "Japanese",
-                    "mexican_restaurant": "Mexican",
                     "thai_restaurant": "Thai",
                     "korean_restaurant": "Korean",
+                    "vietnamese_restaurant": "Vietnamese",
+                    "filipino_restaurant": "Filipino",
+                    "indonesian_restaurant": "Indonesian",
+                    "malaysian_restaurant": "Malaysian",
+                    "singaporean_restaurant": "Singaporean",
+                    "pakistani_restaurant": "Pakistani",
+                    "bangladeshi_restaurant": "Bangladeshi",
+                    "nepalese_restaurant": "Nepalese",
+                    "burmese_restaurant": "Burmese",
+                    "cambodian_restaurant": "Cambodian",
+                    "laotian_restaurant": "Laotian",
+                    "asian_restaurant": "Asian",
+                    "asian_fusion_restaurant": "Asian Fusion",
+                    "sushi_restaurant": "Sushi",
+                    "ramen_restaurant": "Ramen",
+                    # European Cuisines
+                    "italian_restaurant": "Italian",
                     "french_restaurant": "French",
                     "greek_restaurant": "Greek",
+                    "spanish_restaurant": "Spanish",
+                    "portuguese_restaurant": "Portuguese",
+                    "german_restaurant": "German",
+                    "british_restaurant": "British",
+                    "irish_restaurant": "Irish",
+                    "polish_restaurant": "Polish",
+                    "russian_restaurant": "Russian",
+                    "ukrainian_restaurant": "Ukrainian",
+                    "scandinavian_restaurant": "Scandinavian",
+                    "dutch_restaurant": "Dutch",
+                    "belgian_restaurant": "Belgian",
+                    "swiss_restaurant": "Swiss",
+                    "austrian_restaurant": "Austrian",
+                    # Mediterranean & Middle Eastern
                     "mediterranean_restaurant": "Mediterranean",
+                    "middle_eastern_restaurant": "Middle Eastern",
+                    "turkish_restaurant": "Turkish",
+                    "lebanese_restaurant": "Lebanese",
+                    "syrian_restaurant": "Syrian",
+                    "israeli_restaurant": "Israeli",
+                    "persian_restaurant": "Persian",
+                    "moroccan_restaurant": "Moroccan",
+                    "egyptian_restaurant": "Egyptian",
+                    # Latin American & Caribbean
+                    "mexican_restaurant": "Mexican",
+                    "brazilian_restaurant": "Brazilian",
+                    "peruvian_restaurant": "Peruvian",
+                    "argentinian_restaurant": "Argentinian",
+                    "colombian_restaurant": "Colombian",
+                    "cuban_restaurant": "Cuban",
+                    "venezuelan_restaurant": "Venezuelan",
+                    "caribbean_restaurant": "Caribbean",
+                    "jamaican_restaurant": "Jamaican",
+                    "latin_american_restaurant": "Latin American",
+                    # African Cuisines
+                    "african_restaurant": "African",
+                    "ethiopian_restaurant": "Ethiopian",
+                    "nigerian_restaurant": "Nigerian",
+                    "south_african_restaurant": "South African",
+                    # American & Regional
                     "american_restaurant": "American",
+                    "southern_restaurant": "Southern",
+                    "cajun_restaurant": "Cajun",
+                    "creole_restaurant": "Creole",
+                    "soul_food_restaurant": "Soul Food",
+                    "tex_mex_restaurant": "Tex-Mex",
+                    # Specialty Categories
                     "seafood_restaurant": "Seafood",
                     "steak_house": "Steakhouse",
                     "pizza_restaurant": "Pizza",
-                    "sushi_restaurant": "Sushi",
+                    "hamburger_restaurant": "Burgers",
+                    "sandwich_shop": "Sandwiches",
+                    "barbecue_restaurant": "BBQ",
+                    "fast_food_restaurant": "Fast Food",
+                    "breakfast_restaurant": "Breakfast",
+                    "brunch_restaurant": "Brunch",
+                    "vegetarian_restaurant": "Vegetarian",
+                    "vegan_restaurant": "Vegan",
+                    "fusion_restaurant": "Fusion",
                 }
                 google_cuisine = None
                 # CRITICAL: Only check PRIMARY types for cuisine (not all types)
