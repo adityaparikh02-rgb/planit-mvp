@@ -4757,10 +4757,12 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                     context = ". ".join(filtered_sentences + relaxed_sentences)
                     print(f"   ✂️ Added {len(relaxed_sentences)} more sentences in lenient mode (total: {len(filtered_sentences) + len(relaxed_sentences)} sentences, {len(context)} chars)")
         else:
-            # No venue-specific sentences found - use full raw context as fallback
+            # No venue-specific sentences found - DO NOT use full raw context (causes bleeding)
             # This can happen with uncommon venue names or abbreviated names in OCR
-            context = raw_context
-            print(f"   ⚠️ No venue-specific sentences found for {name} - using full context as fallback")
+            # CRITICAL: Using full context causes menu items/details to bleed between venues
+            # Instead, use only caption (safer) or empty string to prevent cross-venue contamination
+            context = caption if caption else ""
+            print(f"   ⚠️ No venue-specific sentences found for {name} - using caption only to prevent bleeding (was {len(raw_context)} chars, now {len(context)} chars)")
     else:
         context = raw_context
     
@@ -5056,14 +5058,16 @@ Do NOT stop after extracting 1-2 items - extract ALL dishes, features, tips, and
                     data["vibe_tags"].append(tag.capitalize())
                     print(f"   ✅ Added '{tag.capitalize()}' tag from context keywords")
         
-        # Filter out cuisine tags for non-restaurants (cafes/bars shouldn't have cuisine tags)
+        # CRITICAL: ALWAYS filter out cuisine tags for non-restaurants (cafes/bars shouldn't have cuisine tags)
+        # This must run REGARDLESS of whether GPT extraction succeeded or not
         context_lower = context.lower()
         is_restaurant_context = any(word in context_lower for word in ["restaurant", "dining", "chef", "cuisine", "eatery", "bistro"])
-        is_bar_context = any(word in context_lower for word in ["bar", "cocktail", "drinks", "happy hour", "bartender"])
+        is_bar_context = any(word in context_lower for word in ["bar", "cocktail", "drinks", "happy hour", "bartender", "lounge", "pub"])
         is_cafe_context = any(word in context_lower for word in ["cafe", "coffee", "latte", "espresso", "cappuccino"])
-        
+
         # Remove cuisine tags if this is a cafe/bar (not a restaurant)
         # CRITICAL: Also filter out cuisine tags that are actually drink names (e.g., "Spanish" from "Spanish latte")
+        # CRITICAL: This filtering MUST happen even if vibe_tags is not empty
         original_tag_count = len(data["vibe_tags"])
         if data["vibe_tags"] and (is_cafe_context or is_bar_context) and not is_restaurant_context:
             cuisine_tags = {"Thai", "Italian", "French", "Spanish", "Japanese", "Mexican", "Indian", "Greek", "Mediterranean", "Seafood", "Steakhouse", "Sushi", "Pasta", "Tapas", "Ramen", "Chinese", "Korean"}
@@ -5293,8 +5297,9 @@ CRITICAL: Do NOT extract generic tags like 'Fun', 'Good', 'Nice' unless specific
 CRITICAL: If the text doesn't contain specific information about "{venue_name}", return fewer tags or an empty list rather than generic tags.
 CRITICAL: Do NOT extract generic tags like "Fun", "Good", "Nice", "Views", "Rooftop" unless they're specifically emphasized for this venue.
 CRITICAL: If the text mentions multiple venues, ONLY extract tags that are clearly about "{venue_name}".
-CRITICAL: Do NOT extract cuisine tags (like "Mexican", "Italian") unless the text explicitly states "{venue_name}" serves that cuisine. If "{venue_name}" is not mentioned with a cuisine, do NOT extract cuisine tags.
+CRITICAL: Do NOT extract cuisine tags (like "Mexican", "Italian", "French", "Thai", "Chinese", "Japanese", "Indian", "Greek", "Spanish", "Korean", "Seafood") unless the text explicitly states "{venue_name}" serves that cuisine. If "{venue_name}" is not mentioned with a cuisine, do NOT extract cuisine tags.
 CRITICAL: If you see "rooftop" or "views" mentioned for OTHER venues but not for "{venue_name}", do NOT include "Rooftop" or "Views" tags for "{venue_name}".
+CRITICAL: NEVER extract cuisine-related tags - cuisine types come from a different source. Focus ONLY on atmosphere, style, and features.
 
 Only use POSITIVE, APPEALING descriptors. NEVER use negative words like "Crowded", "Loud", "Busy", "Packed", "Expensive", etc.
 
@@ -5303,6 +5308,8 @@ Focus on what makes THIS place unique:
 - Best for: Date Night, Groups, Solo, Brunch, Late Night, Happy Hour, Romantic Dinner
 - Style: Trendy, Classic, Authentic, Modern, Casual, Fancy, Hip, Stylish, Romantic
 - Features: Outdoor, Rooftop, Live Music, DJ, Games, Dancing, Cocktails
+
+DO NOT USE: French, Italian, Thai, Chinese, Japanese, Mexican, Indian, Korean, Spanish, Greek, Seafood, or any other cuisine/food types
 
 Extract tags that are SPECIFIC to what's written about THIS venue in the text. Each venue should have different tags based on its unique characteristics.
 If the text doesn't contain specific information about "{venue_name}", return fewer tags or an empty list rather than generic tags.
