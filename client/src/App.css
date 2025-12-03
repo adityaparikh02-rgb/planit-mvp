@@ -753,6 +753,50 @@
   box-shadow: 0 6px 16px rgba(63, 71, 255, 0.4);
 }
 
+/* Action Buttons Group (TikTok + Map) */
+.action-buttons-group {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  margin: 12px 0 25px;
+  flex-wrap: wrap;
+}
+
+.view-on-map-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  padding: 12px 24px;
+  color: white;
+  font-weight: 600;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.view-on-map-button:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+
+@media (max-width: 640px) {
+  .action-buttons-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .tiktok-button,
+  .view-on-map-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* Note to Self Styles */
 .note-to-self-container {
   margin: var(--spacing-md) 0;
@@ -1310,15 +1354,25 @@
 }
 
 .maps-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 10px;
   font-weight: 600;
   color: #8da0ff;
   text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+  transition: all 0.2s;
 }
 
 .maps-link:hover {
-  text-decoration: underline;
+  color: #a5b4ff;
+  transform: translateX(2px);
 }
 
 .loading {

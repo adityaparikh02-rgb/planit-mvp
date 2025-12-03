@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useEffect, useState, useCallback } from "react";
-import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
+import React, { useMemo, useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { GoogleMap, LoadScript, Marker, InfoWindow } from "@react-google-maps/api";
 import "./MapView.css";
 
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
@@ -7,7 +7,7 @@ const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || "";
 // Move libraries array outside component to prevent LoadScript reloads
 const GOOGLE_MAPS_LIBRARIES = ['places', 'geometry'];
 
-const MapView = ({ places, onClose }) => {
+const MapView = forwardRef(({ places, onClose, selectedPlaceIndex, userLocation, onMarkerClick }, ref) => {
   // Default center (NYC)
   const defaultCenter = { lat: 40.7128, lng: -73.9352 };
 
@@ -18,6 +18,7 @@ const MapView = ({ places, onClose }) => {
   const [mapError, setMapError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadScriptReady, setLoadScriptReady] = useState(false);
+  const [selectedMarker, setSelectedMarker] = useState(null);
   const mapRef = useRef(null);
   const geocodingInProgressRef = useRef(false); // Prevent multiple geocoding runs
   const geocodedPlaceNamesRef = useRef(new Set()); // Track which places we've geocoded
@@ -280,6 +281,24 @@ const MapView = ({ places, onClose }) => {
     }
   }, [placePositions]);
 
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    zoomToPlace: (index) => {
+      if (mapRef.current && placesWithLocation[index]) {
+        const place = placesWithLocation[index];
+        const position = placePositions[place.name];
+        if (position) {
+          mapRef.current.panTo(position);
+          mapRef.current.setZoom(16);
+          setSelectedMarker(index);
+        }
+      }
+    },
+    fitAllMarkers: () => {
+      fitMapToMarkers();
+    }
+  }), [placesWithLocation, placePositions, fitMapToMarkers]);
+
   // Effect to fit map when placePositions are ready AND map is loaded
   useEffect(() => {
     if (!loadScriptReady) {
@@ -524,14 +543,31 @@ const MapView = ({ places, onClose }) => {
                 setMapError(`Map error: ${error?.message || 'Unknown error'}`);
               }}
             >
+              {/* User location marker */}
+              {userLocation && (
+                <Marker
+                  position={userLocation}
+                  icon={{
+                    path: window.google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor: '#4285F4',
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2,
+                  }}
+                  title="Your Location"
+                />
+              )}
+
+              {/* Place markers */}
               {placesWithLocation.map((place, index) => {
                 const position = placePositions[place.name] || {
                   lat: mapCenter.lat + (Math.random() - 0.5) * 0.05,
                   lng: mapCenter.lng + (Math.random() - 0.5) * 0.05,
                 };
-              
+
                 console.log(`📍 Marker ${index + 1}: ${place.name} at`, position);
-              
+
                 return (
                   <Marker
                     key={`${place.name}-${index}`}
@@ -543,9 +579,42 @@ const MapView = ({ places, onClose }) => {
                       fontSize: '12px',
                       fontWeight: 'bold',
                     }}
+                    onClick={() => {
+                      setSelectedMarker(index);
+                      if (onMarkerClick) {
+                        onMarkerClick(index);
+                      }
+                    }}
                   />
                 );
               })}
+
+              {/* Info Window for selected marker */}
+              {selectedMarker !== null && placesWithLocation[selectedMarker] && placePositions[placesWithLocation[selectedMarker].name] && (
+                <InfoWindow
+                  position={placePositions[placesWithLocation[selectedMarker].name]}
+                  onCloseClick={() => setSelectedMarker(null)}
+                >
+                  <div style={{ maxWidth: '200px' }}>
+                    {placesWithLocation[selectedMarker].photo_url && (
+                      <img
+                        src={placesWithLocation[selectedMarker].photo_url}
+                        alt={placesWithLocation[selectedMarker].name}
+                        style={{ width: '100%', height: '120px', objectFit: 'cover', borderRadius: '8px', marginBottom: '8px' }}
+                      />
+                    )}
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '600' }}>
+                      {placesWithLocation[selectedMarker].name}
+                    </h4>
+                    {placesWithLocation[selectedMarker].summary && (
+                      <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>
+                        {placesWithLocation[selectedMarker].summary.substring(0, 100)}
+                        {placesWithLocation[selectedMarker].summary.length > 100 ? '...' : ''}
+                      </p>
+                    )}
+                  </div>
+                </InfoWindow>
+              )}
             </GoogleMap>
           )}
         </LoadScript>
@@ -571,6 +640,6 @@ const MapView = ({ places, onClose }) => {
       </div>
     </div>
   );
-};
+});
 
 export default MapView;
