@@ -5122,6 +5122,15 @@ Do NOT stop after extracting 1-2 items - extract ALL dishes, features, tips, and
                 data["vibe_tags"].append("Vegan")
                 print(f"   ✅ Added 'Vegan' tag for {name}")
 
+        # Add "Rooftop" tag if explicitly mentioned in the context or features
+        # Check both context and features field for rooftop indicators
+        rooftop_indicators = ["rooftop", "roof top", "rooftop bar", "rooftop views", "on the roof"]
+        context_and_features = context_lower + " " + data.get("features", "").lower()
+        if any(indicator in context_and_features for indicator in rooftop_indicators):
+            if "Rooftop" not in data["vibe_tags"]:
+                data["vibe_tags"].append("Rooftop")
+                print(f"   ✅ Added 'Rooftop' tag for {name}")
+
         # Note: Cuisine types are now extracted from Google Maps Place Details API
         # (see extract_cuisine_from_google_types function and place_types_from_google)
 
