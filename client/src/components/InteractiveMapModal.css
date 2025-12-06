@@ -68,6 +68,8 @@
 .map-section {
   flex: 1;
   position: relative;
+  min-height: 400px;
+  background: #f3f4f6;
 }
 
 .places-list-sidebar {

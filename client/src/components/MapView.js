@@ -432,12 +432,13 @@ const MapView = forwardRef(({ places, onClose, selectedPlaceIndex, userLocation,
           </button>
         )}
         {!loadScriptReady && (
-          <div style={{ 
+          <div style={{
             width: '100%',
-            height: '500px',
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
+            height: '100%',
+            minHeight: '500px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
             background: '#0a0a0f',
             color: '#fff'
           }}>
@@ -450,16 +451,17 @@ const MapView = forwardRef(({ places, onClose, selectedPlaceIndex, userLocation,
             </div>
           </div>
         )}
-        <LoadScript 
+        <LoadScript
           googleMapsApiKey={GOOGLE_MAPS_API_KEY}
           libraries={GOOGLE_MAPS_LIBRARIES}
           loadingElement={
-            <div style={{ 
+            <div style={{
               width: '100%',
-              height: '500px',
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
+              height: '100%',
+              minHeight: '500px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               background: '#0a0a0f',
               color: '#fff'
             }}>
@@ -490,7 +492,8 @@ const MapView = forwardRef(({ places, onClose, selectedPlaceIndex, userLocation,
             <GoogleMap
               mapContainerStyle={{
                 width: "100%",
-                height: "500px",
+                height: "100%",
+                minHeight: "500px",
               }}
               options={mapOptions}
               center={mapCenter}
