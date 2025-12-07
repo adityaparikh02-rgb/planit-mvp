@@ -12,36 +12,33 @@
   min-height: 500px;
   position: relative;
   border-radius: 12px;
-  overflow: visible; /* Changed from hidden to visible */
+  overflow: hidden; /* Hidden to contain map properly */
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: #e5e7eb; /* Light gray background so map is visible */
+  z-index: 1; /* Ensure proper stacking */
 }
 
 /* Ensure Google Maps renders properly */
 .map-section-simple > div {
   width: 100% !important;
-  height: 100% !important;
-  min-height: 500px !important;
+  height: 500px !important;
   position: relative !important;
 }
 
 .map-section-simple > div > div {
   width: 100% !important;
-  height: 100% !important;
-  min-height: 500px !important;
+  height: 500px !important;
   position: relative !important;
 }
 
 .map-section-simple > div > div > div {
   width: 100% !important;
-  height: 100% !important;
-  min-height: 500px !important;
+  height: 500px !important;
   position: relative !important;
 }
 
 /* Google Maps iframe */
 .map-section-simple iframe {
   width: 100% !important;
-  height: 100% !important;
-  min-height: 500px !important;
+  height: 500px !important;
 }
