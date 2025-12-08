@@ -4026,9 +4026,13 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
    • IMPORTANT: If a venue name appears multiple times in garbled form (e.g., "LA TETE DOR" appears 3 times), extract it ONCE as the most likely correct version (e.g., "la tete d'or").
    • If OCR text is too garbled or unclear, prioritize the caption and transcript for venue names.
    • Do NOT combine neighborhood names with generic terms to create venue names (e.g., don't extract "Soho Wine Bar" from "wine bar in Soho").
-   • CRITICAL: Do NOT extract venues that are mentioned as "team behind", "created by", "made by", "founded by", or similar contexts. 
-     For example, if text says "the team behind Sami & Susu made Shifka", extract ONLY "Shifka", NOT "Sami & Susu".
-     Only extract venues that are actually being featured/reviewed/visited, not venues mentioned as creators or previous projects.
+   • CRITICAL: Do NOT extract venues that are mentioned as "team behind", "created by", "made by", "founded by", "alums of", "from the beloved", "used to be", "was located in the same space as", or similar historical/background contexts.
+     Examples of what NOT to extract:
+     - "the team behind Sami & Susu made Shifka" → extract ONLY "Shifka", NOT "Sami & Susu"
+     - "started by alums of the beloved Ugly Baby" → extract ONLY the NEW venue, NOT "Ugly Baby"
+     - "located in the same space as Momofuku" → extract the NEW venue, NOT "Momofuku"
+     - "from the chef behind Le Bernardin" → extract the NEW venue, NOT "Le Bernardin"
+     Only extract venues that are actually being featured/reviewed/visited RIGHT NOW, not venues mentioned as historical context, previous projects, or closed venues.
    • CRITICAL: Do NOT extract chain locations with addresses/neighborhoods in parentheses or as suffixes.
      Examples to EXCLUDE: "WatchHouse 5th Ave", "HEYTEA (Times Square)", "Starbucks Times Square", "Chipotle Broadway"
      These are chain locations, not specific venues. Only extract the base venue name if it's mentioned WITHOUT a location suffix.
