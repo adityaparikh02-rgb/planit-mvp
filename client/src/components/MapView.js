@@ -428,7 +428,7 @@ const MapView = forwardRef(({ places, onClose, selectedPlaceIndex, userLocation,
             onMouseOver={(e) => e.target.style.backgroundColor = '#4338CA'}
             onMouseOut={(e) => e.target.style.backgroundColor = '#4F46E5'}
           >
-            📍 Show All Places
+            🔍 Zoom to Fit
           </button>
         )}
         <LoadScript

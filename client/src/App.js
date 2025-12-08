@@ -1011,7 +1011,7 @@ function App() {
                         onClick={() => setShowMapModal(true)}
                         className="view-on-map-button"
                       >
-                        <Map size={18} /> View on Map
+                        <Map size={18} /> Map View
                       </button>
                     )}
                   </div>
@@ -1340,15 +1340,26 @@ function App() {
                             </div>
                           )}
                           {p.maps_url && (
-                            <button
-                              onClick={() => {
-                                setSelectedPlaceIndex(i);
-                                setShowMapModal(true);
-                              }}
-                              className="maps-link"
-                            >
-                              <MapPin size={16} /> View on Map
-                            </button>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              <button
+                                onClick={() => {
+                                  setSelectedPlaceIndex(i);
+                                  setShowMapModal(true);
+                                }}
+                                className="maps-link"
+                              >
+                                <MapPin size={16} /> Map View
+                              </button>
+                              <a
+                                href={p.maps_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="maps-link"
+                                style={{ textDecoration: 'none' }}
+                              >
+                                <MapPin size={16} /> View in Maps
+                              </a>
+                            </div>
                           )}
                         </div>
                       </div>
