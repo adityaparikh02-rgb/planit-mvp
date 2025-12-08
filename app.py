@@ -4715,12 +4715,60 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             else:
                 print(f"      ✗ Dropped (doesn't mention venue): '{sentence[:80]}...'")
 
-        # Use filtered sentences or fall back to raw context if filtering removed everything
-        if filtered_sentences:
-            context = ". ".join(filtered_sentences)
-            print(f"   ✂️ Filtered context: {len(filtered_sentences)}/{len(sentences)} sentences kept for {name}")
-            
-            # CRITICAL FIX: If filtered context is short (< 400 chars), be more lenient
+        # CHRONOLOGICAL WINDOWING: Since transcripts are chronological, include sentences
+        # that come AFTER a venue mention (within a window) even if they don't mention the venue
+        # This captures pronouns like "their tacos" or "we love the bread"
+        windowed_sentences = []
+        in_window = False
+        sentences_since_venue = 0
+        WINDOW_SIZE = 3  # Include next 3 sentences after venue mention
+
+        for i, sentence in enumerate(sentences):
+            sentence_lower = sentence.lower()
+            sentence_stripped = sentence.strip()
+
+            # Skip very short sentences
+            if len(sentence_stripped) < 10:
+                continue
+
+            # Check if this sentence mentions THIS venue
+            mentions_this = venue_name_matches(sentence_lower, name_lower)
+
+            # Check if mentions OTHER venues
+            mentions_other = False
+            for v in other_venues:
+                if len(v) > 2 and venue_name_matches(sentence_lower, v):
+                    mentions_other = True
+                    break
+
+            # If mentions this venue (and not others), start the window
+            if mentions_this and not mentions_other:
+                windowed_sentences.append(sentence)
+                in_window = True
+                sentences_since_venue = 0
+                print(f"      ✓ Kept (mentions venue): '{sentence[:80]}...'")
+            # If mentions other venue, close the window
+            elif mentions_other:
+                in_window = False
+                print(f"      ✗ Closed window (other venue mentioned): '{sentence[:80]}...'")
+            # If in window and haven't hit window size, include it
+            elif in_window and sentences_since_venue < WINDOW_SIZE:
+                windowed_sentences.append(sentence)
+                sentences_since_venue += 1
+                print(f"      ✓ Kept (in window, +{sentences_since_venue}): '{sentence[:80]}...'")
+            # If window expired
+            elif in_window and sentences_since_venue >= WINDOW_SIZE:
+                in_window = False
+                print(f"      ✗ Dropped (window expired): '{sentence[:80]}...'")
+            else:
+                print(f"      ✗ Dropped (not in window): '{sentence[:80]}...'")
+
+        # Use windowed sentences
+        if windowed_sentences:
+            context = ". ".join(windowed_sentences)
+            print(f"   ✂️ Windowed context: {len(windowed_sentences)}/{len(sentences)} sentences kept for {name}")
+
+            # CRITICAL FIX: If windowed context is short (< 400 chars), be more lenient
             # BUT: Do NOT use lenient mode if context bleeding was detected (needs_strict_filtering)
             # This prevents venues like "The Clocktower" from having no context, but prevents bleeding
             # Increased from 200 to 400 to allow more valid contexts to benefit from lenient matching
@@ -4775,14 +4823,14 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                             this_count = len(re.findall(r'\b' + re.escape(name_lower) + r'\b', sentence_lower))
                             # More lenient: keep if venue appears first OR appears 2+ times
                             if this_pos != -1 and (not other_positions or this_pos < min(other_positions) or this_count >= 2):
-                                if sentence not in filtered_sentences:
+                                if sentence not in windowed_sentences:
                                     relaxed_sentences.append(sentence)
                                     print(f"      ✓ Kept (lenient mode): '{sentence[:80]}...'")
-                
+
                 # Add relaxed sentences to context
                 if relaxed_sentences:
-                    context = ". ".join(filtered_sentences + relaxed_sentences)
-                    print(f"   ✂️ Added {len(relaxed_sentences)} more sentences in lenient mode (total: {len(filtered_sentences) + len(relaxed_sentences)} sentences, {len(context)} chars)")
+                    context = ". ".join(windowed_sentences + relaxed_sentences)
+                    print(f"   ✂️ Added {len(relaxed_sentences)} more sentences in lenient mode (total: {len(windowed_sentences) + len(relaxed_sentences)} sentences, {len(context)} chars)")
         else:
             # No venue-specific sentences found - DO NOT use full raw context (causes bleeding)
             # This can happen with uncommon venue names or abbreviated names in OCR
