@@ -2752,23 +2752,23 @@ def get_place_info_from_google(place_name, use_cache=True, location_hint=""):
                 is_non_nyc = any(indicator in address for indicator in non_nyc_indicators)
                 if is_nyc and not is_non_nyc:
                     nyc_results.append(place_info)
-            
-            # Use first NYC result if available, otherwise use first result
+
+            # Use first NYC result if available, otherwise validate with is_nyc_venue
             if nyc_results:
                 place_info = nyc_results[0]
                 print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
             else:
+                # No NYC results found in filtering - use first result and validate
                 from location_filters import is_nyc_venue
+                place_info = res[0]
+                is_nyc, reason = is_nyc_venue(place_info.get("formatted_address", ""))
 
-            place_info = res[0]
-            is_nyc, reason = is_nyc_venue(place_info.get("formatted_address", ""))
+                if not is_nyc:
+                    print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} - {reason}")
+                    # Try to find a better match by searching with more specific NYC terms
+                    return None, None, None, None, None, None
 
-            if not is_nyc:
-                print(f"   ⚠️ Warning: Non-NYC venue found: {place_info.get('name')} - {reason}")
-                # Try to find a better match by searching with more specific NYC terms
-                return None, None, None, None, None, None
-
-            print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
+                print(f"   ✅ Found NYC venue: {place_info.get('name')} ({place_info.get('formatted_address', '')[:50]}...)")
             
             canonical_name = place_info.get("name", place_name)
             address = place_info.get("formatted_address")
@@ -5746,6 +5746,8 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
         # place_types_from_google already initialized above
         latitude = None  # Store latitude for strict neighborhood extraction
         longitude = None  # Store longitude for strict neighborhood extraction
+        country_code = None  # Store country code for NYC filtering
+        country_name = None  # Store country name for NYC filtering
 
         # STEP 1: Extract neighborhood from title/caption (but don't finalize yet)
         # Use combined text (context_title + caption) for neighborhood extraction
