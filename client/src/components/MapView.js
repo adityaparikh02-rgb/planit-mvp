@@ -431,50 +431,56 @@ const MapView = forwardRef(({ places, onClose, selectedPlaceIndex, userLocation,
             🔍 Zoom to Fit
           </button>
         )}
-        <LoadScript
-          googleMapsApiKey={GOOGLE_MAPS_API_KEY}
-          libraries={GOOGLE_MAPS_LIBRARIES}
-          loadingElement={
-            <div style={{
-              width: '100%',
-              height: '100%',
-              minHeight: '500px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: '#0a0a0f',
-              color: '#fff'
-            }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '24px', marginBottom: '12px' }}>🗺️</div>
-                <div>Loading map...</div>
+        <div style={{
+          width: '100%',
+          height: '100%',
+          minHeight: '500px',
+          position: 'relative',
+          display: loadScriptReady ? 'block' : 'none'
+        }}>
+          <LoadScript
+            googleMapsApiKey={GOOGLE_MAPS_API_KEY}
+            libraries={GOOGLE_MAPS_LIBRARIES}
+            loadingElement={
+              <div style={{
+                width: '100%',
+                height: '500px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#0a0a0f',
+                color: '#fff'
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '24px', marginBottom: '12px' }}>🗺️</div>
+                  <div>Loading map...</div>
+                </div>
               </div>
-            </div>
-          }
-          onError={(error) => {
-            console.error('❌ LoadScript error:', error);
-            console.error('Error details:', {
-              message: error?.message,
-              code: error?.code,
-              toString: error?.toString(),
-              error
-            });
-            setMapError(`Failed to load Google Maps: ${error?.message || error?.toString() || 'Unknown error'}`);
-          }}
-          onLoad={() => {
-            console.log('✅ LoadScript loaded successfully');
-            console.log('window.google:', window.google);
-            console.log('window.google.maps:', window.google?.maps);
-            setLoadScriptReady(true);
-          }}
-        >
-          {loadScriptReady && window.google && window.google.maps && (
-            <GoogleMap
-              mapContainerStyle={{
-                width: "100%",
-                height: "500px",
-                position: "relative"
-              }}
+            }
+            onError={(error) => {
+              console.error('❌ LoadScript error:', error);
+              console.error('Error details:', {
+                message: error?.message,
+                code: error?.code,
+                toString: error?.toString(),
+                error
+              });
+              setMapError(`Failed to load Google Maps: ${error?.message || error?.toString() || 'Unknown error'}`);
+            }}
+            onLoad={() => {
+              console.log('✅ LoadScript loaded successfully');
+              console.log('window.google:', window.google);
+              console.log('window.google.maps:', window.google?.maps);
+              setLoadScriptReady(true);
+            }}
+          >
+            {loadScriptReady && window.google && window.google.maps && (
+              <GoogleMap
+                mapContainerStyle={{
+                  width: "100%",
+                  height: "500px",
+                  position: "relative"
+                }}
               options={mapOptions}
               center={mapCenter}
               zoom={mapZoom}
@@ -601,6 +607,7 @@ const MapView = forwardRef(({ places, onClose, selectedPlaceIndex, userLocation,
             </GoogleMap>
           )}
         </LoadScript>
+        </div>
         {loadScriptReady && (!window.google || !window.google.maps) && (
           <div style={{ 
             width: '100%',

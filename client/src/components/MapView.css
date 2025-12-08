@@ -12,10 +12,10 @@
   min-height: 500px;
   position: relative;
   border-radius: 12px;
-  overflow: hidden; /* Hidden to contain map properly */
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #e5e7eb; /* Light gray background so map is visible */
-  z-index: 1; /* Ensure proper stacking */
+  background: #e5e7eb;
+  z-index: 1;
 }
 
 /* Ensure Google Maps renders properly */
