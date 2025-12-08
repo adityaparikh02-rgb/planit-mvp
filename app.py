@@ -5474,14 +5474,17 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
         "SELECT * FROM place_cache WHERE place_name = ? AND place_address = ?",
         (place_name, place_address)
     )
-    cached = c.fetchone()
-    
-    if cached:
+    cached_row = c.fetchone()
+
+    if cached_row:
+        # Convert sqlite3.Row to dict for easier access
+        cached = dict(cached_row)
+
         # Merge: update video URLs and usernames
         existing_video_urls = json.loads(cached["video_urls"])
         existing_usernames = json.loads(cached["usernames"]) if cached["usernames"] else []
         existing_metadata = json.loads(cached["video_metadata"]) if cached["video_metadata"] else {}
-        
+
         if video_url not in existing_video_urls:
             existing_video_urls.append(video_url)
             if video_summary:
@@ -5489,10 +5492,10 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
                     "username": username,
                     "summary": video_summary
                 }
-        
+
         if username and username not in existing_usernames:
             existing_usernames.append(username)
-        
+
         # Build other_videos_note - exclude current username
         other_videos = []
         for vid_url in existing_video_urls:
@@ -5506,7 +5509,7 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
                         "username": vid_username,
                         "summary": vid_summary
                     })
-        
+
         # Build formatted note with links - link should be on summary/title, not username
         other_videos_note = ""
         other_videos_data = []
@@ -5519,7 +5522,7 @@ def merge_place_with_cache(place_data, video_url, username=None, video_summary=N
                     "username": vid_username,
                     "summary": vid_summary
                 })
-        
+
         # Merge data (prefer new data but add other_videos_note and address)
         # CRITICAL: Load cached place_data to merge intelligently (prefer new but keep old fields if new is missing)
         cached_place_data = {}
@@ -6755,10 +6758,14 @@ def login():
         conn = get_db()
         c = conn.cursor()
         c.execute("SELECT id, password_hash FROM users WHERE email = ?", (email,))
-        user = c.fetchone()
+        user_row = c.fetchone()
         conn.close()
-        
-        if not user or not check_password_hash(user["password_hash"], password):
+
+        if not user_row:
+            return jsonify({"error": "Invalid email or password"}), 401
+
+        user = dict(user_row)
+        if not check_password_hash(user["password_hash"], password):
             return jsonify({"error": "Invalid email or password"}), 401
         
         # Create access token
@@ -6782,11 +6789,13 @@ def get_current_user():
         conn = get_db()
         c = conn.cursor()
         c.execute("SELECT id, email, created_at FROM users WHERE id = ?", (user_id,))
-        user = c.fetchone()
+        user_row = c.fetchone()
         conn.close()
-        
-        if not user:
+
+        if not user_row:
             return jsonify({"error": "User not found"}), 404
+
+        user = dict(user_row)
         
         return jsonify({
             "user_id": user["id"],
