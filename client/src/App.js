@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Grid, Search, Plus, Star, MapPin, Sparkles, Loader2, X, ChevronRight, Map, List, Edit2, Check, Pizza, Coffee, Wine, UtensilsCrossed, Building2, Croissant, Eye, Award, Heart, Image, FileText, Scan, MapPinned, MoreHorizontal, Trash2, Square } from "lucide-react";
 import "./App.css";
 import PlanItLogo from "./components/PlanItLogo";
-import InteractiveMapModal from "./components/InteractiveMapModal";
 
 const API_BASE = process.env.REACT_APP_API_URL || "https://planit-backend-fbm5.onrender.com";
 
@@ -102,8 +101,6 @@ function App() {
   const [selectedSavedLists, setSelectedSavedLists] = useState(new Set()); // Set of selected saved list names
   const [showClearSavedMenu, setShowClearSavedMenu] = useState(false); // For clear saved menu
   const [showDebugInfo, setShowDebugInfo] = useState(false); // Toggle for showing OCR text and transcript
-  const [showMapModal, setShowMapModal] = useState(false); // Map modal visibility
-  const [selectedPlaceIndex, setSelectedPlaceIndex] = useState(null); // Selected place for map zoom
 
   // Handle share target / deep linking
   useEffect(() => {
@@ -1006,14 +1003,6 @@ function App() {
                     >
                       View on TikTok
                     </a>
-                    {result.places_extracted && result.places_extracted.length > 0 && (
-                      <button
-                        onClick={() => setShowMapModal(true)}
-                        className="view-on-map-button"
-                      >
-                        <Map size={18} /> Map View
-                      </button>
-                    )}
                   </div>
                 )}
                 
@@ -1340,26 +1329,15 @@ function App() {
                             </div>
                           )}
                           {p.maps_url && (
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                              <button
-                                onClick={() => {
-                                  setSelectedPlaceIndex(i);
-                                  setShowMapModal(true);
-                                }}
-                                className="maps-link"
-                              >
-                                <MapPin size={16} /> Map View
-                              </button>
-                              <a
-                                href={p.maps_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="maps-link"
-                                style={{ textDecoration: 'none' }}
-                              >
-                                <MapPin size={16} /> View in Maps
-                              </a>
-                            </div>
+                            <a
+                              href={p.maps_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="maps-link"
+                              style={{ textDecoration: 'none' }}
+                            >
+                              <MapPin size={16} /> View in Maps
+                            </a>
                           )}
                         </div>
                       </div>
@@ -2027,19 +2005,6 @@ function App() {
           <span className="nav-btn-label">Saved</span>
         </button>
       </div>
-
-      {/* Map Modal */}
-      {showMapModal && result?.places_extracted && (
-        <InteractiveMapModal
-          places={result.places_extracted}
-          onClose={() => {
-            setShowMapModal(false);
-            setSelectedPlaceIndex(null);
-          }}
-          selectedPlaceIndex={selectedPlaceIndex}
-          setSelectedPlaceIndex={setSelectedPlaceIndex}
-        />
-      )}
     </div>
   );
 }
