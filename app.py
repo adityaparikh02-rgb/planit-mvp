@@ -4894,7 +4894,7 @@ CRITICAL: Only extract information that is clearly about "{name}".
   "vibe": "Extract the EXACT vibe/atmosphere description from the slide text for {name}. Use the creator's actual words and phrases - do NOT make up generic descriptions like 'lively and energetic'. Quote or paraphrase what's explicitly written on the slide. If the slide says 'rooftop bar with city views', include that. If it says 'sexy cocktail bar', include that. If it mentions 'good views' or special features, include those too. Include ALL descriptive details mentioned (e.g., 'very light and fluffy', 'super light and fluffy', 'very generous on the hot honey', 'perfect level of crisp', 'unique and flavorful', 'sourdough crust was bomb'). CRITICAL: Read EVERY WORD in the OCR text - do NOT truncate or cut off descriptions. If the OCR says 'A FUN, CREATIVE COCKTAIL SPOT KNOWN FOR FOOD-INSPIRED DRINKS AND GREAT CHICKEN SANDWICHES IN A COOL, LIVELY SPACE', extract ALL of it, not just 'A FUN, - IN A'. Remove only: hashtags, OCR garbage, random fragments, venue names, and 'the vibes:' prefix. Keep the creator's authentic voice and ALL specific details about the atmosphere, setting, food quality, texture, and notable features. Do NOT stop after extracting 1-2 words - extract the COMPLETE description. CRITICAL: Extract ALL food quality descriptors (e.g., 'perfect level of crisp', 'unique and flavorful', 'bomb', 'so flimsy') - these are part of the vibe/experience.",
   "must_try": "What to get/order at {name}. Format as a natural, grammatically correct sentence listing ONLY the SPECIFIC dishes, drinks, or menu items mentioned by the creator FOR THIS SPECIFIC VENUE. Start with 'Try the' followed by the items. Use proper grammar: no unnecessary commas between adjectives and nouns, proper use of 'and', and natural phrasing (e.g., 'Try the original acai bowl, spicy salmon wrap, and iced latte' or 'Try the Miami mocha and perfect egg sandwich'). CRITICAL GRAMMAR RULES: (1) No commas between adjectives unless they're coordinate adjectives (e.g., 'very tasty slice' NOT 'very, tasty slice'), (2) Use 'and' only to connect the last two items in a list, (3) Ensure proper articles (a/an/the) are used correctly, (4) Never write incomplete phrases like 'and of' or 'the and'. CRITICAL: Extract EVERY dish/item mentioned FOR {name} - do not skip any. Read EVERY WORD in the context, including smaller font text, fine print, and all details. Do NOT stop after extracting 1-2 items - extract ALL items mentioned. Include ALL modifiers and details (e.g., 'very generous hot honey', 'very light and fluffy pancakes', 'deep fried short rib ragu pizza'). IMPORTANT NARRATIVE EXTRACTION: Even if dishes are mentioned in narrative form WITHOUT explicit 'try the' or 'get the' language, STILL extract them. For example: 'We got the mushroom biryani and the paneer dish' → extract 'mushroom biryani and paneer dish'. 'The chef brought out a cauliflower in cilantro cream sauce' → extract 'cauliflower in cilantro cream sauce'. 'I had the jackfruit empanada' → extract 'jackfruit empanada'. 'They dipped mini kulfis' → extract 'mini kulfis'. The key is: if they TRIED and DESCRIBED a dish at {name}, it belongs in must_try, regardless of how it was phrased. Look for ANY specific dish names, descriptions, or menu items they experienced. CRITICAL PATTERN RECOGNITION: If you see patterns like 'X at {name}' or '{name}'s X' or 'the X from {name}' or 'we got the X' or 'they brought out X' or 'I ordered X', these are EXPLICIT associations - extract ALL of them. Examples: 'Caesar Salad Martini at Shy Shy', 'Dante Martini at Dante', 'Popcorn at Bar Belly', 'we got the mushroom biryani', 'the chef brought out cauliflower in cilantro cream sauce' - extract EVERY item that was tried/ordered/served at {name}. CRITICAL: Only extract items that are EXPLICITLY associated with {name} in the context. If an item appears in the context but is NOT clearly linked to {name} (e.g., it appears in a list but {name} isn't mentioned nearby), do NOT include it. If an item is mentioned for another venue (even in the same sentence or in a different slide), do NOT include it. For RESTAURANTS/FOOD places, extract ALL SPECIFIC dishes they actually tried and mentioned (whether they loved it, hated it, or just described it) AT {name}. For BARS/LOUNGES, list signature cocktails, drink specials, or bar features AT {name}. For CLUBS/MUSIC VENUES, list DJs, events, or music highlights AT {name}. Always prioritize SPECIFIC items the creator tried and mentioned AT {name} over generic recommendations. IMPORTANT: Be thorough - if you see a list of dishes FOR {name}, extract ALL of them, not just a subset. Read the ENTIRE context carefully - do NOT miss items in smaller font or less prominent positions. But ONLY extract items that are clearly FOR {name}. DO NOT include generic category names without specific items (e.g., if the context only says 'dinner' or 'American food' without mentioning specific dishes, leave this field blank).",
   "good_to_know": "Important tips or things to know about {name} (e.g., 'Reserve ahead of time', 'Cash only', 'Dress code required', 'Save your $$', 'Worth the price', 'Affordable', 'Budget-friendly', 'Quality isn't always consistent', 'Long lines', 'Sometimes inconsistent', 'a little on the sweeter side', 'pizza is flimsy', 'new special pizza every week'). Capture ALL practical tips, pricing notes, reservation requirements, payment methods, helpful advice, AND any warnings or negative feedback mentioned in the context (e.g., 'quality isn't always consistent', 'long lines', 'sometimes inconsistent', 'a little on the sweeter side', 'pizza is flimsy'). Include both positive tips AND realistic warnings/limitations if mentioned. CRITICAL: Extract ALL descriptive details about food quality, texture, taste characteristics, and special features (e.g., 'perfect level of crisp', 'unique and flavorful', 'sourdough crust was bomb', 'new special pizza every week'). Read EVERY WORD in the context - do NOT skip descriptive details. Only include if clearly mentioned in the context.",
-  "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all.",
+  "features": "Specific physical features, amenities, or notable elements mentioned about {name}. Examples: 'DJ booth at night', 'seating around the bar', 'outdoor patio', 'rooftop views', 'photo-op spots', 'dance floor', 'private booths'. Capture ALL specific details mentioned in the context. If multiple features are mentioned, list them all. CRITICAL - TEMPORAL & OPERATIONAL DETAILS: If the context mentions ANY of these, extract them to features: Pop-up status ('popping up for X months', 'temporary location', 'limited time', 'only here for X days/weeks/months'), special access ('reservation only', 'members only', 'by appointment', 'secret location'), operating constraints ('only open on weekends', 'dinner only', 'closed Mondays'), time-sensitive info ('opening soon', 'closing soon', 'last month', 'until [date]'). EXAMPLES: 'popping up in Manhattan for only six months' → 'Pop-up venue for 6 months only', 'reservation required' → 'Reservations required', 'secret speakeasy behind the bookshelf' → 'Hidden entrance behind bookshelf', 'only open Thursday-Saturday' → 'Open Thursday-Saturday only'.",
   "team_behind": "If context mentions '{name}' is 'from the team behind X' or 'from the chefs behind X', extract that information here. Examples: 'From the team behind Employees Only', 'From the chefs behind Le Bernardin', 'From the creators of Death & Co'. This adds context/color about the venue's background. ONLY include if explicitly mentioned - do NOT infer or make up this information.",
   "specials": "Real deals, special events, pricing tips, or money-saving information at {name} if mentioned (e.g., 'Save your $$', 'Happy hour deals', 'Weekend specials', 'Affordable prices', 'new special pizza every week'). Capture any cost-related tips or special offers mentioned. CRITICAL: Extract ALL recurring specials or rotating menu items (e.g., 'new special pizza every week', 'rotating menu', 'weekly specials'). Read EVERY WORD in the context - do NOT skip special features or recurring events.",
   "comments_summary": "Short insight from comments about {name} if available",
@@ -6369,6 +6369,51 @@ def enrich_places_parallel(venues, transcript, ocr_text, caption, comments_text,
                     print(f"   ✅ Added Google Maps cuisine tag: {google_cuisine} (from primary types: {primary_types})")
             else:
                 print(f"   ⚠️ Skipping cuisine tag - place is not a restaurant (primary types: {primary_types})")
+
+        # FUSION CUISINE DETECTION: Augment Google Maps cuisine with transcript context
+        # If transcript mentions specific cuisines (Thai, Sichuan, etc.) that differ from Google Maps,
+        # add them to vibe_tags (for fusion restaurants like Thai-Mexican)
+        if transcript or ocr_text or caption:
+            combined_context = f"{transcript or ''} {ocr_text or ''} {caption or ''}".lower()
+
+            # Define Asian cuisine keywords (strong indicators)
+            asian_cuisine_indicators = {
+                'thai': 'Thai',
+                'sichuan': 'Chinese',
+                'szechuan': 'Chinese',
+                'vietnamese': 'Vietnamese',
+                'korean': 'Korean',
+                'japanese': 'Japanese',
+                'ramen': 'Japanese',
+                'pho': 'Vietnamese',
+                'banh mi': 'Vietnamese',
+                'pad thai': 'Thai',
+                'som tam': 'Thai',
+                'tom yum': 'Thai',
+                'kimchi': 'Korean',
+                'bibimbap': 'Korean',
+            }
+
+            # Check for Asian cuisine indicators in context
+            detected_asian_cuisines = []
+            for keyword, cuisine in asian_cuisine_indicators.items():
+                if keyword in combined_context and cuisine not in vibe_tags:
+                    detected_asian_cuisines.append(cuisine)
+
+            # If we found Asian cuisine indicators AND Google says it's Mexican/Latin
+            # This likely indicates fusion cuisine - add the Asian cuisine tag
+            if detected_asian_cuisines and google_cuisine in ['Mexican', 'Latin American']:
+                for asian_cuisine in set(detected_asian_cuisines):  # Remove duplicates
+                    if asian_cuisine not in vibe_tags:
+                        vibe_tags.append(asian_cuisine)
+                        print(f"   ✅ Added fusion cuisine tag: {asian_cuisine} (detected from context: Thai-Mexican fusion)")
+
+            # Also check for other fusion indicators (even if Google didn't return Mexican)
+            elif detected_asian_cuisines and not google_cuisine:
+                for asian_cuisine in set(detected_asian_cuisines):
+                    if asian_cuisine not in vibe_tags:
+                        vibe_tags.append(asian_cuisine)
+                        print(f"   ✅ Added cuisine tag from context: {asian_cuisine}")
 
         # Use strict neighborhood extraction function (PRIORITY: static overrides > lat/lon > address)
         strict_neighborhood = get_nyc_neighborhood_strict(
