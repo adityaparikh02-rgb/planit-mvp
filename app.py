@@ -4016,8 +4016,17 @@ You are analyzing a TikTok video about NYC venues. Extract venue names from ANY 
      If you see garbled text that COULD be a venue name AND there's strong context (e.g., "cactus shaped corn bread" suggests "Cactus Wren"), 
      try to extract the most likely venue name. However, ONLY do this if there's clear context - don't extract random garbled text.
    • IMPORTANT: Transcript may have transcription errors. If transcript says "X dispo" but context suggests "X in Y", trust the context and extract "X"
+   • CRITICAL TRANSCRIPT VS OCR CONFLICTS: When transcript and OCR disagree on a venue name, PREFER the OCR version if it appears clearly in the OCR text. Examples:
+     - Transcript: "Linda Street Pizza" vs OCR: "L'Industrie Pizzeria" or "Lindustrie Pizzeria" → extract "L'Industrie Pizzeria"
+     - Transcript: "Faikos" vs OCR: "Faicco's" → extract "Faicco's"
+     - Transcript: "SEMA" vs OCR: "Semma" → extract "Semma"
+     - Transcript: "Isotti" vs OCR: "I Sodi" → extract "I Sodi"
+     - Transcript: "Apartment 4F" vs OCR: "L'Appartement 4F" or similar → extract "L'Appartement 4F"
+     Trust OCR for correct spelling, especially for Italian/French restaurant names with apostrophes or special characters.
+   • ACCEPT SHORT VENUE NAMES: Do NOT skip venues just because they have short names like "I Sodi" (2 words) or single-letter words. These are valid restaurant names.
+   • ACCEPT ALPHANUMERIC NAMES: Venue names can contain numbers or special characters (e.g., "L'Appartement 4F", "Apartment 4F", "Bar 4"). Extract them if they appear with clear restaurant/bar context.
    • If OCR text is mostly garbled (lots of special characters, random letters), rely MORE on the caption and transcript.
-   • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's").
+   • Only extract venue names that look like REAL restaurant/bar/café names (e.g., "Joe's Pizza", "Lombardi's", "I Sodi", "L'Appartement 4F").
    • Do NOT extract random words from garbled OCR text (e.g., "Danny's" or "Ballerina" if they don't appear in context).
    • CRITICAL: Do NOT extract single words or short phrases that appear randomly in slides unless they're clearly venue names.
      Examples of things to EXCLUDE: "KWORK", "Fidelity", "DIPWAY ARCH" (unless they're clearly mentioned as venues with context like "restaurant" or "bar").
