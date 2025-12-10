@@ -4582,7 +4582,7 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
 
         # Helper function for fuzzy venue name matching
         def venue_name_matches(text_lower, venue_name_lower):
-            """Check if venue name appears in text, handling partial matches."""
+            """Check if venue name appears in text, handling partial matches and OCR errors."""
             # Exact match
             if venue_name_lower in text_lower:
                 return True
@@ -4594,6 +4594,23 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 first_part = ' '.join(name_parts[:2])
                 if first_part in text_lower and len(first_part) > 4:
                     return True
+
+            # LAST word matches (helps with "Ghiascatoria Pistoia" vs "Fiaschetteria Pistoia")
+            # If last word matches AND first word has > 60% character overlap, consider it a match
+            if len(name_parts) >= 2:
+                last_word = name_parts[-1]
+                # Last word must be long enough to be distinctive
+                if len(last_word) > 4 and last_word in text_lower:
+                    # Find words in text that might be the first word
+                    text_words = text_lower.split()
+                    for text_word in text_words:
+                        # Check if first words share > 60% characters (handles misspellings)
+                        if len(text_word) > 5 and len(name_parts[0]) > 5:
+                            # Count shared characters
+                            shared_chars = sum(1 for c in set(name_parts[0]) if c in text_word)
+                            overlap_ratio = shared_chars / len(name_parts[0])
+                            if overlap_ratio > 0.6:
+                                return True
 
             # Check individual words for unique venue names
             # E.g., "Dante" is unique enough
@@ -4727,6 +4744,16 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
             else:
                 print(f"      ✗ Dropped (doesn't mention venue): '{sentence[:80]}...'")
 
+        # CRITICAL: Determine if this is a voice-based video or OCR-only slideshow
+        # Voice videos: Keep ALL transcript sentences (no window closure on other venues)
+        # OCR slideshows: Close window on new venue mentions (prevents slide bleeding)
+        has_voice_transcript = transcript and len(transcript.strip()) > 100
+        is_ocr_only = not has_voice_transcript and ocr_text and len(ocr_text.strip()) > 100
+
+        print(f"   📹 Video type: {'Voice-based' if has_voice_transcript else 'OCR-only slideshow'}")
+        if has_voice_transcript:
+            print(f"   ℹ️  Using transcript as source of truth - ALL sentences kept (no window closure)")
+
         # CHRONOLOGICAL WINDOWING: Since transcripts are chronological, include sentences
         # that come AFTER a venue mention (within a window) even if they don't mention the venue
         # This captures pronouns like "their tacos" or "we love the bread"
@@ -4759,10 +4786,15 @@ def enrich_place_intel(name, transcript, ocr_text, caption, comments, source_sli
                 in_window = True
                 sentences_since_venue = 0
                 print(f"      ✓ Kept (mentions venue): '{sentence[:80]}...'")
-            # If mentions other venue, close the window
-            elif mentions_other:
+            # If mentions other venue, close the window (ONLY for OCR-only slideshows)
+            elif mentions_other and not has_voice_transcript:
                 in_window = False
                 print(f"      ✗ Closed window (other venue mentioned): '{sentence[:80]}...'")
+            # For voice videos, keep sentences even if they mention other venues (within window)
+            elif mentions_other and has_voice_transcript and in_window and sentences_since_venue < WINDOW_SIZE:
+                windowed_sentences.append(sentence)
+                sentences_since_venue += 1
+                print(f"      ✓ Kept (voice video, in window, +{sentences_since_venue}): '{sentence[:80]}...'")
             # If in window and haven't hit window size, include it
             elif in_window and sentences_since_venue < WINDOW_SIZE:
                 windowed_sentences.append(sentence)
