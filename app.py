@@ -1938,6 +1938,74 @@ def _extract_ocr_all_frames(vidcap, total, fps, duration, sample_rate):
     return combined
 
 
+def _extract_ocr_last_frames(video_path, num_frames=3):
+    """
+    Extract OCR from the last N frames of a video.
+    Used as a fallback when no venues are found in regular sampling.
+
+    Args:
+        video_path: Path to video file
+        num_frames: Number of final frames to check (default: 3)
+
+    Returns:
+        str: OCR text from last frames, or empty string if none found
+    """
+    try:
+        vidcap = cv2.VideoCapture(video_path)
+        total = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if total < 1:
+            vidcap.release()
+            return ""
+
+        # Calculate frame indices to check (last N frames)
+        # e.g., for total=1000, num_frames=3: check frames [997, 998, 999]
+        start_frame = max(0, total - num_frames)
+        frame_indices = list(range(start_frame, total))
+
+        print(f"   🎬 Last frame OCR fallback: scanning final {len(frame_indices)} frames ({start_frame}-{total-1})")
+
+        all_texts = []
+        for frame_idx in frame_indices:
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ok, img = vidcap.read()
+
+            if not ok:
+                continue
+
+            # Apply same preprocessing as regular OCR
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Upscale for better OCR accuracy
+            height, width = gray.shape
+            scale = 2
+            upscaled = cv2.resize(gray, (width * scale, height * scale),
+                                  interpolation=cv2.INTER_CUBIC)
+
+            # Run OCR
+            processor = OCRProcessor()
+            text = processor.extract_text_from_frame(upscaled)
+
+            if text and text.strip():
+                all_texts.append(text.strip())
+                print(f"      ✓ Frame {frame_idx}: {len(text)} chars - {text[:80]}...")
+
+        vidcap.release()
+
+        combined = " ".join(all_texts)
+
+        if combined.strip():
+            print(f"   ✅ Last frame OCR: extracted {len(combined)} chars")
+        else:
+            print(f"   ⚠️ Last frame OCR: no text found")
+
+        return combined
+
+    except Exception as e:
+        print(f"   ❌ Last frame OCR failed: {e}")
+        return ""
+
+
 # ─────────────────────────────
 # Google Places API - Optimized Geocoding Service
 # ─────────────────────────────
@@ -8735,51 +8803,100 @@ def extract_api():
         
         if not venues:
             print("⚠️ No valid venues extracted from video")
-            # Check if we had any content to analyze
-            has_content = bool(transcript or ocr_text or caption or comments_text)
-            warning_msg = ""
-            
-            # Check OpenAI API key
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                error_msg = "No venues found in this video. OpenAI API key is not configured. Please check Render environment variables."
-                warning_msg = " OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable on Render."
-            elif not transcript and not ocr_text:
-                error_msg = "No venues found in this video. This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images."
-                warning_msg = " This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images, but tesseract may not be available on Render."
-            elif not has_content:
-                error_msg = "No venues found in this video. No extractable content found (no transcript, OCR text, or caption)."
-                warning_msg = " No extractable content found (no transcript, OCR text, or caption)."
-            else:
-                error_msg = "No venues found in this video. The video might not mention specific venue names, or they couldn't be extracted."
-                warning_msg = " GPT extraction returned no venues. Check Render logs for detailed error messages."
-            
-            # Return empty result with helpful message
-            data = {
-                "video_url": url,
-                "summary_title": context_title or caption or "No venues found",
-                "context_summary": context_title or caption or "No venues found",
-                "places_extracted": [],
-                "error": error_msg,
-                "warning": warning_msg if warning_msg else None,
-                "extraction_id": extraction_id,  # Add extraction_id for status polling
-                "ocr_text": ocr_text,  # Include OCR text for debugging/testing
-                "transcript": transcript,  # Include transcript for debugging/testing
-                "debug_info": {
-                    "has_content": has_content,
-                    "openai_key_set": bool(api_key),
-                    "ocr_available": OCR_AVAILABLE,
-                    "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
-                    "content_lengths": {
-                        "transcript": len(transcript) if transcript else 0,
-                        "ocr_text": len(ocr_text) if ocr_text else 0,
-                        "caption": len(caption) if caption else 0,
-                    },
-                    "caption_preview": caption[:200] if caption else None,
-                    "ocr_preview": ocr_text[:200] if ocr_text else None,
+
+            # FALLBACK: Try OCR on last frames before giving up
+            # Only run for videos < 5 minutes (TikTok max is 10 min, most are < 3 min)
+            # Get video duration for safeguard check
+            try:
+                vidcap_check = cv2.VideoCapture(video_path)
+                fps = vidcap_check.get(cv2.CAP_PROP_FPS) or 30
+                total_frames = int(vidcap_check.get(cv2.CAP_PROP_FRAME_COUNT))
+                duration_seconds = total_frames / fps if fps > 0 else 0
+                vidcap_check.release()
+            except:
+                duration_seconds = 0
+
+            # Only run fallback for videos < 5 minutes
+            if duration_seconds > 0 and duration_seconds < 300:
+                print(f"   🔄 Attempting last-frame OCR fallback (video: {duration_seconds:.1f}s)...")
+
+                last_frame_ocr = _extract_ocr_last_frames(video_path, num_frames=3)
+
+                if last_frame_ocr and last_frame_ocr.strip():
+                    print(f"   📝 Re-running extraction with last-frame OCR ({len(last_frame_ocr)} chars)")
+
+                    # Re-run GPT extraction with the new OCR text
+                    venues_fallback, summary_fallback, venue_to_slide_fallback, venue_to_context_fallback = \
+                        extract_places_and_context(
+                            transcript=transcript,
+                            ocr_text=f"{ocr_text}\n{last_frame_ocr}".strip() if ocr_text else last_frame_ocr,
+                            caption=caption,
+                            comments=comments_text,
+                            slides_with_attribution=slides_with_attribution
+                        )
+
+                    if venues_fallback:
+                        print(f"   ✅ Last-frame fallback succeeded: found {len(venues_fallback)} venue(s)")
+                        venues = venues_fallback
+                        context_title = summary_fallback
+                        venue_to_slide = venue_to_slide_fallback
+                        venue_to_context = venue_to_context_fallback
+                        # Update ocr_text to include last frame OCR
+                        ocr_text = f"{ocr_text}\n{last_frame_ocr}".strip() if ocr_text else last_frame_ocr
+                    else:
+                        print(f"   ⚠️ Last-frame fallback found no venues")
+                else:
+                    print(f"   ⚠️ Last-frame OCR returned no text")
+            elif duration_seconds >= 300:
+                print(f"   ⚠️ Skipping last-frame OCR fallback (video too long: {duration_seconds:.1f}s)")
+
+            # If STILL no venues after fallback, return empty result
+            if not venues:
+                # Check if we had any content to analyze
+                has_content = bool(transcript or ocr_text or caption or comments_text)
+                warning_msg = ""
+
+                # Check OpenAI API key
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    error_msg = "No venues found in this video. OpenAI API key is not configured. Please check Render environment variables."
+                    warning_msg = " OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable on Render."
+                elif not transcript and not ocr_text:
+                    error_msg = "No venues found in this video. This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images."
+                    warning_msg = " This appears to be a slideshow/image-only video with no audio. OCR is needed to extract text from images, but tesseract may not be available on Render."
+                elif not has_content:
+                    error_msg = "No venues found in this video. No extractable content found (no transcript, OCR text, or caption)."
+                    warning_msg = " No extractable content found (no transcript, OCR text, or caption)."
+                else:
+                    error_msg = "No venues found in this video. The video might not mention specific venue names, or they couldn't be extracted."
+                    warning_msg = " GPT extraction returned no venues. Check Render logs for detailed error messages."
+
+                # Return empty result with helpful message
+                data = {
+                    "video_url": url,
+                    "summary_title": context_title or caption or "No venues found",
+                    "context_summary": context_title or caption or "No venues found",
+                    "places_extracted": [],
+                    "error": error_msg,
+                    "warning": warning_msg if warning_msg else None,
+                    "extraction_id": extraction_id,  # Add extraction_id for status polling
+                    "ocr_text": ocr_text,  # Include OCR text for debugging/testing
+                    "transcript": transcript,  # Include transcript for debugging/testing
+                    "debug_info": {
+                        "has_content": has_content,
+                        "openai_key_set": bool(api_key),
+                        "ocr_available": OCR_AVAILABLE,
+                        "advanced_ocr_available": ADVANCED_OCR_AVAILABLE,
+                        "content_lengths": {
+                            "transcript": len(transcript) if transcript else 0,
+                            "ocr_text": len(ocr_text) if ocr_text else 0,
+                            "caption": len(caption) if caption else 0,
+                        },
+                        "caption_preview": caption[:200] if caption else None,
+                        "ocr_preview": ocr_text[:200] if ocr_text else None,
+                    }
                 }
-            }
-            return jsonify(data)
+                return jsonify(data)
 
         # OPTIMIZATION: Parallelize enrichment and photo fetching for multiple places
         update_status(extraction_id, f"Mapping {len(venues)} venues with details...")
