@@ -4203,7 +4203,9 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
         filtered_unique = []
         ocr_text_lower = ocr_text.lower() if ocr_text else ""
         caption_lower = caption.lower() if caption else ""
-        combined_text_lower = f"{ocr_text_lower} {caption_lower}".lower()
+        transcript_lower = transcript.lower() if transcript else ""
+        # CRITICAL: Include transcript in venue verification (not just OCR/caption)
+        combined_text_lower = f"{ocr_text_lower} {caption_lower} {transcript_lower}".lower()
         
         for v in unique:
             v_lower = v.lower()
@@ -4217,16 +4219,16 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
                     print(f"⚠️ Filtering out chain location: '{v}' (contains location '{neighborhood}')")
                     break
             
-            # CRITICAL: Verify venue is actually mentioned in OCR/caption (filter false positives)
+            # CRITICAL: Verify venue is actually mentioned in OCR/caption/transcript (filter false positives)
             if not is_chain_location:
-                # Check if venue name (or key parts) appears in OCR/caption
+                # Check if venue name (or key parts) appears in OCR/caption/transcript
                 venue_words = v_lower.split()
                 # For multi-word venues, check if at least 2 words appear, or if single word appears
                 if len(venue_words) > 1:
                     # Multi-word: check if at least 2 words appear together or separately
                     words_found = sum(1 for word in venue_words if len(word) > 2 and word in combined_text_lower)
                     if words_found < min(2, len(venue_words) - 1):
-                        print(f"⚠️ Filtering out venue not mentioned in OCR/caption: '{v}' (only {words_found}/{len(venue_words)} words found)")
+                        print(f"⚠️ Filtering out venue not mentioned in content: '{v}' (only {words_found}/{len(venue_words)} words found)")
                         continue
                 else:
                     # Single word: must appear in text (but allow for OCR variations)
@@ -4236,7 +4238,7 @@ IMPORTANT: Replace "Your actual creative title here" with a real title based on 
                         normalized_v = unicodedata.normalize('NFD', v_lower).encode('ascii', 'ignore').decode('ascii')
                         normalized_text = unicodedata.normalize('NFD', combined_text_lower).encode('ascii', 'ignore').decode('ascii')
                         if normalized_v not in normalized_text:
-                            print(f"⚠️ Filtering out venue not mentioned in OCR/caption: '{v}'")
+                            print(f"⚠️ Filtering out venue not mentioned in content: '{v}'")
                             continue
                 
                 filtered_unique.append(v)
